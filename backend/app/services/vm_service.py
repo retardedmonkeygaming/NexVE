@@ -30,6 +30,69 @@ class VMService:
             })
         
         return result
+
+def create_vm_cloud_init(self, vm_id: int, hostname: str = "", ip: str = "",
+    gateway: str = "", nameservers: str = "", username: str = "", password: str = "",
+    ssh_keys: str = "") -> dict:
+    """Generate cloud-init ISO for a VM."""
+
+    ci_dir = f"/var/lib/nexve/cloud-init/{vm_id}"
+    os.makedirs(ci_dir, exist_ok=True)
+
+    # user-data
+    userdata = f"""#cloud-config
+hostname: {hostname or f'nexve-vm-{vm_id}'}
+manage_etc_hosts: true
+"""
+    if username:
+        userdata += f"""
+users:
+  - name: {username}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+"""
+        if password:
+            userdata += f"    passwd: {password}\n"
+        if ssh_keys:
+            userdata += f"    ssh_authorized_keys:\n"
+            for key in ssh_keys.strip().split("\n"):
+                userdata += f"      - {key.strip()}\n"
+
+    if ip and gateway:
+        userdata += f"""
+network:
+  version: 2
+  ethernets:
+    ens18:
+      addresses: [{ip}/24]
+      gateway4: {gateway}
+"""
+        if nameservers:
+            userdata += f"      nameservers:\n        addresses: [{nameservers}]\n"
+
+    with open(os.path.join(ci_dir, "user-data"), "w") as f:
+        f.write(userdata)
+
+    # meta-data
+    with open(os.path.join(ci_dir, "meta-data"), "w") as f:
+        f.write(f"instance-id: nexve-vm-{vm_id}\nlocal-hostname: {hostname or f'nexve-vm-{vm_id}'}\n")
+
+    # Generate ISO
+    iso_path = f"/var/lib/nexve/iso/cloud-init-{vm_id}.iso"
+    result = self.run_cmd(
+        f"genisoimage -output {iso_path} -volid cidata -joliet -rock "
+        f"{ci_dir}/user-data {ci_dir}/meta-data"
+    )
+    return result
+
+
+    def attach_cloud_init(self, vm_id: int) -> dict:
+        """Attach cloud-init ISO as secondary CD-ROM."""
+        iso_path = f"/var/lib/nexve/iso/cloud-init-{vm_id}.iso"
+        if not os.path.exists(iso_path):
+            return {"success": False, "error": "Cloud-init ISO not found. Create it first."}
+        return self.run_cmd(f"virsh attach-disk vm-{vm_id} {iso_path} vdb --type cdrom --mode readonly")
+
     
     def _get_vm_status(self, name: str) -> str:
         """Check live VM status from libvirt"""

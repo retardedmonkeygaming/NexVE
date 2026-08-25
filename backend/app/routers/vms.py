@@ -61,6 +61,21 @@ async def stop_vm(vm_id: int, db: Session = Depends(get_db)):
         return {"status": "stopped"}
     raise HTTPException(status_code=500, detail="Failed to stop VM")
 
+@router.post("/cloud-init/{vm_id}")
+async def vm_cloud_init(vm_id: int, request: Request,
+    hostname: str = Form(""), ip: str = Form(""), gateway: str = Form(""),
+    nameservers: str = Form(""), username: str = Form(""), password: str = Form(""),
+    ssh_keys: str = Form("")):
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    result = vm_svc.create_vm_cloud_init(vm_id, hostname, ip, gateway, nameservers, username, password, ssh_keys)
+    if result.get("success"):
+        vm_svc.attach_cloud_init(vm_id)
+    return RedirectResponse(url="/vms", status_code=302)
+
+
 @router.delete("/{vm_id}")
 async def delete_vm(vm_id: int, db: Session = Depends(get_db)):
     success = vm_service.delete_vm(db, vm_id)

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexVE — Virtual Machines</title>
+    <link rel="stylesheet" href="/static/css/nexve.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-brand">NexVE</div>
+        <nav class="sidebar-nav">
+            <a href="/">Dashboard</a>
+            <a href="/vms" class="active">Virtual Machines</a>
+            <a href="/containers">Containers</a>
+            <a href="/storage">Storage</a>
+            <a href="/network">Network</a>
+            <a href="/backups">Backups</a>
+            <a href="/firewall">Firewall</a>
+            <a href="/users">Users</a>
+            <a href="/settings">Settings</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px">
+            <div>
+                <h1 style="font-size:1.75rem;font-weight:600">Virtual Machines</h1>
+                <p style="color:var(--text-secondary)">Manage your KVM/QEMU virtual machines</p>
+            </div>
+            <button class="btn btn-primary" onclick="document.getElementById('createModal').style.display='flex'">
+                + Create VM
+            </button>
+        </div>
+
+        <div id="vm-list" class="card">
+            <p style="color:var(--text-secondary)">Loading VMs...</p>
+        </div>
+    </main>
+
+    <!-- Create VM Modal -->
+    <div id="createModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:200">
+        <div class="card" style="width:400px">
+            <div class="card-header">
+                <span style="font-size:1.25rem;font-weight:600">Create Virtual Machine</span>
+                <button onclick="document.getElementById('createModal').style.display='none'" style="background:none;border:none;color:white;font-size:1.5rem;cursor:pointer">&times;</button>
+            </div>
+            <form id="createForm" style="display:flex;flex-direction:column;gap:16px">
+                <div>
+                    <label style="display:block;color:var(--text-secondary);margin-bottom:6px">Name</label>
+                    <input type="text" name="name" required style="width:100%;padding:10px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;color:white">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div>
+                        <label style="display:block;color:var(--text-secondary);margin-bottom:6px">CPU Cores</label>
+                        <input type="number" name="vcpu" value="2" min="1" style="width:100%;padding:10px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;color:white">
+                    </div>
+                    <div>
+                        <label style="display:block;color:var(--text-secondary);margin-bottom:6px">Memory (MB)</label>
+                        <input type="number" name="memory_mb" value="2048" min="256" style="width:100%;padding:10px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;color:white">
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;color:var(--text-secondary);margin-bottom:6px">Disk (GB)</label>
+                    <input type="number" name="disk_gb" value="50" min="10" style="width:100%;padding:10px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;color:white">
+                </div>
+                <div style="display:flex;gap:12px;margin-top:8px">
+                    <button type="submit" class="btn btn-primary" style="flex:1">Create</button>
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('createModal').style.display='none'" style="flex:1">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        async function loadVMs() {
+            const res = await fetch('/api/vms/');
+            const data = await res.json();
+            const container = document.getElementById('vm-list');
+            
+            if (data.vms.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-secondary)">No VMs configured yet. Click "Create VM" to get started.</p>';
+                return;
+            }
+            
+            container.innerHTML = data.vms.map(vm => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--border-color)">
+                    <div>
+                        <div style="font-weight:500">${vm.name}</div>
+                        <div style="color:var(--text-secondary);font-size:0.9rem">${vm.vcpu} vCPU · ${vm.memory_mb/1024}G RAM · ${vm.disk_gb}G Disk</div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <span class="status-badge ${vm.status === 'running' ? 'status-online' : ''}" style="background:${vm.status === 'running' ? 'rgba(34,197,94,0.2)' : 'rgba(100,100,100,0.2)'};color:${vm.status === 'running' ? 'var(--accent-green)' : 'var(--text-secondary)'}">
+                            ${vm.status}
+                        </span>
+                        <button class="btn btn-primary" style="padding:6px 12px" onclick="startVM(${vm.id})" ${vm.status === 'running' ? 'disabled' : ''}>Start</button>
+                        <button class="btn btn-secondary" style="padding:6px 12px" onclick="stopVM(${vm.id})" ${vm.status !== 'running' ? 'disabled' : ''}>Stop</button>
+                        <button class="btn btn-danger" style="padding:6px 12px" onclick="deleteVM(${vm.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function startVM(id) {
+            await fetch(`/api/vms/${id}/start`, {method: 'POST'});
+            loadVMs();
+        }
+
+        async function stopVM(id) {
+            await fetch(`/api/vms/${id}/stop`, {method: 'POST'});
+            loadVMs();
+        }
+
+        async function deleteVM(id) {
+            if (confirm('Delete this VM?')) {
+                await fetch(`/api/vms/${id}`, {method: 'DELETE'});
+                loadVMs();
+            }
+        }
+
+        document.getElementById('createForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            await fetch('/api/vms/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    name: formData.get('name'),
+                    vcpu: parseInt(formData.get('vcpu')),
+                    memory_mb: parseInt(formData.get('memory_mb')),
+                    disk_gb: parseInt(formData.get('disk_gb'))
+                })
+            });
+            document.getElementById('createModal').style.display = 'none';
+            loadVMs();
+        };
+
+        loadVMs();
+        setInterval(loadVMs, 5000);
+    </script>
+</body>
+</html>

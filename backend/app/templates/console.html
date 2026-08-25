@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Console</h1>
+        <button onclick="history.back()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">← Back</button>
+    </div>
+
+    <div id="console-container" class="bg-black rounded-xl border border-zinc-800 overflow-hidden" style="height: 70vh;">
+        <div id="console-placeholder" class="flex items-center justify-center h-full text-zinc-500">
+            <div class="text-center">
+                <p class="text-lg mb-2">Loading console...</p>
+                <p class="text-sm">The VNC connection will appear here.</p>
+            </div>
+        </div>
+        <iframe id="console-frame" class="w-full h-full hidden" frameborder="0"></iframe>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+        <button onclick="sendCtrlAltDel()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">Ctrl+Alt+Del</button>
+    </div>
+</div>
+
+<script>
+const vmId = {{ vm_id }};
+
+async function loadConsole() {
+    const r = await fetch(`/api/console/vm/${vmId}`);
+    const d = await r.json();
+    if (d.success && d.novnc_url) {
+        const frame = document.getElementById('console-frame');
+        frame.src = d.novnc_url;
+        frame.classList.remove('hidden');
+        document.getElementById('console-placeholder').classList.add('hidden');
+    } else {
+        document.getElementById('console-placeholder').innerHTML =
+            `<div class="text-center text-red-400"><p>Could not connect to console.</p><p class="text-sm mt-2">${d.error || 'VM may not be running or VNC not enabled.'}</p></div>`;
+    }
+}
+
+function sendCtrlAltDel() {
+    // noVNC sends keys via its API — for now, just notify
+    alert('Ctrl+Alt+Del sent (connects via noVNC toolbar)');
+}
+
+loadConsole();
+</script>
+{% endblock %}

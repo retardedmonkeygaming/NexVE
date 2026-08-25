@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <h1 class="text-2xl font-bold mb-6">Monitoring</h1>
+
+    <!-- Live Stats Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div class="text-zinc-400 text-sm">CPU</div>
+            <div id="live-cpu" class="text-2xl font-bold text-white">-</div>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div class="text-zinc-400 text-sm">Memory</div>
+            <div id="live-mem" class="text-2xl font-bold text-white">-</div>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div class="text-zinc-400 text-sm">Disk</div>
+            <div id="live-disk" class="text-2xl font-bold text-white">-</div>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div class="text-zinc-400 text-sm">Temperature</div>
+            <div id="live-temp" class="text-2xl font-bold text-white">-</div>
+        </div>
+    </div>
+
+    <!-- Graphs -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <h3 class="text-zinc-400 text-sm mb-3">CPU Usage (%)</h3>
+            <canvas id="cpu-chart" height="200"></canvas>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <h3 class="text-zinc-400 text-sm mb-3">Memory Usage (%)</h3>
+            <canvas id="mem-chart" height="200"></canvas>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <h3 class="text-zinc-400 text-sm mb-3">Disk I/O (MB/s)</h3>
+            <canvas id="disk-chart" height="200"></canvas>
+        </div>
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <h3 class="text-zinc-400 text-sm mb-3">Network I/O (MB/s)</h3>
+            <canvas id="net-chart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const CHART_OPTS = {
+    responsive: true,
+    animation: { duration: 0 },
+    scales: {
+        x: { display: false },
+        y: { beginAtZero: true, grid: { color: '#27272a' }, ticks: { color: '#71717a' } }
+    },
+    plugins: { legend: { display: false } },
+    elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } }
+};
+
+function makeChart(id, color, label) {
+    return new Chart(document.getElementById(id), {
+        type: 'line',
+        data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color + '20', fill: true, label }] },
+        options: { ...CHART_OPTS, scales: { ...CHART_OPTS.scales, y: { ...CHART_OPTS.scales.y, max: label.includes('%') ? 100 : undefined } } }
+    });
+}
+
+const cpuChart = makeChart('cpu-chart', '#f97316', 'CPU');
+const memChart = makeChart('mem-chart', '#3b82f6', 'Memory');
+const diskChart = makeChart('disk-chart', '#22c55e', 'Disk I/O');
+const netChart = makeChart('net-chart', '#a855f7', 'Network I/O');
+
+function fmtTime(ts) {
+    return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function updateChart(chart, points) {
+    chart.data.labels = points.map(p => fmtTime(p.t));
+    chart.data.datasets[0].data = points.map(p => p.v);
+    chart.update('none');
+}
+
+async function loadAll() {
+    const [histRes, curRes] = await Promise.all([
+        fetch('/api/monitor/history'),
+        fetch('/api/monitor/current')
+    ]);
+    const hist = await histRes.json();
+    const cur = await curRes.json();
+
+    // Update live stats
+    document.getElementById('live-cpu').textContent = cur.cpu_percent + '%';
+    document.getElementById('live-mem').textContent = cur.memory_percent + '%';
+    document.getElementById('live-disk').textContent = cur.disk_percent + '%';
+    document.getElementById('live-temp').textContent = cur.temperature ? cur.temperature + '°C' : 'N/A';
+
+    // Update charts
+    updateChart(cpuChart, hist.cpu || []);
+    updateChart(memChart, hist.memory || []);
+    updateChart(diskChart, hist.disk_io || []);
+    updateChart(netChart, hist.net_io || []);
+}
+
+loadAll();
+setInterval(loadAll, 5000);
+</script>
+{% endblock %}

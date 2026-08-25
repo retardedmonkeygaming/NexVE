@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <h1 class="text-2xl font-bold mb-6">Settings</h1>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 bg-zinc-900 p-1 rounded-lg mb-6 w-fit">
+        <button onclick="showTab('general')" id="tab-general" class="s-tab px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">General</button>
+        <button onclick="showTab('updates')" id="tab-updates" class="s-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Updates</button>
+        <button onclick="showTab('services')" id="tab-services" class="s-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Services</button>
+    </div>
+
+    <!-- General -->
+    <div id="panel-general" class="s-panel">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-xl">
+            <h3 class="text-white font-semibold mb-4">System Information</h3>
+            <div id="sys-info" class="space-y-2 text-sm"></div>
+
+            <div class="mt-6 pt-4 border-t border-zinc-800">
+                <h3 class="text-white font-semibold mb-3">Change Hostname</h3>
+                <form hx-post="/api/settings/hostname" hx-swap="none" hx-on::after-request="alert('Hostname updated'); loadGeneral();">
+                    <div class="flex gap-2">
+                        <input name="hostname" id="hostname-input" required class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                        <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Apply</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Updates -->
+    <div id="panel-updates" class="s-panel hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-xl">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-white font-semibold">System Updates</h3>
+                <button onclick="checkUpdates()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">Check</button>
+            </div>
+            <div id="updates-list" class="text-zinc-400 text-sm">Click "Check" to look for updates.</div>
+        </div>
+    </div>
+
+    <!-- Services -->
+    <div id="panel-services" class="s-panel hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-xl">
+            <h3 class="text-white font-semibold mb-4">System Services</h3>
+            <div id="services-list" class="space-y-3"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showTab(name) {
+    document.querySelectorAll('.s-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.s-tab').forEach(b => { b.classList.remove('bg-zinc-700','text-white'); b.classList.add('text-zinc-400'); });
+    document.getElementById('panel-' + name).classList.remove('hidden');
+    document.getElementById('tab-' + name).classList.add('bg-zinc-700','text-white');
+}
+
+async function loadGeneral() {
+    const r = await fetch('/api/settings/system');
+    const d = await r.json();
+    document.getElementById('hostname-input').value = d.hostname;
+    let h = '';
+    Object.entries(d).forEach(([k, v]) => {
+        h += `<div class="flex justify-between"><span class="text-zinc-400 capitalize">${k.replace(/_/g, ' ')}</span><span class="text-white">${v}</span></div>`;
+    });
+    document.getElementById('sys-info').innerHTML = h;
+}
+
+async function checkUpdates() {
+    document.getElementById('updates-list').innerHTML = '<span class="text-zinc-500">Checking...</span>';
+    const r = await fetch('/api/settings/updates');
+    const d = await r.json();
+    if (d.count === 0) {
+        document.getElementById('updates-list').innerHTML = '<span class="text-green-400">System is up to date.</span>';
+    } else {
+        let h = `<p class="text-zinc-400 mb-2">${d.count} packages can be updated:</p>`;
+        h += '<ul class="space-y-1">' + d.packages.map(p => `<li class="text-white text-sm">${p}</li>`).join('') + '</ul>';
+        h += '<button onclick="applyUpdates()" class="mt-4 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Apply All Updates</button>';
+        document.getElementById('updates-list').innerHTML = h;
+    }
+}
+
+async function applyUpdates() {
+    if (!confirm('Apply all system updates? This may take a while.')) return;
+    document.getElementById('updates-list').innerHTML = '<span class="text-yellow-400">Updating...</span>';
+    const r = await fetch('/api/settings/updates/apply', { method: 'POST' });
+    const d = await r.json();
+    alert(d.success ? 'Updates applied!' : 'Update failed: ' + d.stderr);
+    checkUpdates();
+}
+
+async function loadServices() {
+    const r = await fetch('/api/settings/services');
+    const d = await r.json();
+    let h = '';
+    Object.entries(d).forEach(([name, status]) => {
+        const color = status === 'active' ? 'text-green-400' : status === 'inactive' ? 'text-zinc-500' : 'text-red-400';
+        h += `<div class="flex items-center justify-between">
+            <span class="text-white font-medium">${name}</span>
+            <span class="${color} text-sm">${status}</span>
+        </div>`;
+    });
+    document.getElementById('services-list').innerHTML = h;
+}
+
+loadGeneral();
+loadServices();
+</script>
+{% endblock %}

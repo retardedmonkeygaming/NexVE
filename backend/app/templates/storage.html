@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Storage</h1>
+        <button onclick="showCreateModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold transition">
+            + Add Storage
+        </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 bg-zinc-900 p-1 rounded-lg mb-6 w-fit">
+        <button onclick="showTab('overview')" id="tab-overview" class="tab-btn px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">Overview</button>
+        <button onclick="showTab('zfs')" id="tab-zfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">ZFS</button>
+        <button onclick="showTab('lvm')" id="tab-lvm" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">LVM</button>
+        <button onclick="showTab('nfs')" id="tab-nfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">NFS</button>
+        <button onclick="showTab('disks')" id="tab-disks" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Disks</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="panel-overview" class="tab-panel">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <div class="text-zinc-400 text-sm mb-1">ZFS Pools</div>
+                <div id="stat-zfs" class="text-3xl font-bold text-white">-</div>
+            </div>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <div class="text-zinc-400 text-sm mb-1">LVM Groups</div>
+                <div id="stat-lvm" class="text-3xl font-bold text-white">-</div>
+            </div>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+                <div class="text-zinc-400 text-sm mb-1">Disks</div>
+                <div id="stat-disks" class="text-3xl font-bold text-white">-</div>
+            </div>
+        </div>
+
+        <div id="overview-list" class="space-y-3"></div>
+    </div>
+
+    <!-- ZFS Tab -->
+    <div id="panel-zfs" class="tab-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="showZfsCreatePoolModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Create Pool</button>
+            <button onclick="showZfsCreateVolModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Create Volume</button>
+        </div>
+        <div id="zfs-pools" class="space-y-3"></div>
+        <div id="zfs-volumes" class="space-y-3 mt-6"></div>
+    </div>
+
+    <!-- LVM Tab -->
+    <div id="panel-lvm" class="tab-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="showLvmCreateVgModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Create VG</button>
+            <button onclick="showLvmCreateLvModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Create LV</button>
+        </div>
+        <div id="lvm-vgs" class="space-y-3"></div>
+        <div id="lvm-lvs" class="space-y-3 mt-6"></div>
+    </div>
+
+    <!-- NFS Tab -->
+    <div id="panel-nfs" class="tab-panel hidden">
+        <button onclick="showNfsMountModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition mb-4">+ Mount NFS</button>
+        <div id="nfs-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Disks Tab -->
+    <div id="panel-disks" class="tab-panel hidden">
+        <div id="disks-list" class="space-y-3"></div>
+    </div>
+</div>
+
+<!-- Create Backend Modal -->
+<div id="create-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Add Storage Backend</h2>
+        <form hx-post="/api/storage/backends" hx-swap="none" hx-on::after-request="closeModal('create-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Name</label>
+                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Type</label>
+                    <select name="type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
+                        <option value="directory">Directory</option>
+                        <option value="zfs">ZFS</option>
+                        <option value="lvm">LVM</option>
+                        <option value="nfs">NFS</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Path / Pool / VG Name</label>
+                    <input name="path" placeholder="/mnt/storage or pool name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('create-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ZFS Create Pool Modal -->
+<div id="zfs-pool-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create ZFS Pool</h2>
+        <form hx-post="/api/storage/zfs/pools" hx-swap="none" hx-on::after-request="closeModal('zfs-pool-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Pool Name</label>
+                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Device (e.g. /dev/sdb)</label>
+                    <input name="device" required placeholder="/dev/sdb" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('zfs-pool-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ZFS Create Volume Modal -->
+<div id="zfs-vol-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create ZFS Volume</h2>
+        <form hx-post="/api/storage/zfs/volumes" hx-swap="none" hx-on::after-request="closeModal('zfs-vol-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Pool</label>
+                    <select name="pool" id="zfs-pool-select" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white"></select>
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Volume Name</label>
+                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Size (GB)</label>
+                    <input name="size_gb" type="number" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('zfs-vol-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- LVM Create VG Modal -->
+<div id="lvm-vg-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create Volume Group</h2>
+        <form hx-post="/api/storage/lvm/vgs" hx-swap="none" hx-on::after-request="closeModal('lvm-vg-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">VG Name</label>
+                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Device (e.g. /dev/sdc)</label>
+                    <input name="device" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('lvm-vg-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- LVM Create LV Modal -->
+<div id="lvm-lv-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create Logical Volume</h2>
+        <form hx-post="/api/storage/lvm/lvs" hx-swap="none" hx-on::after-request="closeModal('lvm-lv-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Volume Group</label>
+                    <select name="vg_name" id="lvm-vg-select" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white"></select>
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">LV Name</label>
+                    <input name="lv_name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Size (GB)</label>
+                    <input name="size_gb" type="number" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('lvm-lv-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- NFS Mount Modal -->
+<div id="nfs-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Mount NFS Share</h2>
+        <form hx-post="/api/storage/nfs/mount" hx-swap="none" hx-on::after-request="closeModal('nfs-modal'); refreshAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Host</label>
+                    <input name="host" required placeholder="192.168.1.100" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Remote Path</label>
+                    <input name="path" required placeholder="/srv/share" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Local Mountpoint</label>
+                    <input name="mountpoint" required placeholder="/mnt/nfs_share" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeModal('nfs-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Mount</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// ── Tab switching ──
+function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('bg-zinc-700', 'text-white'); b.classList.add('text-zinc-400'); });
+    document.getElementById('panel-' + name).classList.remove('hidden');
+    document.getElementById('tab-' + name).classList.add('bg-zinc-700', 'text-white');
+    document.getElementById('tab-' + name).classList.remove('text-zinc-400');
+}
+
+// ── Modals ──
+function showCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+function showZfsCreatePoolModal() { document.getElementById('zfs-pool-modal').classList.remove('hidden'); }
+function showZfsCreateVolModal() { loadZfsPoolsForSelect(); document.getElementById('zfs-vol-modal').classList.remove('hidden'); }
+function showLvmCreateVgModal() { document.getElementById('lvm-vg-modal').classList.remove('hidden'); }
+function showLvmCreateLvModal() { loadLvmVgsForSelect(); document.getElementById('lvm-lv-modal').classList.remove('hidden'); }
+function showNfsMountModal() { document.getElementById('nfs-modal').classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// ── Load data ──
+async function refreshAll() {
+    await Promise.all([loadOverview(), loadZfs(), loadLvm(), loadNfs(), loadDisks()]);
+}
+
+async function loadOverview() {
+    try {
+        const res = await fetch('/api/storage/overview');
+        const data = await res.json();
+        document.getElementById('stat-zfs').textContent = data.zfs_pools.length;
+        document.getElementById('stat-lvm').textContent = data.lvm_groups.length;
+        document.getElementById('stat-disks').textContent = data.disks.length;
+
+        let html = '';
+        data.zfs_pools.forEach(p => {
+            html += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><span class="text-zinc-400 text-sm">ZFS Pool</span><div class="text-white font-semibold">${p.name}</div></div>
+                <div class="text-right"><span class="text-sm text-zinc-400">${p.used} / ${p.size}</span>
+                <div class="text-xs mt-1 ${p.health === 'ONLINE' ? 'text-green-400' : 'text-red-400'}">${p.health}</div></div>
+            </div>`;
+        });
+        data.lvm_groups.forEach(v => {
+            html += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><span class="text-zinc-400 text-sm">LVM Volume Group</span><div class="text-white font-semibold">${v.name}</div></div>
+                <div class="text-right"><span class="text-sm text-zinc-400">${v.free} free of ${v.size}</span></div>
+            </div>`;
+        });
+        document.getElementById('overview-list').innerHTML = html || '<p class="text-zinc-500">No storage configured yet.</p>';
+    } catch(e) { console.error(e); }
+}
+
+async function loadZfs() {
+    try {
+        const [poolsRes, volsRes] = await Promise.all([
+            fetch('/api/storage/zfs/pools'),
+            fetch('/api/storage/zfs/volumes')
+        ]);
+        const pools = (await poolsRes.json()).pools || [];
+        const vols = (await volsRes.json()).volumes || [];
+
+        let ph = '';
+        pools.forEach(p => {
+            ph += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><div class="text-white font-semibold">${p.name}</div><div class="text-sm text-zinc-400">${p.used} / ${p.size} (${p.capacity})</div></div>
+                <div class="flex gap-2">
+                    <button onclick="zfsScrub('${p.name}')" class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-lg transition">Scrub</button>
+                    <button onclick="zfsDeletePool('${p.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+                </div>
+            </div>`;
+        });
+        document.getElementById('zfs-pools').innerHTML = ph || '<p class="text-zinc-500">No ZFS pools.</p>';
+
+        let vh = '';
+        vols.forEach(v => {
+            vh += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><div class="text-white font-semibold">${v.name}</div><div class="text-sm text-zinc-400">${v.size || 'N/A'}</div></div>
+                <button onclick="zfsDeleteVol('${v.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+            </div>`;
+        });
+        document.getElementById('zfs-volumes').innerHTML = vh ? '<h3 class="text-zinc-400 text-sm font-medium mb-2">Volumes</h3>' + vh : '';
+
+        window._zfsPools = pools;
+    } catch(e) { console.error(e); }
+}
+
+async function loadLvm() {
+    try {
+        const [vgsRes, lvsRes] = await Promise.all([
+            fetch('/api/storage/lvm/vgs'),
+            fetch('/api/storage/lvm/lvs')
+        ]);
+        const vgs = (await vgsRes.json()).vgs || [];
+        const lvs = (await lvsRes.json()).lvs || [];
+
+        let vgh = '';
+        vgs.forEach(v => {
+            vgh += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><div class="text-white font-semibold">${v.name}</div><div class="text-sm text-zinc-400">${v.free} free of ${v.size} | ${v.pv_count} PV, ${v.lv_count} LV</div></div>
+                <button onclick="lvmDeleteVg('${v.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+            </div>`;
+        });
+        document.getElementById('lvm-vgs').innerHTML = vgh || '<p class="text-zinc-500">No LVM groups.</p>';
+
+        let lvh = '';
+        lvs.forEach(l => {
+            lvh += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><div class="text-white font-semibold">${l.name}</div><div class="text-sm text-zinc-400">VG: ${l.vg} | ${l.size}</div></div>
+                <button onclick="lvmDeleteLv('${l.vg}/${l.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+            </div>`;
+        });
+        document.getElementById('lvm-lvs').innerHTML = lvh ? '<h3 class="text-zinc-400 text-sm font-medium mb-2">Logical Volumes</h3>' + lvh : '';
+
+        window._lvmVgs = vgs;
+    } catch(e) { console.error(e); }
+}
+
+async function loadNfs() {
+    try {
+        const res = await fetch('/api/storage/nfs');
+        const mounts = (await res.json()).mounts || [];
+        let h = '';
+        mounts.forEach(m => {
+            h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+                <div><div class="text-white font-semibold">${m.device}</div><div class="text-sm text-zinc-400">${m.mountpoint}</div></div>
+                <button onclick="nfsUnmount('${m.mountpoint}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Unmount</button>
+            </div>`;
+        });
+        document.getElementById('nfs-list').innerHTML = h || '<p class="text-zinc-500">No NFS mounts.</p>';
+    } catch(e) { console.error(e); }
+}
+
+async function loadDisks() {
+    try {
+        const res = await fetch('/api/storage/disks');
+        const disks = (await res.json()).disks || [];
+        let h = '';
+        disks.forEach(d => {
+            h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                    <div><div class="text-white font-semibold">/dev/${d.name}</div>
+                    <div class="text-sm text-zinc-400">${d.size} | ${d.type} | ${d.model || 'No model'}</div></div>
+                    ${d.fstype ? `<span class="text-xs bg-zinc-800 px-2 py-1 rounded">${d.fstype}</span>` : ''}
+                </div>
+                ${(d.children || []).length > 0 ? '<div class="mt-2 ml-4 space-y-1">' + d.children.map(c =>
+                    `<div class="text-sm text-zinc-400">├─${c.name} ${c.size} ${c.fstype || ''} ${c.mountpoint || ''}</div>`
+                ).join('') + '</div>' : ''}
+            </div>`;
+        });
+        document.getElementById('disks-list').innerHTML = h || '<p class="text-zinc-500">No disks found.</p>';
+    } catch(e) { console.error(e); }
+}
+
+// ── Actions ──
+async function zfsScrub(pool) {
+    if (!confirm(`Scrub ZFS pool "${pool}"?`)) return;
+    await fetch(`/api/storage/zfs/scrub/${pool}`, { method: 'POST' });
+    alert('Scrub started');
+}
+
+async function zfsDeletePool(pool) {
+    if (!confirm(`DELETE ZFS pool "${pool}" and ALL data?`)) return;
+    await fetch(`/api/storage/zfs/pools/${pool}`, { method: 'DELETE' });
+    refreshAll();
+}
+
+async function zfsDeleteVol(vol) {
+    if (!confirm(`DELETE ZFS volume "${vol}"?`)) return;
+    await fetch(`/api/storage/zfs/volumes/${encodeURIComponent(vol)}`, { method: 'DELETE' });
+    refreshAll();
+}
+
+async function lvmDeleteVg(name) {
+    if (!confirm(`DELETE LVM group "${name}"?`)) return;
+    await fetch(`/api/storage/lvm/vgs/${name}`, { method: 'DELETE' });
+    refreshAll();
+}
+
+async function lvmDeleteLv(path) {
+    if (!confirm(`DELETE logical volume "${path}"?`)) return;
+    await fetch(`/api/storage/lvm/lvs/${encodeURIComponent(path)}`, { method: 'DELETE' });
+    refreshAll();
+}
+
+async function nfsUnmount(mountpoint) {
+    if (!confirm(`Unmount "${mountpoint}"?`)) return;
+    await fetch('/api/storage/nfs/unmount', {
+        method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({ mountpoint })
+    });
+    refreshAll();
+}
+
+function loadZfsPoolsForSelect() {
+    const sel = document.getElementById('zfs-pool-select');
+    sel.innerHTML = '';
+    (window._zfsPools || []).forEach(p => {
+        sel.innerHTML += `<option value="${p.name}">${p.name} (${p.size})</option>`;
+    });
+}
+
+function loadLvmVgsForSelect() {
+    const sel = document.getElementById('lvm-vg-select');
+    sel.innerHTML = '';
+    (window._lvmVgs || []).forEach(v => {
+        sel.innerHTML += `<option value="${v.name}">${v.name} (${v.free} free)</option>`;
+    });
+}
+
+// Initial load
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+{% endblock %}

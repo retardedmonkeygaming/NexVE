@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <h1 class="text-2xl font-bold mb-6">Activity Log</h1>
+
+    <div id="log-list" class="space-y-2"></div>
+    <div class="flex justify-center mt-6">
+        <button id="load-more-btn" onclick="loadMore()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-2 rounded-lg text-sm transition">Load More</button>
+    </div>
+</div>
+
+<script>
+let currentOffset = 0;
+const LIMIT = 50;
+
+const ACTION_COLORS = {
+    create: 'text-green-400',
+    delete: 'text-red-400',
+    start: 'text-green-400',
+    stop: 'text-yellow-400',
+    restart: 'text-yellow-400',
+    login: 'text-blue-400',
+    logout: 'text-zinc-400',
+    snapshot: 'text-purple-400',
+    backup: 'text-cyan-400',
+};
+
+async function loadMore() {
+    const r = await fetch(`/api/activity/?limit=${LIMIT}&offset=${currentOffset}`);
+    const d = await r.json();
+    let h = '';
+    (d.logs || []).forEach(l => {
+        const color = ACTION_COLORS[l.action.split('_')[0]] || 'text-zinc-300';
+        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="${color} text-sm font-medium w-20">${l.action}</span>
+                <span class="text-white text-sm">${l.target_type}${l.target_id ? ' #' + l.target_id : ''}</span>
+                ${l.details ? `<span class="text-zinc-500 text-sm">— ${l.details}</span>` : ''}
+            </div>
+            <div class="text-right">
+                <span class="text-zinc-400 text-xs">${l.username || 'system'}</span>
+                <span class="text-zinc-500 text-xs ml-2">${l.created_at ? new Date(l.created_at).toLocaleString() : ''}</span>
+            </div>
+        </div>`;
+    });
+    document.getElementById('log-list').insertAdjacentHTML('beforeend', h);
+    currentOffset += d.logs.length;
+    if (currentOffset >= d.total) {
+        document.getElementById('load-more-btn').style.display = 'none';
+    }
+}
+
+loadMore();
+</script>
+{% endblock %}

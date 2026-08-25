@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="p-6">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Networking</h1>
+        <div class="flex gap-2">
+            <button onclick="showModal('bridge-modal')" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">+ Bridge</button>
+            <button onclick="showModal('vlan-modal')" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ VLAN</button>
+            <button onclick="showModal('bond-modal')" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Bond</button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 bg-zinc-900 p-1 rounded-lg mb-6 w-fit">
+        <button onclick="showTab('ifaces')" id="tab-ifaces" class="n-tab px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">Interfaces</button>
+        <button onclick="showTab('bridges')" id="tab-bridges" class="n-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Bridges</button>
+        <button onclick="showTab('vlans')" id="tab-vlans" class="n-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">VLANs</button>
+        <button onclick="showTab('bonds')" id="tab-bonds" class="n-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Bonds</button>
+        <button onclick="showTab('firewall')" id="tab-firewall" class="n-tab px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Firewall</button>
+    </div>
+
+    <!-- Interfaces -->
+    <div id="panel-ifaces" class="n-panel">
+        <div id="ifaces-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Bridges -->
+    <div id="panel-bridges" class="n-panel hidden">
+        <div id="bridges-list" class="space-y-3"></div>
+    </div>
+
+    <!-- VLANs -->
+    <div id="panel-vlans" class="n-panel hidden">
+        <div id="vlans-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Bonds -->
+    <div id="panel-bonds" class="n-panel hidden">
+        <div id="bonds-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Firewall -->
+    <div id="panel-firewall" class="n-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="fwEnable()" class="bg-green-900 hover:bg-green-800 text-green-300 px-4 py-2 rounded-lg text-sm transition">Enable</button>
+            <button onclick="fwDisable()" class="bg-red-900 hover:bg-red-800 text-red-300 px-4 py-2 rounded-lg text-sm transition">Disable</button>
+        </div>
+        <div id="firewall-rules" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <pre id="fw-rules-text" class="text-zinc-300 text-sm whitespace-pre-wrap">Loading...</pre>
+        </div>
+    </div>
+</div>
+
+<!-- Bridge Modal -->
+<div id="bridge-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create Bridge</h2>
+        <form hx-post="/api/network/bridges" hx-swap="none" hx-on::after-request="closeAllModals(); loadAll();">
+            <div class="mb-4">
+                <label class="text-zinc-400 text-sm">Bridge Name</label>
+                <input name="name" required placeholder="vmbr0" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+            </div>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeAllModals()" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- VLAN Modal -->
+<div id="vlan-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create VLAN</h2>
+        <form hx-post="/api/network/vlans" hx-swap="none" hx-on::after-request="closeAllModals(); loadAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Parent Interface</label>
+                    <select name="parent" id="vlan-parent-select" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white"></select>
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">VLAN ID</label>
+                    <input name="vlan_id" type="number" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeAllModals()" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bond Modal -->
+<div id="bond-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Create Bond</h2>
+        <form hx-post="/api/network/bonds" hx-swap="none" hx-on::after-request="closeAllModals(); loadAll();">
+            <div class="space-y-3">
+                <div>
+                    <label class="text-zinc-400 text-sm">Bond Name</label>
+                    <input name="name" required placeholder="bond0" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Mode</label>
+                    <select name="mode" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
+                        <option value="balance-rr">Round-Robin (balance-rr)</option>
+                        <option value="active-backup">Active-Backup</option>
+                        <option value="balance-xor">XOR</option>
+                        <option value="802.3ad">LACP (802.3ad)</option>
+                        <option value="balance-tlb">TLB</option>
+                        <option value="balance-alb">ALB</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Slave Interfaces (comma separated)</label>
+                    <input name="slaves" required placeholder="eth0,eth1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" onclick="closeAllModals()" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let _interfaces = [];
+
+function showTab(name) {
+    document.querySelectorAll('.n-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.n-tab').forEach(b => { b.classList.remove('bg-zinc-700','text-white'); b.classList.add('text-zinc-400'); });
+    document.getElementById('panel-' + name).classList.remove('hidden');
+    document.getElementById('tab-' + name).classList.add('bg-zinc-700','text-white');
+    document.getElementById('tab-' + name).classList.remove('text-zinc-400');
+}
+
+function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeAllModals() { document.querySelectorAll('[id$="-modal"]').forEach(m => m.classList.add('hidden')); }
+
+async function loadAll() {
+    await Promise.all([loadInterfaces(), loadBridges(), loadVlans(), loadBonds(), loadFirewall()]);
+}
+
+async function loadInterfaces() {
+    const r = await fetch('/api/network/interfaces');
+    const d = await r.json();
+    _interfaces = d.interfaces || [];
+    let h = '';
+    _interfaces.forEach(i => {
+        const color = i.state === 'UP' ? 'text-green-400' : 'text-red-400';
+        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+                <div class="flex items-center gap-2"><span class="text-white font-semibold">${i.name}</span><span class="${color} text-xs">${i.state}</span></div>
+                <div class="text-sm text-zinc-400 mt-1">MAC: ${i.mac} | MTU: ${i.mtu}</div>
+                <div class="text-sm text-zinc-400">${i.ips.length ? i.ips.join(', ') : 'No IP'}</div>
+            </div>
+        </div>`;
+    });
+    document.getElementById('ifaces-list').innerHTML = h || '<p class="text-zinc-500">No interfaces.</p>';
+}
+
+async function loadBridges() {
+    const r = await fetch('/api/network/bridges');
+    const d = await r.json();
+    let h = '';
+    (d.bridges || []).forEach(b => {
+        const color = b.state === 'UP' ? 'text-green-400' : 'text-red-400';
+        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+                <div class="flex items-center gap-2"><span class="text-white font-semibold">${b.name}</span><span class="${color} text-xs">${b.state}</span></div>
+                <div class="text-sm text-zinc-400">STP: ${b.stp} | Ports: ${b.members.length ? b.members.join(', ') : 'none'}</div>
+                <div class="text-sm text-zinc-400">${b.ips.length ? b.ips.join(', ') : 'No IP'}</div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="delBridge('${b.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+            </div>
+        </div>`;
+    });
+    document.getElementById('bridges-list').innerHTML = h || '<p class="text-zinc-500">No bridges. Create one to attach VMs.</p>';
+}
+
+async function loadVlans() {
+    const r = await fetch('/api/network/vlans');
+    const d = await r.json();
+    let h = '';
+    (d.vlans || []).forEach(v => {
+        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+                <div class="text-white font-semibold">${v.name}</div>
+                <div class="text-sm text-zinc-400">VLAN ${v.vlan_id} on ${v.parent}</div>
+            </div>
+            <button onclick="delVlan('${v.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+        </div>`;
+    });
+    document.getElementById('vlans-list').innerHTML = h || '<p class="text-zinc-500">No VLANs configured.</p>';
+}
+
+async function loadBonds() {
+    const r = await fetch('/api/network/bonds');
+    const d = await r.json();
+    let h = '';
+    (d.bonds || []).forEach(b => {
+        const color = b.state === 'UP' ? 'text-green-400' : 'text-red-400';
+        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
+            <div>
+                <div class="flex items-center gap-2"><span class="text-white font-semibold">${b.name}</span><span class="${color} text-xs">${b.state}</span></div>
+                <div class="text-sm text-zinc-400">Mode: ${b.mode} | Slaves: ${b.slaves.length ? b.slaves.join(', ') : 'none'}</div>
+            </div>
+            <button onclick="delBond('${b.name}')" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
+        </div>`;
+    });
+    document.getElementById('bonds-list').innerHTML = h || '<p class="text-zinc-500">No bonds configured.</p>';
+}
+
+async function loadFirewall() {
+    const r = await fetch('/api/network/firewall');
+    const d = await r.json();
+    document.getElementById('fw-rules-text').textContent = d.rules || 'No rules loaded.';
+}
+
+async function delBridge(n) { if (confirm('Delete bridge ' + n + '?')) { await fetch('/api/network/bridges/' + n, {method:'DELETE'}); loadAll(); } }
+async function delVlan(n) { if (confirm('Delete VLAN ' + n + '?')) { await fetch('/api/network/vlans/' + n, {method:'DELETE'}); loadAll(); } }
+async function delBond(n) { if (confirm('Delete bond ' + n + '?')) { await fetch('/api/network/bonds/' + n, {method:'DELETE'}); loadAll(); } }
+async function fwEnable() { await fetch('/api/network/firewall/enable', {method:'POST'}); loadFirewall(); }
+async function fwDisable() { await fetch('/api/network/firewall/disable', {method:'POST'}); loadFirewall(); }
+
+// Populate parent select for VLAN modal
+function populateVlanParents() {
+    const sel = document.getElementById('vlan-parent-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    _interfaces.forEach(i => { sel.innerHTML += `<option value="${i.name}">${i.name}</option>`; });
+}
+
+loadAll();
+setInterval(loadAll, 15000);
+</script>
+{% endblock %}
