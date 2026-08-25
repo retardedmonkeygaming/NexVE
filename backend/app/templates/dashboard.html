@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexVE — Dashboard</title>
+    <link rel="stylesheet" href="/static/css/nexve.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-brand">NexVE</div>
+        <nav class="sidebar-nav">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/vms">Virtual Machines</a>
+            <a href="/containers">Containers</a>
+            <a href="/storage">Storage</a>
+            <a href="/network">Network</a>
+            <a href="/backups">Backups</a>
+            <a href="/firewall">Firewall</a>
+            <a href="/users">Users</a>
+            <a href="/settings">Settings</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px">
+            <div>
+                <h1 style="font-size:1.75rem;font-weight:600">{{ hostname }}</h1>
+                <p style="color:var(--text-secondary)">System Overview</p>
+            </div>
+            <div style="display:flex;gap:12px">
+                <button class="btn btn-primary">+ Create VM</button>
+                <button class="btn btn-secondary">Settings</button>
+            </div>
+        </div>
+
+        <div class="stat-grid">
+            <div class="card">
+                <div class="card-title">CPU Usage</div>
+                <div class="stat-value" style="color:var(--accent-orange)">{{ cpu }}%</div>
+                <div class="progress-bar" style="margin-top:12px">
+                    <div class="progress-fill" style="width:{{ cpu }}%;background:var(--accent-orange)"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Memory</div>
+                <div class="stat-value">{{ "%.1f"|format(memory.percent) }}%</div>
+                <p style="color:var(--text-secondary);margin-top:8px">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</p>
+                <div class="progress-bar" style="margin-top:12px">
+                    <div class="progress-fill" style="width:{{ memory.percent }}%;background:var(--accent-blue)"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Disk</div>
+                <div class="stat-value">{{ "%.1f"|format(disk.percent) }}%</div>
+                <p style="color:var(--text-secondary);margin-top:8px">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</p>
+                <div class="progress-bar" style="margin-top:12px">
+                    <div class="progress-fill" style="width:{{ disk.percent }}%;background:var(--accent-green)"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Status</div>
+                <div class="status-badge status-online" style="margin-top:12px">
+                    <span style="width:8px;height:8px;background:var(--accent-green);border-radius:50%"></span>
+                    Online
+                </div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Virtual Machines</span>
+                    <a href="/vms" style="color:var(--accent-orange);text-decoration:none;font-size:0.9rem">View All</a>
+                </div>
+                <div id="vm-list">
+                    <p style="color:var(--text-secondary)">No VMs configured yet. Click "Create VM" to get started.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Activity Log</span>
+                </div>
+                <div style="color:var(--text-secondary);font-size:0.9rem">
+                    <p>System started — just now</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Auto-refresh system stats
+        setInterval(async () => {
+            const res = await fetch('/api/system');
+            const data = await res.json();
+            document.querySelector('.stat-value').textContent = data.cpu_percent + '%';
+        }, 5000);
+    </script>
+</body>
+</html>
