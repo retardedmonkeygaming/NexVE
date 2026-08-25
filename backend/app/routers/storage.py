@@ -268,3 +268,73 @@ async def remove_backend(request: Request, backend_id: int):
         return JSONResponse({"success": True})
     finally:
         db.close()
+
+@router.get("/content/{storage_name}")
+async def browse_storage_content(request: Request, storage_name: str):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    storage_service = StorageService()
+
+    # Try to list directory contents
+    import os
+    paths = {
+        "local": "/var/lib/vz",
+        "backups": "/opt/nexve/data/backups",
+        "isos": "/opt/nexve/data/isos",
+    }
+    base = paths.get(storage_name, f"/var/lib/vz")
+
+    items = []
+    if os.path.exists(base):
+        for f in sorted(os.listdir(base)):
+            fpath = os.path.join(base, f)
+            stat = os.stat(fpath)
+            items.append({
+                "name": f,
+                "is_dir": os.path.isdir(fpath),
+                "size_bytes": stat.st_size if os.path.isfile(fpath) else 0,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+
+    return JSONResponse(content={"path": base, "items": items})
+
+
+@router.get("/disks")
+async def list_disks(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    storage_service = StorageService()
+    return JSONResponse(content={"disks": storage_service.list_disks()})
+
+
+@router.post("/disk/wipe")
+async def wipe_disk(request: Request, device: str = Form(...)):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    storage_service = StorageService()
+    # Safety check — must start with /dev/sd or /dev/vd
+    if not device.startswith("/dev/sd") and not device.startswith("/dev/vd"):
+        return JSONResponse(content={"success": False, "error": "Invalid device path"})
+
+    return JSONResponse(content=storage_service.wipe_disk(device))
+
+
+@router.post("/disk/move")
+async def move_disk(
+    request: Request,
+    vm_name: str = Form(...),
+    source_storage: str = Form(...),
+    target_storage: str = Form(...),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    storage_service = StorageService()
+    return JSONResponse(content=storage_service.move_disk(vm_name, source_storage, target_storage))

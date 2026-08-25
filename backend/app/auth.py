@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from fastapi import Request, HTTPException
+from fastapi.responses import RedirectResponse
 import secrets
+import pyotp
 from .database import SessionLocal
 from .models.user import User, Session as UserSession
 
@@ -14,7 +16,7 @@ def create_session(user_id: int) -> str:
         session = UserSession(
             token=token,
             user_id=user_id,
-            expires_at=datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS),
+            expires_at=datetime.utcnow() + timedelta(hours=SESSION_DURATION_HOURS)
         )
         db.add(session)
         db.commit()
@@ -30,14 +32,11 @@ def get_current_user(request: Request) -> dict | None:
 
     db = SessionLocal()
     try:
-        session = (
-            db.query(UserSession)
-            .filter(
-                UserSession.token == token,
-                UserSession.expires_at > datetime.utcnow(),
-            )
-            .first()
-        )
+        session = db.query(UserSession).filter(
+            UserSession.token == token,
+            UserSession.expires_at > datetime.utcnow()
+        ).first()
+
         if not session:
             return None
 
@@ -45,7 +44,12 @@ def get_current_user(request: Request) -> dict | None:
         if not user or not user.is_active:
             return None
 
-        return {"id": user.id, "username": user.username, "role": user.role}
+        return {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "totp_enabled": user.totp_enabled
+        }
     finally:
         db.close()
 
@@ -64,3 +68,18 @@ def destroy_session(token: str):
         db.commit()
     finally:
         db.close()
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    """Verify a TOTP code with ±1 window tolerance."""
+    totp = pyotp.TOTP(secret)
+    return totp.verify(code, valid_window=1)
+
+
+def generate_totp_secret() -> str:
+    return pyotp.random_base32()
+
+
+def get_totp_uri(secret: str, username: str, issuer: str = "NexVE") -> str:
+    totp = pyotp.TOTP(secret)
+    return totp.provisioning_uri(name=username, issuer_name=issuer)

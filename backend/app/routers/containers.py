@@ -1,229 +1,252 @@
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.vm import Container
+from ..services.container_service import ContainerService
 from ..auth import get_current_user
-import subprocess
+import json
 
 router = APIRouter()
+container_service = ContainerService()
 
 
-def _run(cmd: str) -> str:
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-        return result.stdout.strip()
-    except Exception:
-        return "stopped"
-
-
-def _lxc_status(name: str) -> str:
-    output = _run(f"pct status {name} 2>/dev/null || lxc-info -n {name} --state 2>/dev/null || echo stopped")
-    if "running" in output.lower():
-        return "running"
-    return "stopped"
-
-
-def _render_container_list(containers) -> str:
-    if not containers:
-        return '<div class="text-gray-500 py-8 text-center bg-[#111] border border-gray-800 rounded-xl">No containers yet. Click "Create Container" to get started.</div>'
-
-    rows = ""
-    for c in containers:
-        live_status = _lxc_status(c.name)
-        status_color = "text-green-400" if live_status == "running" else "text-gray-500"
-        status_dot = "bg-green-400" if live_status == "running" else "bg-gray-500"
-
-        stop_btn = ""
-        start_btn = ""
-        if live_status == "running":
-            stop_btn = f'<button hx-post="/api/containers/{c.name}/stop" hx-swap="none" hx-confirm="Stop this container?" class="text-gray-400 hover:text-yellow-400 p-2 transition" title="Stop"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>'
-        else:
-            start_btn = f'<button hx-post="/api/containers/{c.name}/start" hx-swap="none" class="text-gray-400 hover:text-green-400 p-2 transition" title="Start"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>'
-
-        rows += f"""
-        <div class="flex items-center justify-between bg-[#111] border border-gray-800 rounded-xl px-5 py-4">
-            <div class="flex items-center gap-4">
-                <div class="w-2 h-2 rounded-full {status_dot}"></div>
-                <div>
-                    <div class="font-semibold">{c.name}</div>
-                    <div class="text-sm text-gray-500">{c.template} &middot; {c.vcpu} vCPU &middot; {c.memory_mb}MB RAM &middot; {c.disk_gb}GB</div>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-sm {status_color} capitalize">{live_status}</span>
-                {start_btn}
-                {stop_btn}
-                <button hx-delete="/api/containers/{c.name}" hx-swap="none" hx-confirm="Delete this container?" class="text-gray-400 hover:text-red-400 p-2 transition" title="Delete">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                </button>
-            </div>
-        </div>"""
-
-    return rows
-
-
-@router.get("/", response_class=HTMLResponse)
-async def containers_page(request: Request):
+@router.get("/")
+async def list_containers(request: Request):
     user = get_current_user(request)
     if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
-
+        return RedirectResponse(url="/login", status_code=302)
     db = SessionLocal()
     try:
-        containers = db.query(Container).all()
-        list_html = _render_container_list(containers)
-    finally:
-        db.close()
-
-    return f"""<div class="space-y-6">
-        <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-bold">Containers</h2>
-            <button onclick="document.getElementById('create-container-modal').classList.remove('hidden')"
-                class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
-                + Create Container
-            </button>
-        </div>
-
-        <div id="container-list" class="space-y-2">
-            {list_html}
-        </div>
-    </div>
-
-    <!-- Create Modal -->
-    <div id="create-container-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50" onclick="document.getElementById('create-container-modal').classList.add('hidden')">
-        <div class="bg-[#111] border border-gray-800 rounded-xl p-6 w-full max-w-lg" onclick="event.stopPropagation()">
-            <h3 class="text-xl font-semibold mb-4">Create Container</h3>
-            <form hx-post="/api/containers/create" hx-swap="innerHTML" hx-target="#container-list"
-                  hx-after-request="document.getElementById('create-container-modal').classList.add('hidden')">
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Name</label>
-                        <input type="text" name="name" required
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Template</label>
-                        <select name="template"
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                            <option value="debian-12-standard">Debian 12</option>
-                            <option value="ubuntu-24.04-standard">Ubuntu 24.04</option>
-                            <option value="alpine-3.19-standard">Alpine 3.19</option>
-                            <option value="centos-9-stream-standard">CentOS 9 Stream</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">CPU Cores</label>
-                        <input type="number" name="vcpu" value="1" min="1" max="32"
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Memory (MB)</label>
-                        <input type="number" name="memory_mb" value="512" min="64"
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Disk (GB)</label>
-                        <input type="number" name="disk_gb" value="8" min="1"
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Bridge</label>
-                        <select name="bridge"
-                            class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                            <option value="vmbr0">vmbr0</option>
-                        </select>
-                    </div>
-                </div>
-                <div id="create-error"></div>
-                <div class="flex justify-end gap-3">
-                    <button type="button" onclick="document.getElementById('create-container-modal').classList.add('hidden')"
-                        class="px-4 py-2 text-gray-400 hover:text-white transition">Cancel</button>
-                    <button type="submit"
-                        class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-                </div>
-            </form>
-        </div>
-    </div>"""
-
-
-@router.get("/list", response_class=HTMLResponse)
-async def container_list(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
-
-    db = SessionLocal()
-    try:
-        containers = db.query(Container).all()
-        return _render_container_list(containers)
+        db_containers = db.query(Container).all()
+        result = []
+        for ct in db_containers:
+            live_status = container_service.get_container_status(ct.id)
+            result.append({
+                "id": ct.id,
+                "name": ct.name,
+                "status": live_status,
+                "vcpu": ct.vcpu,
+                "memory_mb": ct.memory_mb,
+                "swap_mb": ct.swap_mb,
+                "disk_gb": ct.disk_gb,
+                "template": ct.template,
+                "ip_address": ct.ip_address,
+                "hostname": ct.hostname,
+                "unprivileged": ct.unprivileged,
+                "nesting": ct.nesting,
+                "mount_points": ct.mount_points,
+                "cpu_weight": ct.cpu_weight,
+                "io_priority": ct.io_priority,
+                "net_rate": ct.net_rate,
+                "startup_order": ct.startup_order,
+                "shutdown_order": ct.shutdown_order,
+                "notes": ct.notes or "",
+                "created_at": ct.created_at.isoformat() if ct.created_at else None,
+            })
+        return JSONResponse(content={"containers": result})
     finally:
         db.close()
 
 
-@router.post("/create", response_class=HTMLResponse)
+@router.post("/create")
 async def create_container(
     request: Request,
     name: str = Form(...),
-    template: str = Form("debian-12-standard"),
+    ct_id: int = Form(1000),
+    hostname: str = Form(""),
     vcpu: int = Form(1),
     memory_mb: int = Form(512),
+    swap_mb: int = Form(512),
     disk_gb: int = Form(8),
-    bridge: str = Form("vmbr0"),
+    template: str = Form("debian-12"),
+    ip_address: str = Form(""),
+    unprivileged: bool = Form(True),
+    nesting: bool = Form(False),
+    mount_points: str = Form(""),
+    cpu_weight: int = Form(100),
+    io_priority: str = Form("normal"),
+    net_rate: str = Form(""),
+    startup_order: int = Form(0),
+    shutdown_order: int = Form(0),
+    notes: str = Form(""),
 ):
     user = get_current_user(request)
     if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
+        return RedirectResponse(url="/login", status_code=302)
 
+    config = {
+        "name": name,
+        "ct_id": ct_id,
+        "hostname": hostname or name,
+        "vcpu": vcpu,
+        "memory_mb": memory_mb,
+        "swap_mb": swap_mb,
+        "disk_gb": disk_gb,
+        "template": template,
+        "ip_address": ip_address,
+        "unprivileged": unprivileged,
+        "nesting": nesting,
+        "mount_points": mount_points,
+        "cpu_weight": cpu_weight,
+        "io_priority": io_priority,
+        "net_rate": int(net_rate) if net_rate else None,
+        "startup_order": startup_order,
+        "shutdown_order": shutdown_order,
+    }
+
+    # Create in database
     db = SessionLocal()
     try:
-        existing = db.query(Container).filter(Container.name == name).first()
-        if existing:
-            return HTMLResponse(
-                '<div class="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-2 rounded-lg mb-4">Container name already exists.</div>'
-            )
-
-        container = Container(
-            name=name, template=template, vcpu=vcpu,
-            memory_mb=memory_mb, disk_gb=disk_gb, bridge=bridge,
+        ct = Container(
+            id=ct_id,
+            name=name,
+            vcpu=vcpu,
+            memory_mb=memory_mb,
+            swap_mb=swap_mb,
+            disk_gb=disk_gb,
+            template=template,
+            ip_address=ip_address or None,
+            hostname=hostname or name,
+            unprivileged=unprivileged,
+            nesting=nesting,
+            mount_points=mount_points,
+            cpu_weight=cpu_weight,
+            io_priority=io_priority,
+            net_rate=int(net_rate) if net_rate else None,
+            startup_order=startup_order,
+            shutdown_order=shutdown_order,
+            notes=notes,
         )
-        db.add(container)
+        db.add(ct)
         db.commit()
-
-        containers = db.query(Container).all()
-        return _render_container_list(containers)
     finally:
         db.close()
 
+    # Create in LXC
+    result = container_service.create_container(config)
+    return JSONResponse(content=result)
 
-@router.post("/{name}/start")
-async def start_container(name: str, request: Request):
+
+@router.post("/{ct_id}/start")
+async def start_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
-    # subprocess.run(["pct", "start", name])
-    return HTMLResponse("OK", headers={"HX-Trigger": "refresh"})
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.start_container(ct_id))
 
 
-@router.post("/{name}/stop")
-async def stop_container(name: str, request: Request):
+@router.post("/{ct_id}/stop")
+async def stop_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
-    # subprocess.run(["pct", "stop", name])
-    return HTMLResponse("OK", headers={"HX-Trigger": "refresh"})
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.stop_container(ct_id))
 
 
-@router.delete("/{name}")
-async def delete_container(name: str, request: Request):
+@router.post("/{ct_id}/restart")
+async def restart_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
-        return HTMLResponse(status_code=303, headers={"Location": "/login"})
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.restart_container(ct_id))
+
+
+@router.post("/{ct_id}/delete")
+async def delete_container(request: Request, ct_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
 
     db = SessionLocal()
     try:
-        db.query(Container).filter(Container.name == name).delete()
-        db.commit()
-        containers = db.query(Container).all()
-        return _render_container_list(containers)
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        if ct:
+            db.delete(ct)
+            db.commit()
     finally:
         db.close()
+
+    return JSONResponse(content=container_service.delete_container(ct_id))
+
+
+@router.post("/{ct_id}/update")
+async def update_container(request: Request, ct_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    config = {}
+    for key in ["vcpu", "memory_mb", "swap_mb", "cpu_weight", "io_priority", "net_rate", "hostname", "nesting", "unprivileged"]:
+        if key in form:
+            val = form[key]
+            if val in ("on", "true", "True"):
+                val = True
+            elif val in ("off", "false", "False", ""):
+                val = False
+            elif key in ("vcpu", "memory_mb", "swap_mb", "cpu_weight", "net_rate"):
+                try:
+                    val = int(val) if val else None
+                except ValueError:
+                    pass
+            config[key] = val
+
+    db = SessionLocal()
+    try:
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        if ct:
+            for k, v in config.items():
+                if hasattr(ct, k):
+                    setattr(ct, k, v)
+            db.commit()
+    finally:
+        db.close()
+
+    result = container_service.update_container(ct_id, config)
+    return JSONResponse(content=result)
+
+
+@router.get("/{ct_id}/config")
+async def container_config(request: Request, ct_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.get_container_config(ct_id))
+
+
+@router.post("/{ct_id}/mount-point/add")
+async def add_mount_point(
+    request: Request,
+    ct_id: int,
+    idx: int = Form(...),
+    volume: str = Form(...),
+    mp: str = Form(...),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.add_mount_point(ct_id, idx, volume, mp))
+
+
+@router.post("/{ct_id}/mount-point/remove")
+async def remove_mount_point(request: Request, ct_id: int, idx: int = Form(...)):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.remove_mount_point(ct_id, idx))
+
+
+@router.post("/{ct_id}/exec")
+async def container_exec(request: Request, ct_id: int, command: str = Form(...)):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.container_exec(ct_id, command))
+
+
+@router.post("/{ct_id}/backup")
+async def backup_container(request: Request, ct_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.backup_container(ct_id))

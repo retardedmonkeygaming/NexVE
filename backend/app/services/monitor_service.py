@@ -1,102 +1,124 @@
-import psutil
-import time
+import subprocess
 import json
+import psutil
+from datetime import datetime, timedelta
+from ..database import SessionLocal
+from ..models.vm import VM
+import threading
+import time
 import os
-from collections import deque
-from typing import Dict
+
+HISTORY_FILE = "/opt/nexve/data/metrics.jsonl"
+MAX_HISTORY_HOURS = 24
 
 
 class MonitorService:
-    """Collects and stores system metrics in memory (ring buffer) for graphing."""
-
-    MAX_POINTS = 360  # 6 hours at 1-point-per-minute
-
     def __init__(self):
-        self.cpu_history = deque(maxlen=self.MAX_POINTS)
-        self.mem_history = deque(maxlen=self.MAX_POINTS)
-        self.disk_io_history = deque(maxlen=self.MAX_POINTS)
-        self.net_io_history = deque(maxlen=self.MAX_POINTS)
-        self.last_disk_io = psutil.disk_io_counters()
-        self.last_net_io = psutil.net_io_counters()
-        self.last_time = time.time()
-        self._collect_initial()
+        self._running = False
 
-    def _collect_initial(self):
-        # Pre-fill with current readings
-        now = time.time()
-        self.cpu_history.append({"t": now, "v": psutil.cpu_percent(interval=0.1)})
-        mem = psutil.virtual_memory()
-        self.mem_history.append({"t": now, "v": mem.percent})
-        self.disk_io_history.append({"t": now, "v": 0})
-        self.net_io_history.append({"t": now, "v": 0})
+    def start_collector(self):
+        """Start background metrics collection every 30 seconds."""
+        if self._running:
+            return
+        self._running = True
 
-    def collect(self) -> dict:
-        """Call this periodically (e.g. every 10s) to record metrics."""
-        now = time.time()
-        dt = now - self.last_time if self.last_time else 1
+        def collect():
+            while self._running:
+                try:
+                    metric = self._snapshot()
+                    self._append_metric(metric)
+                except Exception:
+                    pass
+                time.sleep(30)
 
-        # CPU
-        cpu = psutil.cpu_percent(interval=0)
-        self.cpu_history.append({"t": now, "v": cpu})
+        t = threading.Thread(target=collect, daemon=True)
+        t.start()
 
-        # Memory
-        mem = psutil.virtual_memory()
-        self.mem_history.append({"t": now, "v": mem.percent})
+    def stop_collector(self):
+        self._running = False
 
-        # Disk I/O (bytes/sec)
-        disk_io = psutil.disk_io_counters()
-        read_bps = (disk_io.read_bytes - self.last_disk_io.read_bytes) / dt if dt > 0 else 0
-        write_bps = (disk_io.write_bytes - self.last_disk_io.write_bytes) / dt if dt > 0 else 0
-        self.disk_io_history.append({"t": now, "v": round((read_bps + write_bps) / 1024 / 1024, 2)})  # MB/s
-        self.last_disk_io = disk_io
-
-        # Network I/O (bytes/sec)
-        net_io = psutil.net_io_counters()
-        sent_bps = (net_io.bytes_sent - self.last_net_io.bytes_sent) / dt if dt > 0 else 0
-        recv_bps = (net_io.bytes_recv - self.last_net_io.bytes_recv) / dt if dt > 0 else 0
-        self.net_io_history.append({"t": now, "v": round((sent_bps + recv_bps) / 1024 / 1024, 2)})  # MB/s
-        self.last_net_io = net_io
-
-        self.last_time = now
-        return self.get_current()
-
-    def get_current(self) -> dict:
+    def _snapshot(self) -> dict:
+        cpu = psutil.cpu_percent(interval=1)
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
         net = psutil.net_io_counters()
-        temp = None
-        try:
-            temps = psutil.sensors_temperatures()
-            for name, entries in temps.items():
-                if entries:
-                    temp = entries[0].current
-                    break
-        except Exception:
-            pass
+        load = os.getloadavg()
 
         return {
-            "cpu_percent": psutil.cpu_percent(interval=0),
-            "cpu_count": psutil.cpu_count(),
-            "cpu_freq": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
-            "memory_total": mem.total,
-            "memory_used": mem.used,
+            "timestamp": datetime.utcnow().isoformat(),
+            "cpu_percent": cpu,
             "memory_percent": mem.percent,
-            "disk_total": disk.total,
-            "disk_used": disk.used,
+            "memory_used_mb": mem.used // (1024 * 1024),
+            "memory_total_mb": mem.total // (1024 * 1024),
             "disk_percent": disk.percent,
-            "net_sent": net.bytes_sent,
-            "net_recv": net.bytes_recv,
-            "temperature": temp,
-            "uptime": time.time() - psutil.boot_time(),
+            "disk_used_gb": round(disk.used / (1024 ** 3), 1),
+            "disk_total_gb": round(disk.total / (1024 ** 3), 1),
+            "net_sent_bytes": net.bytes_sent,
+            "net_recv_bytes": net.bytes_recv,
+            "load_1": round(load[0], 2),
+            "load_5": round(load[1], 2),
+            "load_15": round(load[2], 2),
         }
 
-    def get_history(self) -> dict:
-        return {
-            "cpu": list(self.cpu_history),
-            "memory": list(self.mem_history),
-            "disk_io": list(self.disk_io_history),
-            "net_io": list(self.net_io_history),
-        }
+    def _append_metric(self, metric: dict):
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        with open(HISTORY_FILE, "a") as f:
+            f.write(json.dumps(metric) + "\n")
 
+        # Prune old entries
+        cutoff = (datetime.utcnow() - timedelta(hours=MAX_HISTORY_HOURS)).isoformat()
+        self._prune(cutoff)
 
-monitor_svc = MonitorService()
+    def _prune(self, cutoff: str):
+        if not os.path.exists(HISTORY_FILE):
+            return
+        lines = []
+        with open(HISTORY_FILE, "r") as f:
+            for line in f:
+                try:
+                    m = json.loads(line)
+                    if m["timestamp"] > cutoff:
+                        lines.append(line)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        with open(HISTORY_FILE, "w") as f:
+            f.writelines(lines)
+
+    def get_history(self, hours: int = 1) -> list:
+        if not os.path.exists(HISTORY_FILE):
+            return []
+        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        metrics = []
+        with open(HISTORY_FILE, "r") as f:
+            for line in f:
+                try:
+                    m = json.loads(line)
+                    if m["timestamp"] > cutoff:
+                        metrics.append(m)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        return metrics
+
+    def get_current(self) -> dict:
+        return self._snapshot()
+
+    def get_vm_metrics(self, vm_name: str) -> dict:
+        """Get live resource usage for a VM via virsh."""
+        try:
+            r = subprocess.run(
+                f"virsh domstats {vm_name}",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            if r.returncode != 0:
+                return {}
+            stats = {}
+            for line in r.stdout.splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    try:
+                        stats[k.strip()] = int(v.strip())
+                    except ValueError:
+                        stats[k.strip()] = v.strip()
+            return stats
+        except Exception:
+            return {}

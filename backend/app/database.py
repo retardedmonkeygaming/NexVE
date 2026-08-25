@@ -4,12 +4,12 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 DATABASE_URL = "sqlite:///../data/nexve.db"
-
-os.makedirs("../data", exist_ok=True)
+os.makedirs(os.path.join(os.path.dirname(__file__), "../../data"), exist_ok=True)
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

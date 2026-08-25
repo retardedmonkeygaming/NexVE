@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# ─── Colors ───
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -9,7 +8,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 step=0
-total=12
+total=13
 
 progress() {
     step=$((step + 1))
@@ -17,172 +16,131 @@ progress() {
     echo -e "${CYAN}[$step/$total]${NC} ${GREEN}✓${NC} $1"
 }
 
-warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
-
-fail() {
-    echo -e "${RED}✗ $1${NC}"
-    exit 1
-}
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+fail() { echo -e "${RED}✗ $1${NC}"; exit 1; }
 
 echo -e "${CYAN}"
-echo "╔══════════════════════════════════════╗"
-echo "║         NexVE Installer v1.0         ║"
-echo "║   Hypervisor Dashboard for Debian    ║"
-echo "╚══════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════╗"
+echo "║       NexVE Installer v1.1               ║"
+echo "║  Hypervisor Dashboard for Debian 13      ║"
+echo "╚══════════════════════════════════════════╝"
 echo -e "${NC}"
 echo ""
 
-# ─── 1. Check root ───
-if [ "$EUID" -ne 0 ]; then
-    fail "Please run as root: sudo bash install.sh"
-fi
+if [ "$EUID" -ne 0 ]; then fail "Run as root: sudo bash install.sh"; fi
 progress "Running as root"
 
-# ─── 2. Detect OS ───
 if ! grep -qi "debian" /etc/os-release 2>/dev/null; then
-    warn "Not running on Debian. Proceeding anyway, but results may vary."
+    warn "Not Debian. Proceeding anyway."
 fi
 progress "OS check passed"
 
-# ─── 3. System update ───
 echo "  → Updating package lists..."
-apt update -qq 2>/dev/null || warn "apt update had warnings, continuing..."
+apt update -qq 2>/dev/null || warn "apt update had warnings"
 progress "System packages updated"
 
-# ─── 4. Core system packages ───
 echo "  → Installing Python, Git, build tools..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
     python3 python3-pip python3-venv python3-dev \
-    git curl wget build-essential \
-    > /dev/null 2>&1
+    git curl wget build-essential > /dev/null 2>&1
 progress "Python + build tools installed"
 
-# ─── 5. Hypervisor packages ───
 echo "  → Installing KVM/QEMU + libvirt..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
     qemu-kvm qemu-system-x86 qemu-utils \
     libvirt-daemon-system libvirt-clients \
-    virtinst virt-manager \
-    ovmf \
-    > /dev/null 2>&1
+    virtinst virt-manager ovmf > /dev/null 2>&1
 progress "KVM/QEMU + libvirt installed"
 
-# ─── 6. Container packages ───
 echo "  → Installing LXC + debootstrap..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
-    lxc lxc-utils debootstrap \
-    > /dev/null 2>&1
+    lxc lxc-utils debootstrap > /dev/null 2>&1
 progress "LXC containers installed"
 
-# ─── 7. Storage packages ───
 echo "  → Installing ZFS, LVM, NFS, CIFS tools..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
-    zfsutils-linux lvm2 \
-    nfs-common cifs-utils \
-    > /dev/null 2>&1
-progress "Storage tools installed (ZFS, LVM, NFS, CIFS)"
+    zfsutils-linux lvm2 nfs-common cifs-utils > /dev/null 2>&1
+progress "Storage tools installed"
 
-# ─── 8. Networking + security packages ───
-echo "  → Installing bridge-utils, nftables, SMART tools..."
+echo "  → Installing networking + firewall..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
-    bridge-utils nftables \
-    smartmontools net-tools iproute2 \
-    > /dev/null 2>&1
-progress "Networking + security tools installed"
+    bridge-utils nftables smartmontools net-tools iproute2 > /dev/null 2>&1
+progress "Networking + firewall installed"
 
-# ─── 9. Console packages ───
 echo "  → Installing noVNC + websockify..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
-    novnc websockify \
-    > /dev/null 2>&1
-progress "noVNC browser console installed"
+    novnc websockify > /dev/null 2>&1
+progress "noVNC console installed"
 
-# ─── 10. Cloud-init / ISO tools ───
 echo "  → Installing cloud-init + ISO tools..."
 DEBIAN_FRONTEND=noninteractive apt install -y -qq \
-    cloud-init genisoimage \
-    > /dev/null 2>&1
+    cloud-init genisoimage > /dev/null 2>&1
 progress "Cloud-init + ISO tools installed"
 
-# ─── 11. Create directories + Python venv ───
+# ─── NexVE Setup ───
 INSTALL_DIR="/opt/nexve"
 echo "  → Setting up NexVE in ${INSTALL_DIR}..."
 mkdir -p ${INSTALL_DIR}
+cp -r $(dirname "$0")/* ${INSTALL_DIR}/ 2>/dev/null || true
+mkdir -p ${INSTALL_DIR}/data
+mkdir -p ${INSTALL_DIR}/static
+mkdir -p ${INSTALL_DIR}/backend/app/templates
+mkdir -p ${INSTALL_DIR}/backend/app/routers
+mkdir -p ${INSTALL_DIR}/backend/app/models
+mkdir -p ${INSTALL_DIR}/backend/app/services
+mkdir -p ${INSTALL_DIR}/data/backups
+mkdir -p ${INSTALL_DIR}/data/cloud-init
+mkdir -p ${INSTALL_DIR}/data/iso
+progress "Project directories created"
 
-# Copy project files
-if [ -d "$(pwd)" ] && [ -f "$(pwd)/requirements.txt" ]; then
-    cp -r "$(pwd)/"* ${INSTALL_DIR}/
-else
-    fail "Please run install.sh from the NexVE project directory"
-fi
+echo "  → Creating Python virtual environment..."
+python3 -m venv ${INSTALL_DIR}/venv
+source ${INSTALL_DIR}/venv/bin/activate
+pip install --upgrade pip -q
+pip install -r ${INSTALL_DIR}/requirements.txt -q
+progress "Python dependencies installed"
 
-cd ${INSTALL_DIR}
-mkdir -p data data/backups data/isos data/cloud-init
+# ─── Enable services ───
+echo "  → Enabling libvirtd..."
+systemctl enable --now libvirtd 2>/dev/null || warn "libvirtd not found, skipping"
+usermod -aG libvirt $SUDO_USER 2>/dev/null || true
+usermod -aG kvm $SUDO_USER 2>/dev/null || true
+progress "libvirtd enabled + user added to libvirt group"
 
-# Create venv and install Python deps
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip -q 2>/dev/null
-pip install -r requirements.txt -q 2>/dev/null
-progress "Python environment ready (${INSTALL_DIR})"
-
-# ─── 12. Systemd service + enable ───
-echo "  → Installing systemd service..."
-
-# Generate secret key
-SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-
+# ─── Systemd service ───
+echo "  → Installing NexVE systemd service..."
+SECRET=$(openssl rand -hex 32)
 cat > /etc/systemd/system/nexve.service << EOF
 [Unit]
 Description=NexVE Hypervisor Dashboard
-After=network.target libvirtd.service
+After=libvirtd.service network.target
 Requires=libvirtd.service
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=${INSTALL_DIR}/backend
-Environment=PATH=${INSTALL_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NEXVE_SECRET=${SECRET}
 ExecStart=${INSTALL_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
+User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now libvirtd 2>/dev/null || warn "libvirtd enable had issues"
-systemctl enable --now nexve 2>/dev/null
+systemctl enable --now nexve
+progress "NexVE service installed and started"
 
-# Add user to libvirt group
-REAL_USER="${SUDO_USER:-$USER}"
-if [ "$REAL_USER" != "root" ]; then
-    usermod -aG libvirt "$REAL_USER" 2>/dev/null || true
-    usermod -aG kvm "$REAL_USER" 2>/dev/null || true
-fi
-
-progress "Systemd service installed and started"
-
-# ─── Done ───
+IP=$(hostname -I | awk '{print $1}')
 echo ""
 echo -e "${GREEN}"
 echo "╔══════════════════════════════════════════╗"
-echo "║         NexVE Installed Successfully     ║"
+echo "║       NexVE Installed Successfully!      ║"
 echo "╠══════════════════════════════════════════╣"
-echo "║                                          ║"
-IP=$(hostname -I | awk '{print $1}')
 echo "║  Dashboard: http://${IP}:8000            ║"
-echo "║  Service:   systemctl status nexve       ║"
+echo "║  Status:    systemctl status nexve       ║"
 echo "║  Logs:      journalctl -u nexve -f       ║"
-echo "║  Config:    /opt/nexve/                  ║"
-echo "║  Data:      /opt/nexve/data/             ║"
-echo "║                                          ║"
-echo "║  First visit → Setup wizard will appear  ║"
-echo "║  Create your admin account and go!       ║"
-echo "║                                          ║"
 echo "╚══════════════════════════════════════════╝"
 echo -e "${NC}"

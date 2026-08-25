@@ -310,3 +310,21 @@ def iscsi_delete_node(self, target: str, portal: str) -> dict:
             "lvm_groups": vgs,
             "nfs_mounts": nfs,
         }
+
+def list_disks(self) -> List[dict]:
+    r = self.run_cmd("lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL")
+    if not r["success"]:
+        return []
+    try:
+        data = json.loads(r["stdout"])
+        return data.get("blockdevices", [])
+    except json.JSONDecodeError:
+        return []
+
+def wipe_disk(self, device: str) -> dict:
+    return self.run_cmd(f"wipefs -a {device}")
+
+def move_disk(self, vm_name: str, source: str, target: str) -> dict:
+    src_path = f"/var/lib/libvirt/images/{vm_name}.qcow2"
+    # This is simplified — real implementation needs libvirt XML update
+    return {"success": False, "error": "Disk move requires VM to be stopped. Use the API to update storage path."}

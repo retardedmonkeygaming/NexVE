@@ -97,5 +97,26 @@
             document.querySelector('.stat-value').textContent = data.cpu_percent + '%';
         }, 5000);
     </script>
+    <!-- Toast Container -->
+<div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;"></div>
+
+<script>
+function showToast(message, type = 'success', duration = 4000) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    const colors = {
+        success: 'border-green-500 bg-green-900/80',
+        error: 'border-red-500 bg-red-900/80',
+        warning: 'border-yellow-500 bg-yellow-900/80',
+        info: 'border-blue-500 bg-blue-900/80',
+    };
+    toast.className = `px-4 py-3 rounded-lg border-l-4 ${colors[type] || colors.info} text-white text-sm shadow-lg`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, duration - 300);
+    setTimeout(() => toast.remove(), duration);
+}
+</script>
+
 </body>
 </html>

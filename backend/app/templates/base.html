@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NexVE{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        body { background: #0a0a0a; color: #e5e7eb; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Context menu */
+        .context-menu { display: none; position: fixed; z-index: 9999; }
+        .context-menu.active { display: block; }
+        .context-menu-item:hover { background: #f97316; color: white; }
+
+        /* Toast */
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; }
+        .toast { animation: slideIn 0.3s ease, fadeOut 0.3s ease 3.7s; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+        /* Table sortable */
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { color: #f97316; }
+        th.sortable::after { content: ' ⇅'; font-size: 0.7em; opacity: 0.5; }
+        th.sort-asc::after { content: ' ↑'; opacity: 1; color: #f97316; }
+        th.sort-desc::after { content: ' ↓'; opacity: 1; color: #f97316; }
+
+        .sidebar-link {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.5rem 1rem; margin: 0 0.5rem;
+    color: #9ca3af; font-size: 0.8rem; border-radius: 0.5rem;
+    transition: all 0.15s;
+}
+.sidebar-link:hover { background: #1f2937; color: #e5e7eb; }
+.sidebar-link.active { background: #f97316; color: white; }
+.sidebar-link.active svg { stroke: white; }
+.sidebar-link svg { width: 16px; height: 16px; }
+
+</style>
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- ═══════════════ HEADER ═══════════════ -->
+    <header class="h-12 bg-gray-900 border-b border-gray-800 flex items-center px-4 shrink-0 z-50">
+        <!-- Left: Logo -->
+        <a href="/" class="flex items-center gap-2 mr-6">
+            <span class="text-orange-500 font-bold text-xl">NexVE</span>
+        </a>
+
+        <!-- Global Search -->
+        <button onclick="openSearch()" id="search-trigger"
+            class="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5
+                   text-gray-400 text-sm hover:border-gray-600 transition w-64">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            Search...
+            <span class="ml-auto text-xs bg-gray-700 px-1.5 py-0.5 rounded">Ctrl+K</span>
+        </button>
+
+        <div class="flex-1"></div>
+
+        <!-- Right: Quick Actions -->
+        <div class="flex items-center gap-2">
+            <!-- Create VM -->
+            <a href="/vms" onclick="openModal('create-vm-modal')"
+               class="bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+                + Create VM
+            </a>
+            <!-- Create CT -->
+            <a href="/containers" onclick="openModal('create-container-modal')"
+               class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+                + Create CT
+            </a>
+
+            <!-- Docs link -->
+            <a href="https://github.com/nexve" target="_blank"
+               class="text-gray-400 hover:text-white p-1.5 transition" title="Documentation">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                </svg>
+            </a>
+
+            <!-- Notification Bell -->
+            <div class="relative">
+                <button onclick="toggleNotifications()" class="text-gray-400 hover:text-white p-1.5 transition relative">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                    <span id="notif-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white
+                                 text-xs rounded-full w-4 h-4 flex items-center justify-center">0</span>
+                </button>
+
+                <!-- Notification dropdown -->
+                <div id="notif-dropdown" class="hidden absolute right-0 top-full mt-2 w-80 bg-gray-900 border border-gray-700
+                            rounded-xl shadow-2xl overflow-hidden z-50">
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+                        <span class="text-white font-semibold text-sm">Notifications</span>
+                        <button onclick="markAllRead()" class="text-gray-400 text-xs hover:text-orange-400">Mark all read</button>
+                    </div>
+                    <div id="notif-list" class="max-h-80 overflow-y-auto">
+                        <p class="text-gray-500 text-sm text-center py-8">No notifications</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Menu -->
+            <div class="relative">
+                <button onclick="toggleUserMenu()" class="flex items-center gap-2 text-gray-300 hover:text-white px-2 py-1 rounded-lg transition">
+                    <div class="w-7 h-7 bg-orange-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        {{ user.username[0]|upper }}
+                    </div>
+                    <span class="text-sm">{{ user.username }}</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+
+                <div id="user-menu" class="hidden absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-700
+                            rounded-xl shadow-2xl overflow-hidden z-50">
+                    <div class="px-4 py-3 border-b border-gray-800">
+                        <p class="text-white text-sm font-semibold">{{ user.username }}</p>
+                        <p class="text-gray-500 text-xs">{{ user.role|capitalize }}</p>
+                    </div>
+                    <a href="/settings/2fa" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition">
+                        <span>🔐</span> 2FA Settings
+                    </a>
+                    <a href="/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition">
+                        <span>⚙️</span> My Settings
+                    </a>
+                    <div class="border-t border-gray-800"></div>
+                    <a href="/logout" class="flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-800 transition">
+                        <span>🚪</span> Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- ═══════════════ SIDEBAR ═══════════════ -->
+        <aside class="w-56 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 overflow-y-auto">
+            <!-- Datacenter -->
+            <div class="px-4 pt-4 pb-2">
+                <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Datacenter</span>
+            </div>
+            <a href="/" class="sidebar-link {% if page == 'dashboard' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                Dashboard
+            </a>
+            <a href="/monitoring" class="sidebar-link {% if page == 'monitoring' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                Monitoring
+            </a>
+
+            <!-- Node -->
+            <div class="px-4 pt-5 pb-2">
+                <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Node: {{ hostname }}</span>
+            </div>
+            <a href="/vms" class="sidebar-link {% if page == 'vms' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Virtual Machines
+            </a>
+            <a href="/containers" class="sidebar-link {% if page == 'containers' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                Containers
+            </a>
+            <a href="/storage" class="sidebar-link {% if page == 'storage' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+                Storage
+            </a>
+            <a href="/network" class="sidebar-link {% if page == 'network' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
+                Network
+            </a>
+            <a href="/firewall" class="sidebar-link {% if page == 'firewall' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                Firewall
+            </a>
+            <a href="/backups" class="sidebar-link {% if page == 'backups' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                Backups
+            </a>
+            <a href="/shell" class="sidebar-link {% if page == 'shell' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                Shell
+            </a>
+
+            <!-- Admin -->
+            <div class="px-4 pt-5 pb-2">
+                <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Administration</span>
+            </div>
+            <a href="/users" class="sidebar-link {% if page == 'users' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                Users
+            </a>
+            <a href="/logs" class="sidebar-link {% if page == 'logs' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Logs
+            </a>
+            <a href="/settings" class="sidebar-link {% if page == 'settings' %}active{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                Settings
+            </a>
+
+            <div class="mt-auto px-4 py-4 border-t border-gray-800">
+                <span class="text-[10px] text-gray-600">NexVE v1.0</span>
+            </div>
+        </aside>
+
+        <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Breadcrumbs -->
+            <div id="breadcrumbs" class="h-8 bg-gray-900/50 border-b border-gray-800 flex items-center px-4 text-xs text-gray-500 shrink-0">
+                <a href="/" class="hover:text-orange-400 transition">Datacenter</a>
+                <span class="mx-2">›</span>
+                <span class="text-gray-300">{% block breadcrumb %}Dashboard{% endblock %}</span>
+            </div>
+
+            <!-- Page content -->
+            <div class="flex-1 overflow-y-auto p-6">
+                {% block content %}{% endblock %}
+            </div>
+
+            <!-- ═══════════════ TASK LOG PANEL (Bottom) ═══════════════ -->
+            <div id="task-panel" class="border-t border-gray-800 bg-gray-900 shrink-0 transition-all duration-300"
+                 style="height: 40px;">
+                <div class="flex items-center justify-between px-4 h-10 cursor-pointer" onclick="toggleTaskPanel()">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-semibold text-gray-400">Tasks</span>
+                        <span id="task-count" class="text-[10px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">0</span>
+                    </div>
+                    <svg id="task-chevron" class="w-4 h-4 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                    </svg>
+                </div>
+                <div id="task-list" class="hidden overflow-y-auto px-4 pb-2" style="max-height: 200px;">
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ═══════════════ SEARCH MODAL ═══════════════ -->
+    <div id="search-modal" class="hidden fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]">
+        <div class="absolute inset-0 bg-black/60" onclick="closeSearch()"></div>
+        <div class="relative w-full max-w-xl bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-800">
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="search-input" type="text" placeholder="Search VMs, containers, storage..."
+                    class="flex-1 bg-transparent text-white text-lg outline-none placeholder-gray-500"
+                    oninput="handleSearch(this.value)">
+                <kbd class="text-xs bg-gray-800 text-gray-500 px-2 py-1 rounded">ESC</kbd>
+            </div>
+            <div id="search-results" class="max-h-80 overflow-y-auto">
+                <p class="text-gray-500 text-sm text-center py-8">Type to search...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ RIGHT-CLICK CONTEXT MENU ═══════════════ -->
+    <div id="context-menu" class="context-menu bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden w-48">
+    </div>
+
+    <!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- ═══════════════ SCRIPTS ═══════════════ -->
+    <script>
+    // ─── User Menu ───
+    function toggleUserMenu() {
+        document.getElementById('user-menu').classList.toggle('hidden');
+    }
+
+    // ─── Notifications ───
+    function toggleNotifications() {
+        const dd = document.getElementById('notif-dropdown');
+        dd.classList.toggle('hidden');
+        if (!dd.classList.contains('hidden')) loadNotifications();
+    }
+
+    async function loadNotifications() {
+        try {
+            const r = await fetch('/api/notifications');
+            const data = await r.json();
+            const badge = document.getElementById('notif-badge');
+            const list = document.getElementById('notif-list');
+
+            if (data.unread > 0) {
+                badge.textContent = data.unread;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            if (data.notifications.length === 0) {
+                list.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">No notifications</p>';
+            } else {
+                list.innerHTML = data.notifications.map(n => `
+                    <div class="px-4 py-3 border-b border-gray-800 hover:bg-gray-800 cursor-pointer
+                                ${n.is_read ? 'opacity-60' : ''}"
+                         onclick="markNotifRead(${n.id})">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="${n.level === 'error' ? 'text-red-400' : n.level === 'warning' ? 'text-yellow-400' : n.level === 'success' ? 'text-green-400' : 'text-blue-400'}">●</span>
+                            <span class="text-white text-sm font-medium">${n.title}</span>
+                        </div>
+                        <p class="text-gray-400 text-xs">${n.message}</p>
+                        <span class="text-gray-600 text-[10px]">${new Date(n.created_at).toLocaleString()}</span>
+                    </div>
+                `).join('');
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    async function markNotifRead(id) {
+        await fetch('/api/notifications/' + id + '/read', {method: 'POST'});
+        loadNotifications();
+    }
+
+    async function markAllRead() {
+        await fetch('/api/notifications/read-all', {method: 'POST'});
+        loadNotifications();
+    }
+
+    // ─── Search ───
+    let searchTimeout;
+    function openSearch() {
+        document.getElementById('search-modal').classList.remove('hidden');
+        document.getElementById('search-input').focus();
+    }
+    function closeSearch() {
+        document.getElementById('search-modal').classList.add('hidden');
+        document.getElementById('search-input').value = '';
+        document.getElementById('search-results').innerHTML = '<p class="text-gray-500 text-sm text-center py-8">Type to search...</p>';
+    }
+
+    async function handleSearch(q) {
+        clearTimeout(searchTimeout);
+        if (q.length < 2) {
+            document.getElementById('search-results').innerHTML = '<p class="text-gray-500 text-sm text-center py-8">Type to search...</p>';
+            return;
+        }
+        searchTimeout = setTimeout(async () => {
+            const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+            const data = await r.json();
+            const el = document.getElementById('search-results');
+            if (data.results.length === 0) {
+                el.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">No results found</p>';
+            } else {
+                el.innerHTML = data.results.map(r => `
+                    <a href="${r.url}" class="flex items-center gap-3 px-5 py-3 hover:bg-gray-800 transition border-b border-gray-800/50">
+                        <span class="text-lg">${r.icon}</span>
+                        <div>
+                            <div class="text-white text-sm font-medium">${r.name}</div>
+                            <div class="text-gray-500 text-xs">${r.type} — ${r.status}</div>
+                        </div>
+                    </a>
+                `).join('');
+            }
+        }, 200);
+    }
+
+    // ─── Keyboard shortcuts ───
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+        if (e.key === 'Escape') { closeSearch(); }
+    });
+
+    // ─── Task Panel ───
+    let taskPanelOpen = false;
+    function toggleTaskPanel() {
+        taskPanelOpen = !taskPanelOpen;
+        const panel = document.getElementById('task-panel');
+        const list = document.getElementById('task-list');
+        const chevron = document.getElementById('task-chevron');
+        if (taskPanelOpen) {
+            panel.style.height = '240px';
+            list.classList.remove('hidden');
+            chevron.style.transform = 'rotate(180deg)';
+            loadTasks();
+        } else {
+            panel.style.height = '40px';
+            list.classList.add('hidden');
+            chevron.style.transform = '';
+        }
+    }
+
+    async function loadTasks() {
+        try {
+            const r = await fetch('/api/tasks?limit=30');
+            const data = await r.json();
+            const el = document.getElementById('task-list');
+            document.getElementById('task-count').textContent = data.tasks.length;
+            if (data.tasks.length === 0) {
+                el.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No recent tasks</p>';
+            } else {
+                el.innerHTML = data.tasks.map(t => `
+                    <div class="flex items-center gap-3 py-1.5 text-xs border-b border-gray-800/50">
+                        <span class="${t.status === 'completed' ? 'text-green-400' : t.status === 'failed' ? 'text-red-400' : 'text-yellow-400'}">●</span>
+                        <span class="text-gray-300 w-16">${t.username || 'system'}</span>
+                        <span class="text-white flex-1">${t.action}</span>
+                        <span class="text-gray-500">${t.target_type || ''} ${t.target_name || ''}</span>
+                        <span class="text-gray-600">${new Date(t.started_at).toLocaleTimeString()}</span>
+                    </div>
+                `).join('');
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    // Auto-refresh tasks when open
+    setInterval(() => { if (taskPanelOpen) loadTasks(); }, 5000);
+
+    // ─── Context Menu ───
+    document.addEventListener('contextmenu', (e) => {
+        const row = e.target.closest('.vm-row, .ct-row, .storage-row');
+        if (!row) return;
+        e.preventDefault();
+
+        const menu = document.getElementById('context-menu');
+        const type = row.dataset.type;
+        const id = row.dataset.id;
+        const status = row.dataset.status;
+
+        let items = [];
+        if (type === 'vm' || type === 'ct') {
+            if (status === 'stopped') {
+                items.push({label: '▶ Start', action: () => performAction(type, id, 'start')});
+            } else {
+                items.push({label: '⏸ Stop', action: () => performAction(type, id, 'stop')});
+                items.push({label: '🔄 Restart', action: () => performAction(type, id, 'restart')});
+            }
+            items.push({label: '🖥 Console', action: () => window.location.href = `/shell`});
+            items.push({label: '📸 Snapshot', action: () => performAction(type, id, 'snapshot')});
+            if (type === 'vm') items.push({label: '📋 Clone', action: () => performAction(type, id, 'clone')});
+            items.push({label: '🗑 Delete', action: () => performAction(type, id, 'delete')});
+        }
+
+        menu.innerHTML = items.map((item, i) => `
+            <button class="context-menu-item w-full text-left px-4 py-2 text-sm text-gray-300 flex items-center gap-2"
+                    onclick="contextActions[${i}]()">${item.label}</button>
+        `).join('');
+
+        window.contextActions = items.map(item => item.action);
+        menu.style.left = e.pageX + 'px';
+        menu.style.top = e.pageY + 'px';
+        menu.classList.add('active');
+    });
+
+    document.addEventListener('click', () => {
+        document.getElementById('context-menu').classList.remove('active');
+    });
+
+    async function performAction(type, id, action) {
+        const endpoint = type === 'vm' ? `/api/vms/${id}/${action}` : `/api/containers/${id}/${action}`;
+        try {
+            const r = await fetch(endpoint, {method: 'POST'});
+            if (r.ok) { showToast(`${action} succeeded`, 'success'); setTimeout(() => location.reload(), 1000); }
+            else { showToast(`${action} failed`, 'error'); }
+        } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+    }
+
+    // ─── Toast ───
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const colors = {success: 'bg-green-600', error: 'bg-red-600', warning: 'bg-yellow-600', info: 'bg-blue-600'};
+        toast.className = `toast ${colors[type] || colors.info} text-white px-4 py-3 rounded-lg shadow-lg mb-2 text-sm font-medium`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    // ─── Sortable Tables ───
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const table = th.closest('table');
+                const tbody = table.querySelector('tbody');
+                const idx = Array.from(th.parentNode.children).indexOf(th);
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const asc = !th.classList.contains('sort-asc');
+
+                table.querySelectorAll('th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+                th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+
+                rows.sort((a, b) => {
+                    let aVal = a.children[idx]?.textContent.trim() || '';
+                    let bVal = b.children[idx]?.textContent.trim() || '';
+                    let aNum = parseFloat(aVal), bNum = parseFloat(bVal);
+                    if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
+                    return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    });
+
+    // Close menus on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#user-menu') && !e.target.closest('[onclick*="toggleUserMenu"]'))
+            document.getElementById('user-menu')?.classList.add('hidden');
+        if (!e.target.closest('#notif-dropdown') && !e.target.closest('[onclick*="toggleNotifications"]'))
+            document.getElementById('notif-dropdown')?.classList.add('hidden');
+    });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+ 
