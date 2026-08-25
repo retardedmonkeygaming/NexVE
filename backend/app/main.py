@@ -5,6 +5,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import psutil
 import os
+from .database import engine, Base
+
+# Create tables
+Base.metadata.create_all(bind=engine)
 
 from .routers import nodes, vms, storage, network, users
 
