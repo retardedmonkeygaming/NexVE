@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
@@ -28,7 +28,7 @@ app.include_router(network.router, prefix="/api/network", tags=["Network"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request):
+async def dashboard(request: Request):  # <-- Added Request type hint
     cpu = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
