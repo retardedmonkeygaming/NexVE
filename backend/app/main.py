@@ -28,18 +28,22 @@ app.include_router(network.router, prefix="/api/network", tags=["Network"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):  # <-- Added Request type hint
+async def dashboard(request: Request):
     cpu = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
     
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "cpu": cpu,
-        "memory": memory,
-        "disk": disk,
-        "hostname": os.uname().nodename
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={
+            "cpu": cpu,
+            "memory": memory,
+            "disk": disk,
+            "hostname": os.uname().nodename
+        }
+    )
+
 
 @app.get("/api/system")
 async def system_info():
