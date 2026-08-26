@@ -701,7 +701,7 @@ def get_install_steps(choices):
 
     steps.append(("Setting hostname",
         f"hostnamectl set-hostname '{_hostname}' 2>/dev/null || true; "
-        f"sed -i 's/127\.0\.1\.1\s*.*/127.0.1.1\t{_hostname}/' /etc/hosts 2>/dev/null || true; "
+        f"grep -q '127.0.1.1' /etc/hosts && sed -i '/127.0.1.1/c\\127.0.1.1\t{_hostname}' /etc/hosts || echo '127.0.1.1\t{_hostname}' >> /etc/hosts 2>/dev/null || true; "
         f"echo 'Hostname set to {_hostname}'"))
 
     steps.append(("Setting timezone",

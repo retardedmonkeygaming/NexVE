@@ -75,14 +75,20 @@ def destroy_session(token: str):
 
 def verify_totp(secret: str, code: str) -> bool:
     """Verify a TOTP code with ±1 window tolerance."""
+    if pyotp is None:
+        return False
     totp = pyotp.TOTP(secret)
     return totp.verify(code, valid_window=1)
 
 
 def generate_totp_secret() -> str:
+    if pyotp is None:
+        raise RuntimeError("pyotp is not installed")
     return pyotp.random_base32()
 
 
 def get_totp_uri(secret: str, username: str, issuer: str = "NexVE") -> str:
+    if pyotp is None:
+        raise RuntimeError("pyotp is not installed")
     totp = pyotp.TOTP(secret)
     return totp.provisioning_uri(name=username, issuer_name=issuer)

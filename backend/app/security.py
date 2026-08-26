@@ -2,7 +2,37 @@ from itsdangerous import URLSafeTimedSerializer
 import secrets
 import os
 
-SECRET_KEY = os.environ.get("NEXVE_SECRET", secrets.token_hex(32))
+SECRET_KEY_FILE = "/opt/nexve/data/.secret_key"
+
+def _load_or_create_secret() -> str:
+    """Load secret key from env, file, or generate and persist a new one."""
+    # 1. Environment variable (highest priority)
+    env_key = os.environ.get("NEXVE_SECRET")
+    if env_key:
+        return env_key
+
+    # 2. Existing file
+    try:
+        with open(SECRET_KEY_FILE, "r") as f:
+            key = f.read().strip()
+            if len(key) >= 16:
+                return key
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    # 3. Generate new key and persist it
+    key = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(SECRET_KEY_FILE), exist_ok=True)
+        with open(SECRET_KEY_FILE, "w") as f:
+            f.write(key)
+        os.chmod(SECRET_KEY_FILE, 0o600)
+    except (PermissionError, OSError):
+        pass  # In-memory only as last resort
+    return key
+
+
+SECRET_KEY = _load_or_create_secret()
 csrf_serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 

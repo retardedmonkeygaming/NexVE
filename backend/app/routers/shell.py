@@ -6,10 +6,11 @@ import subprocess
 import os
 import pty
 import select
+import signal
 import struct
 import fcntl
 import termios
-import signal
+import asyncio
 
 router = APIRouter()
 
@@ -25,10 +26,10 @@ def auth_check(request: Request):
 
 @router.websocket("/ws")
 async def shell_websocket(websocket: WebSocket):
-    """WebSocket terminal — spawns a real bash shell."""
+    """WebSocket terminal — spawns a real bash shell via fork+pty."""
     await websocket.accept()
 
-    # Simple token check from query param
+    # Token check from query param
     token = websocket.query_params.get("token", "")
     if not token:
         await websocket.close(code=4001)
@@ -53,46 +54,93 @@ async def shell_websocket(websocket: WebSocket):
     finally:
         db.close()
 
-    # Spawn a real PTY with bash
-    child_pid, fd = pty.openpty()
+    # Create PTY pair
+    master_fd, slave_fd = pty.openpty()
+
+    # Fork to create child process
+    child_pid = os.fork()
+
     if child_pid == 0:
-        # Child process
+        # ── Child process ──
+        os.close(master_fd)
+        os.setsid()
+
+        # Make slave the controlling terminal
+        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+
+        # Redirect stdio to slave
+        os.dup2(slave_fd, 0)
+        os.dup2(slave_fd, 1)
+        os.dup2(slave_fd, 2)
+        if slave_fd > 2:
+            os.close(slave_fd)
+
+        # Set terminal environment
         os.environ["TERM"] = "xterm-256color"
         os.environ["HOME"] = "/root"
+        os.environ["SHELL"] = "/bin/bash"
+
         os.execvp("/bin/bash", ["/bin/bash", "--login"])
     else:
-        # Parent process
-        # Set non-blocking
-        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        # ── Parent process ──
+        os.close(slave_fd)
 
-        try:
-            while True:
-                # Read from PTY and send to WebSocket
+        # Set master_fd non-blocking
+        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        loop = asyncio.get_event_loop()
+        child_alive = True
+
+        async def read_pty():
+            """Read from PTY and send to WebSocket."""
+            nonlocal child_alive
+            while child_alive:
                 try:
-                    data = os.read(fd, 4096)
-                    if data:
-                        await websocket.send_text(data.decode("utf-8", errors="replace"))
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+                    if ready:
+                        data = os.read(master_fd, 4096)
+                        if data:
+                            await websocket.send_text(
+                                data.decode("utf-8", errors="replace")
+                            )
+                        else:
+                            # EOF — child exited
+                            child_alive = False
+                            break
                 except (OSError, IOError):
-                    pass
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    child_alive = False
+                    break
+                await asyncio.sleep(0)  # yield to event loop
 
-                # Read from WebSocket and write to PTY
+        async def read_ws():
+            """Read from WebSocket and write to PTY."""
+            nonlocal child_alive
+            while child_alive:
                 try:
                     data = await websocket.receive_text()
                     if data:
-                        os.write(fd, data.encode("utf-8"))
+                        os.write(master_fd, data.encode("utf-8"))
                 except WebSocketDisconnect:
+                    child_alive = False
                     break
                 except Exception:
+                    child_alive = False
                     break
 
-                import time
-                time.sleep(0.01)
+        try:
+            # Run both readers concurrently
+            await asyncio.gather(read_pty(), read_ws())
         finally:
             try:
-                os.close(fd)
+                os.close(master_fd)
+            except Exception:
+                pass
+            try:
                 os.kill(child_pid, signal.SIGTERM)
-                os.waitpid(child_pid, 0)
+                os.waitpid(child_pid, os.WNOHANG)
             except Exception:
                 pass
 

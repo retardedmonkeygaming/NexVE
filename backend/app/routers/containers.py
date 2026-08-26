@@ -94,7 +94,12 @@ async def create_container(
         "shutdown_order": shutdown_order,
     }
 
-    # Create in database
+    # Create in LXC first (fail if LXC unavailable)
+    result = container_service.create_container(config)
+    if not result.get("success"):
+        return JSONResponse(content=result)
+
+    # Only create in DB if LXC succeeded
     db = SessionLocal()
     try:
         ct = Container(
@@ -122,8 +127,6 @@ async def create_container(
     finally:
         db.close()
 
-    # Create in LXC
-    result = container_service.create_container(config)
     return JSONResponse(content=result)
 
 

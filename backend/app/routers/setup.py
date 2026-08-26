@@ -287,13 +287,20 @@ async def complete_setup(
             subprocess.run(["hostnamectl", "set-hostname", hostname],
                          capture_output=True, timeout=10)
             # Update /etc/hosts
-            import re
             hosts = "/etc/hosts"
-            with open(hosts) as f:
-                content = f.read()
-            content = re.sub(r"127\.0\.1\.1\s+.*", f"127.0.1.1\t{hostname}", content)
-            with open(hosts, "w") as f:
-                f.write(content)
+            try:
+                with open(hosts) as f:
+                    lines = f.readlines()
+                new_lines = []
+                for line in lines:
+                    if line.strip().startswith("127.0.1.1"):
+                        new_lines.append(f"127.0.1.1\t{hostname}\n")
+                    else:
+                        new_lines.append(line)
+                with open(hosts, "w") as f:
+                    f.writelines(new_lines)
+            except Exception:
+                pass
 
         # Set timezone
         if timezone and timezone != "UTC":
