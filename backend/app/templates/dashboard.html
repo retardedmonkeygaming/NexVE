@@ -27,22 +27,22 @@
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Memory</div>
-        <div class="nx-stat-value" style="color:var(--info);">{{ "%.1f"|format(memory.percent) }}%</div>
-        <div class="nx-stat-detail">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-stat-value" style="color:var(--info);" id="stat-mem">{{ "%.1f"|format(memory.percent) }}%</div>
+        <div class="nx-stat-detail" id="mem-detail">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</div>
         <div class="nx-progress nx-mt-2">
-            <div class="nx-progress-bar info" style="width:{{ memory.percent }}%"></div>
+            <div class="nx-progress-bar info" style="width:{{ memory.percent }}%" id="bar-mem"></div>
         </div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Disk</div>
-        <div class="nx-stat-value" style="color:var(--success);">{{ "%.1f"|format(disk.percent) }}%</div>
-        <div class="nx-stat-detail">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-stat-value" style="color:var(--success);" id="stat-disk">{{ "%.1f"|format(disk.percent) }}%</div>
+        <div class="nx-stat-detail" id="disk-detail">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</div>
         <div class="nx-progress nx-mt-2">
-            <div class="nx-progress-bar success" style="width:{{ disk.percent }}%"></div>
+            <div class="nx-progress-bar success" style="width:{{ disk.percent }}%" id="bar-disk"></div>
         </div>
     </div>
     <div class="nx-stat">
-        <div class="nx-stat-label">Status</div>
+        <div class="nx-stat-label">System</div>
         <div class="nx-flex nx-items-center nx-gap-2" style="margin-top:8px;">
             <span style="width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 8px rgba(34,197,94,0.5);"></span>
             <span style="font-weight:600;color:var(--success);">Online</span>
@@ -60,19 +60,12 @@
             <a href="/vms" style="font-size:var(--text-xs);">View All →</a>
         </div>
         <div class="nx-card-body" style="padding:0;">
-            <table class="nx-table" id="guest-table">
+            <table class="nx-table">
                 <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>CPU</th>
-                        <th>Memory</th>
-                        <th>Uptime</th>
-                    </tr>
+                    <tr><th>Name</th><th>Type</th><th>Status</th><th>CPU</th><th>Memory</th></tr>
                 </thead>
                 <tbody id="guest-list">
-                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                    <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -108,65 +101,106 @@
 <script>
 async function loadDashboard() {
     try {
-        // Load guests (VMs + Containers)
+        // Live CPU from monitor API
+        const monRes = await fetch('/api/monitor/current');
+        const monData = await monRes.json();
+        document.getElementById('stat-cpu').textContent = monData.cpu_percent + '%';
+        document.getElementById('cpu-detail').textContent = monData.cpu_count + ' cores, ' + (monData.cpu_freq_current || '?') + ' MHz';
+        document.getElementById('bar-cpu').style.width = monData.cpu_percent + '%';
+
+        document.getElementById('stat-mem').textContent = monData.memory_percent.toFixed(1) + '%';
+        document.getElementById('mem-detail').textContent = (monData.memory_used_mb / 1024).toFixed(1) + 'G / ' + (monData.memory_total_mb / 1024).toFixed(0) + 'G';
+        document.getElementById('bar-mem').style.width = monData.memory_percent + '%';
+
+        document.getElementById('stat-disk').textContent = monData.disk_percent + '%';
+        document.getElementById('disk-detail').textContent = monData.disk_used_gb + 'G / ' + monData.disk_total_gb + 'G';
+        document.getElementById('bar-disk').style.width = monData.disk_percent + '%';
+
+        const days = Math.floor(monData.uptime / 86400);
+        const hours = Math.floor((monData.uptime % 86400) / 3600);
+        document.getElementById('uptime-info').textContent = 'Uptime: ' + days + 'd ' + hours + 'h';
+    } catch(e) { console.error('Monitor:', e); }
+
+    // Load guests
+    try {
         const vmRes = await fetch('/api/vms/');
         const vmData = await vmRes.json();
         const vms = vmData.vms || [];
-
         const ctRes = await fetch('/api/containers/');
         const ctData = await ctRes.json();
         const cts = ctData.containers || [];
-
-        const guests = [
-            ...vms.map(v => ({...v, type: 'VM'})),
-            ...cts.map(c => ({...c, type: 'CT'}))
-        ];
-
+        const guests = [...vms.map(v => ({...v, type: 'VM'})), ...cts.map(c => ({...c, type: 'CT'}))];
         const guestList = document.getElementById('guest-list');
         if (guests.length === 0) {
-            guestList.innerHTML = '<tr><td colspan="6" class="nx-text-center" style="padding:32px;"><span class="nx-text-muted">No guests found.</span> <a href="/vms">Create a VM</a> or <a href="/containers">Container</a></td></tr>';
+            guestList.innerHTML = '<tr><td colspan="5" class="nx-text-center" style="padding:32px;"><span class="nx-text-muted">No guests.</span> <a href="/vms">Create VM</a></td></tr>';
         } else {
-            guestList.innerHTML = guests.map(g => `
-                <tr>
-                    <td style="font-weight:500;color:var(--text-primary);">${g.name}</td>
-                    <td><span class="nx-badge ${g.type === 'VM' ? 'nx-badge-accent' : 'nx-badge-info'}">${g.type}</span></td>
-                    <td><span class="nx-badge ${g.status === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${g.status}</span></td>
-                    <td>${g.vcpu || g.cores || '-'} cores</td>
-                    <td>${(g.memory_mb || g.memory || 0) / 1024} GB</td>
-                    <td style="color:var(--text-muted);">-</td>
-                </tr>
-            `).join('');
+            guestList.innerHTML = guests.map(g => `<tr>
+                <td style="font-weight:500;color:var(--text-primary);">${g.name}</td>
+                <td><span class="nx-badge ${g.type === 'VM' ? 'nx-badge-accent' : 'nx-badge-info'}">${g.type}</span></td>
+                <td><span class="nx-badge ${g.status === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${g.status}</span></td>
+                <td>${g.vcpu || '-'} cores</td>
+                <td>${((g.memory_mb || 0) / 1024).toFixed(1)} GB</td>
+            </tr>`).join('');
         }
+    } catch(e) { console.error('Guests:', e); }
 
-        // Load tasks
+    // Load storage - use /api/storage/overview
+    try {
+        const storRes = await fetch('/api/storage/overview');
+        const storData = await storRes.json();
+        const storEl = document.getElementById('storage-overview');
+        const disks = storData.disks || [];
+        const zfs = storData.zfs_pools || [];
+        const lvm = storData.lvm_groups || [];
+
+        if (disks.length === 0 && zfs.length === 0 && lvm.length === 0) {
+            storEl.innerHTML = '<div class="nx-text-muted nx-text-center" style="padding:16px;">No storage detected</div>';
+        } else {
+            let html = '';
+            disks.forEach(d => {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span style="font-family:var(--font-mono);">/dev/${d.name}</span>
+                    <span>${d.size || '-'}</span>
+                </div>`;
+            });
+            zfs.forEach(p => {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span class="nx-badge nx-badge-success">ZFS</span>
+                    <span>${p.name}</span>
+                    <span>${p.used} / ${p.size}</span>
+                </div>`;
+            });
+            lvm.forEach(v => {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span class="nx-badge nx-badge-info">LVM</span>
+                    <span>${v.name}</span>
+                    <span>${v.free} free</span>
+                </div>`;
+            });
+            storEl.innerHTML = html;
+        }
+    } catch(e) {
+        document.getElementById('storage-overview').innerHTML = '<div class="nx-text-muted nx-text-center" style="padding:16px;">Storage unavailable</div>';
+    }
+
+    // Load tasks
+    try {
         const taskRes = await fetch('/api/tasks?limit=5');
         const taskData = await taskRes.json();
-        const taskList = document.getElementById('task-list');
         const tasks = taskData.tasks || [];
+        const taskList = document.getElementById('task-list');
         if (tasks.length > 0) {
-            taskList.innerHTML = tasks.map(t => `
-                <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
-                    <span class="nx-badge ${t.status === 'completed' ? 'nx-badge-success' : t.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${t.status}</span>
-                    <span style="color:var(--text-muted);width:80px;">${t.username || 'system'}</span>
-                    <span style="flex:1;">${t.action}</span>
-                    <span style="color:var(--text-muted);font-size:var(--text-xs);">${t.started_at ? new Date(t.started_at).toLocaleTimeString() : ''}</span>
-                </div>
-            `).join('');
+            taskList.innerHTML = tasks.map(t => `<div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                <span class="nx-badge ${t.status === 'completed' ? 'nx-badge-success' : t.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${t.status}</span>
+                <span style="color:var(--text-muted);width:80px;">${t.username || 'system'}</span>
+                <span style="flex:1;">${t.action}</span>
+                <span style="color:var(--text-muted);font-size:var(--text-xs);">${t.started_at ? new Date(t.started_at).toLocaleTimeString() : ''}</span>
+            </div>`).join('');
         }
-
-        // Uptime
-        const nodeRes = await fetch('/api/nodes/');
-        const nodeData = await nodeRes.json();
-        if (nodeData.nodes && nodeData.nodes[0]) {
-            const uptimeSec = nodeData.nodes[0].uptime || 0;
-            const days = Math.floor(uptimeSec / 86400);
-            const hours = Math.floor((uptimeSec % 86400) / 3600);
-            document.getElementById('uptime-info').textContent = `Uptime: ${days}d ${hours}h`;
-        }
-    } catch(e) { console.error(e); }
+    } catch(e) {}
 }
 
 loadDashboard();
-setInterval(loadDashboard, 15000);
+setInterval(loadDashboard, 10000);
 </script>
 {% endblock %}

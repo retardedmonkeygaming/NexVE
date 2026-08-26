@@ -1,0 +1,30 @@
+{
+    "name": "NexVE - Hypervisor Management",
+    "short_name": "NexVE",
+    "description": "Open source hypervisor management platform",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0a0a0b",
+    "theme_color": "#00d4aa",
+    "orientation": "any",
+    "icons": [
+        {
+            "src": "/static/img/logo-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/img/logo-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/img/logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ],
+    "categories": ["utilities", "developer tools"],
+    "lang": "en",
+    "dir": "ltr"
+}
