@@ -151,7 +151,7 @@ async def vms_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="vms.html", context={
-        "user": user, "csrf_token": csrf, "page": "vms"
+        "user": user, "csrf_token": csrf, "page": "vms", "hostname": os.uname().nodename
     })
 
 
@@ -162,7 +162,7 @@ async def containers_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="containers.html", context={
-        "user": user, "csrf_token": csrf, "page": "containers"
+        "user": user, "csrf_token": csrf, "page": "containers", "hostname": os.uname().nodename
     })
 
 
@@ -173,7 +173,7 @@ async def storage_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="storage.html", context={
-        "user": user, "csrf_token": csrf, "page": "storage"
+        "user": user, "csrf_token": csrf, "page": "storage", "hostname": os.uname().nodename
     })
 
 
@@ -184,7 +184,7 @@ async def network_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="network.html", context={
-        "user": user, "csrf_token": csrf, "page": "network"
+        "user": user, "csrf_token": csrf, "page": "network", "hostname": os.uname().nodename
     })
 
 
@@ -195,7 +195,7 @@ async def firewall_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="firewall.html", context={
-        "user": user, "csrf_token": csrf, "page": "firewall"
+        "user": user, "csrf_token": csrf, "page": "firewall", "hostname": os.uname().nodename
     })
 
 
@@ -206,7 +206,7 @@ async def backups_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="backups.html", context={
-        "user": user, "csrf_token": csrf, "page": "backups"
+        "user": user, "csrf_token": csrf, "page": "backups", "hostname": os.uname().nodename
     })
 
 
@@ -217,7 +217,7 @@ async def monitoring_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="monitor.html", context={
-        "user": user, "csrf_token": csrf, "page": "monitoring"
+        "user": user, "csrf_token": csrf, "page": "monitoring", "hostname": os.uname().nodename
     })
 
 
@@ -227,7 +227,7 @@ async def shell_page(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(request=request, name="shell.html", context={
-        "user": user, "page": "shell"
+        "user": user, "page": "shell", "hostname": os.uname().nodename
     })
 
 
@@ -238,7 +238,7 @@ async def users_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="users.html", context={
-        "user": user, "csrf_token": csrf, "page": "users"
+        "user": user, "csrf_token": csrf, "page": "users", "hostname": os.uname().nodename
     })
 
 
@@ -249,7 +249,7 @@ async def settings_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="settings.html", context={
-        "user": user, "csrf_token": csrf, "page": "settings"
+        "user": user, "csrf_token": csrf, "page": "settings", "hostname": os.uname().nodename
     })
 
 
@@ -260,7 +260,7 @@ async def logs_page(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="logs.html", context={
-        "user": user, "csrf_token": csrf, "page": "logs"
+        "user": user, "csrf_token": csrf, "page": "logs", "hostname": os.uname().nodename
     })
 
 
@@ -466,5 +466,5 @@ async def search_page(request: Request, q: str = ""):
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="search.html", context={
-        "user": user, "csrf_token": csrf, "page": "search", "query": q
+        "user": user, "csrf_token": csrf, "page": "search", "query": q, "hostname": os.uname().nodename
     })
