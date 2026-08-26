@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NexVE Installer v2.0
+NexVE Installer v2.1
 Full-screen ncurses TUI installer matching Proxmox VE aesthetic.
 Gray background, bordered boxes, selectable menus, progress bars.
 """
@@ -10,51 +10,52 @@ import subprocess
 import os
 import sys
 import time
-import threading
+import tempfile
+import shutil
 
 INSTALL_DIR = "/opt/nexve"
 LOG = "/tmp/nexve-install.log"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # ═══════════════════════════════════════════════════════════════
 # TUI Theme — matches Proxmox installer aesthetic
 # ═══════════════════════════════════════════════════════════════
 
 class Theme:
-    BG          = 236    # Dark gray background (Proxmox-like)
-    FG          = 252    # Light gray text
-    TITLE_BG    = 238    # Slightly lighter gray for title bar
-    TITLE_FG    = 255   # White title text
-    SELECTED_BG = 208    # Orange selection highlight (NexVE orange)
-    SELECTED_FG = 16     # Black text on orange
-    BORDER      = 243    # Gray border
-    HEADER      = 208    # Orange header
-    BTN_BG      = 238    # Button background
-    BTN_FG      = 252   # Button text
-    BTN_SEL_BG  = 208    # Selected button
-    BTN_SEL_FG  = 16    # Black on orange
-    PROGRESS_BG = 238    # Progress bar background
-    PROGRESS_FG = 208    # Progress bar fill (orange)
-    DIM         = 245    # Dimmed text
-    GREEN       = 114    # Success green
-    RED         = 167    # Error red
+    BG          = 236
+    FG          = 252
+    TITLE_BG    = 238
+    TITLE_FG    = 255
+    SELECTED_BG = 208
+    SELECTED_FG = 16
+    BORDER      = 243
+    HEADER      = 208
+    BTN_BG      = 238
+    BTN_FG      = 252
+    BTN_SEL_BG  = 208
+    BTN_SEL_FG  = 16
+    PROGRESS_BG = 238
+    PROGRESS_FG = 208
+    DIM         = 245
+    GREEN       = 114
+    RED         = 167
 
 
 def init_colors():
-    """Initialize 256-color palette for Proxmox-style theming."""
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, Theme.FG, Theme.BG)          # Normal
-    curses.init_pair(2, Theme.TITLE_FG, Theme.TITLE_BG)  # Title bar
-    curses.init_pair(3, Theme.SELECTED_FG, Theme.SELECTED_BG)  # Selected
-    curses.init_pair(4, Theme.BORDER, Theme.BG)       # Border
-    curses.init_pair(5, Theme.HEADER, Theme.BG)       # Header
-    curses.init_pair(6, Theme.BTN_FG, Theme.BTN_BG)   # Button
-    curses.init_pair(7, Theme.BTN_SEL_FG, Theme.BTN_SEL_BG)  # Button selected
-    curses.init_pair(8, Theme.DIM, Theme.BG)          # Dimmed
-    curses.init_pair(9, Theme.PROGRESS_FG, Theme.PROGRESS_BG)  # Progress
-    curses.init_pair(10, Theme.GREEN, Theme.BG)       # Success
-    curses.init_pair(11, Theme.RED, Theme.BG)         # Error
+    curses.init_pair(1, Theme.FG, Theme.BG)
+    curses.init_pair(2, Theme.TITLE_FG, Theme.TITLE_BG)
+    curses.init_pair(3, Theme.SELECTED_FG, Theme.SELECTED_BG)
+    curses.init_pair(4, Theme.BORDER, Theme.BG)
+    curses.init_pair(5, Theme.HEADER, Theme.BG)
+    curses.init_pair(6, Theme.BTN_FG, Theme.BTN_BG)
+    curses.init_pair(7, Theme.BTN_SEL_FG, Theme.BTN_SEL_BG)
+    curses.init_pair(8, Theme.DIM, Theme.BG)
+    curses.init_pair(9, Theme.PROGRESS_FG, Theme.PROGRESS_BG)
+    curses.init_pair(10, Theme.GREEN, Theme.BG)
+    curses.init_pair(11, Theme.RED, Theme.BG)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -72,186 +73,71 @@ class TUI:
         self.stdscr.bkgd(curses.color_pair(1))
         self.stdscr.clear()
 
-    def draw_title_bar(self, title, subtitle="NexVE v2.0"):
-        """Draw the top title bar (like Proxmox)."""
-        # Full-width title bar
-        bar = f"  {subtitle}  │  {title}"
+    def draw_title_bar(self, title, subtitle="NexVE v2.1"):
+        bar = f"  {subtitle}  \u2502  {title}"
         self.stdscr.attron(curses.color_pair(2))
         self.stdscr.addnstr(0, 0, bar.ljust(self.w), self.w)
         self.stdscr.attroff(curses.color_pair(2))
 
     def draw_box(self, y, x, h, w, title="", border_color=4):
-        """Draw a bordered box with optional title."""
         attr = curses.color_pair(border_color)
-        # Top border
         self.stdscr.attron(attr)
-        self.stdscr.addch(y, x, "┌")
-        self.stdscr.addnstr(y, x + 1, "─" * (w - 2), w - 2)
-        self.stdscr.addch(y, x + w - 1, "┐")
-        # Title
+        self.stdscr.addch(y, x, "\u250c")
+        self.stdscr.addnstr(y, x + 1, "\u2500" * (w - 2), w - 2)
+        self.stdscr.addch(y, x + w - 1, "\u2510")
         if title:
             tx = x + (w - len(title) - 2) // 2
             self.stdscr.addstr(y, tx, f" {title} ")
-        # Sides
         for i in range(1, h - 1):
-            self.stdscr.addch(y + i, x, "│")
-            self.stdscr.addch(y + i, x + w - 1, "│")
-        # Bottom border
-        self.stdscr.addch(y + h - 1, x, "└")
-        self.stdscr.addnstr(y + h - 1, x + 1, "─" * (w - 2), w - 2)
-        self.stdscr.addch(y + h - 1, x + w - 1, "┘")
+            self.stdscr.addch(y + i, x, "\u2502")
+            self.stdscr.addch(y + i, x + w - 1, "\u2502")
+        self.stdscr.addch(y + h - 1, x, "\u2514")
+        self.stdscr.addnstr(y + h - 1, x + 1, "\u2500" * (w - 2), w - 2)
+        self.stdscr.addch(y + h - 1, x + w - 1, "\u2518")
         self.stdscr.attroff(attr)
 
     def draw_text(self, y, x, text, color_pair=1):
-        """Draw text at position."""
         self.stdscr.attron(curses.color_pair(color_pair))
         self.stdscr.addnstr(y, x, text, self.w - x - 1)
         self.stdscr.attroff(curses.color_pair(color_pair))
 
     def draw_centered(self, y, text, color_pair=1):
-        """Draw centered text."""
         x = max(0, (self.w - len(text)) // 2)
         self.draw_text(y, x, text, color_pair)
 
     def draw_progress(self, y, x, w, pct, label=""):
-        """Draw a progress bar like the Proxmox installer."""
-        bar_w = w - 10
+        bar_w = max(10, w - 10)
         filled = int(bar_w * pct / 100)
         empty = bar_w - filled
-
-        # Bar background
-        bar = "█" * filled + "░" * empty
+        bar = "\u2588" * filled + "\u2591" * empty
         self.stdscr.attron(curses.color_pair(9))
         self.stdscr.addnstr(y, x, f"[{bar}]", w)
         self.stdscr.attroff(curses.color_pair(9))
-
-        # Percentage
         pct_text = f" {pct:3d}%"
         self.draw_text(y, x + bar_w + 4, pct_text, 5)
 
     def draw_button(self, y, x, text, selected=False):
-        """Draw a button like <Continue> or <Go Back>."""
         cp = 7 if selected else 6
         self.draw_text(y, x, f"[{text}]", cp)
 
 
 # ═══════════════════════════════════════════════════════════════
-# Menu widget — selectable list (like the Proxmox disk selector)
+# Menu widget — selectable list with buttons
 # ═══════════════════════════════════════════════════════════════
 
 class Menu:
     def __init__(self, tui, title, items, description="", multi_select=False):
         self.tui = tui
         self.title = title
-        self.items = items       # [(tag, label, description)]
+        self.items = items
         self.description = description
         self.multi_select = multi_select
         self.selected = 0
         self.button_idx = 0
-        self.checked = set() if multi_select else None
+        self.checked = set(range(len(items))) if multi_select else None
         self.scroll_offset = 0
 
     def draw(self):
-        t = self.tui
-        t.clear()
-        h, w = t.h, t.w
-
-        # Title bar
-        t.draw_title_bar(self.title)
-
-        # Main box
-        box_y = 2
-        box_h = h - 5
-        box_x = 2
-        box_w = w - 4
-        t.draw_box(box_y, box_x, box_h, box_w, self.title)
-
-        # Description
-        if self.description:
-            desc_y = box_y + 1
-            for i, line in enumerate(self.description.split("\n")):
-                t.draw_text(desc_y + i, box_x + 2, line, 8)
-
-        # Menu items
-        item_y = box_y + (3 if self.description else 2)
-        visible = box_h - 6
-
-        # Scroll management
-        if self.selected < self.scroll_offset:
-            self.scroll_offset = self.selected
-        if self.selected >= self.scroll_offset + visible:
-            self.scroll_offset = self.selected - visible + 1
-
-        for i in range(visible):
-            idx = self.scroll_offset + i
-            if idx >= len(self.items):
-                break
-
-            tag, label, desc = self.items[idx]
-            y = item_y + i
-
-            if idx == self.selected:
-                # Selected item — orange highlight (full width)
-                t.stdscr.attron(curses.color_pair(3))
-                t.stdscr.addnstr(y, box_x + 1, " " * (box_w - 2), box_w - 2)
-                prefix = " ◉ " if (self.multi_select and idx in self.checked) else " ► "
-                t.stdscr.addstr(y, box_x + 2, prefix)
-                t.stdscr.addstr(y, box_x + 5, f"{tag}")
-                if desc:
-                    t.stdscr.addstr(y, box_x + 5 + len(tag) + 2, f"— {desc}")
-                t.stdscr.attroff(curses.color_pair(3))
-            else:
-                prefix = " ◉ " if (self.multi_select and idx in self.checked) else "   "
-                t.draw_text(y, box_x + 2, f"{prefix}{tag}  —  {desc}", 1)
-
-        # Scroll indicator
-        if len(self.items) > visible:
-            if self.scroll_offset > 0:
-                t.draw_text(item_y - 1, box_x + box_w - 3, "▲", 5)
-            if self.scroll_offset + visible < len(self.items):
-                t.draw_text(item_y + visible, box_x + box_w - 3, "▼", 5)
-
-        # Footer hint
-        if self.multi_select:
-            t.draw_text(h - 2, 4, "Space: toggle  │  Enter: confirm  │  ↑↓: navigate", 8)
-        else:
-            t.draw_text(h - 2, 4, "↑↓: navigate  │  Enter: select  │  Tab: switch button", 8)
-
-        t.stdscr.refresh()
-
-    def run(self):
-        """Run the menu and return selected index/indices."""
-        while True:
-            self.draw()
-            key = self.tui.stdscr.getch()
-
-            if key == curses.KEY_UP or key == ord('k'):
-                self.selected = max(0, self.selected - 1)
-                self.button_idx = 0
-            elif key == curses.KEY_DOWN or key == ord('j'):
-                self.selected = min(len(self.items) - 1, self.selected + 1)
-                self.button_idx = 0
-            elif key == ord(' ') and self.multi_select:
-                if self.selected in self.checked:
-                    self.checked.discard(self.selected)
-                else:
-                    self.checked.add(self.selected)
-            elif key == 9:  # Tab
-                self.button_idx = 1 - self.button_idx
-            elif key == 10:  # Enter
-                if self.button_idx == 1:  # Cancel
-                    return None
-                if self.multi_select:
-                    if not self.checked:
-                        # Nothing selected — treat as select all
-                        self.checked = set(range(len(self.items)))
-                    return sorted(self.checked)
-                return self.selected
-            elif key == 27:  # Escape
-                return None
-
-    def draw(self):
-        """Redraw with button state."""
         t = self.tui
         t.clear()
         h, w = t.h, t.w
@@ -283,25 +169,24 @@ class Menu:
                 break
             tag, label, desc = self.items[idx]
             y = item_y + i
-
             if idx == self.selected:
                 t.stdscr.attron(curses.color_pair(3))
                 t.stdscr.addnstr(y, box_x + 1, " " * (box_w - 2), box_w - 2)
-                prefix = " ◉ " if (self.multi_select and idx in self.checked) else " ► "
-                t.stdscr.addstr(y, box_x + 2, f"{prefix}{tag}  —  {desc}")
+                prefix = " \u25c9 " if (self.multi_select and idx in self.checked) else " \u25ba "
+                t.stdscr.addstr(y, box_x + 2, f"{prefix}{tag}  \u2014  {desc}")
                 t.stdscr.attroff(curses.color_pair(3))
             else:
-                prefix = " ◉ " if (self.multi_select and idx in self.checked) else "   "
-                t.draw_text(y, box_x + 2, f"{prefix}{tag}  —  {desc}", 1)
+                prefix = " \u25c9 " if (self.multi_select and idx in self.checked) else "   "
+                t.draw_text(y, box_x + 2, f"{prefix}{tag}  \u2014  {desc}", 1)
 
         if len(self.items) > visible:
             if self.scroll_offset > 0:
-                t.draw_text(item_y - 1, box_x + box_w - 3, "▲", 5)
+                t.draw_text(item_y - 1, box_x + box_w - 3, "\u25b2", 5)
             if self.scroll_offset + visible < len(self.items):
-                t.draw_text(item_y + visible, box_x + box_w - 3, "▼", 5)
+                t.draw_text(item_y + visible, box_x + box_w - 3, "\u25bc", 5)
 
-        # Buttons at bottom
-        btn_y = h - 3
+        # Buttons
+        btn_y = box_y + box_h - 2
         btn1 = "<Continue>"
         btn2 = "<Cancel>"
         btn1_x = w // 2 - len(btn1) - 4
@@ -310,27 +195,56 @@ class Menu:
         t.draw_button(btn_y, btn2_x, btn2, selected=(self.button_idx == 1))
 
         if self.multi_select:
-            t.draw_text(h - 2, 4, "Space: toggle  │  Enter: confirm  │  ↑↓: navigate", 8)
+            t.draw_text(h - 2, 4, "Space: toggle  \u2502  Enter: confirm  \u2502  \u2191\u2193: navigate", 8)
         else:
-            t.draw_text(h - 2, 4, "↑↓: navigate  │  Enter: select  │  Tab: switch", 8)
+            t.draw_text(h - 2, 4, "\u2191\u2193: navigate  \u2502  Enter: select  \u2502  Tab: switch", 8)
 
         t.stdscr.refresh()
 
+    def run(self):
+        while True:
+            self.draw()
+            key = self.tui.stdscr.getch()
+
+            if key == curses.KEY_UP or key == ord('k'):
+                self.selected = max(0, self.selected - 1)
+                self.button_idx = 0
+            elif key == curses.KEY_DOWN or key == ord('j'):
+                self.selected = min(len(self.items) - 1, self.selected + 1)
+                self.button_idx = 0
+            elif key == ord(' ') and self.multi_select:
+                if self.selected in self.checked:
+                    self.checked.discard(self.selected)
+                else:
+                    self.checked.add(self.selected)
+            elif key == 9:  # Tab
+                self.button_idx = 1 - self.button_idx
+            elif key == 10:  # Enter
+                if self.button_idx == 1:
+                    return None
+                if self.multi_select:
+                    if not self.checked:
+                        self.checked = set(range(len(self.items)))
+                    return sorted(self.checked)
+                return self.selected
+            elif key == 27:  # Escape
+                return None
+
 
 # ═══════════════════════════════════════════════════════════════
-# Progress screen — shows during installation
+# Progress screen
 # ═══════════════════════════════════════════════════════════════
 
 class ProgressScreen:
     def __init__(self, tui, title, steps):
         self.tui = tui
         self.title = title
-        self.steps = steps      # [(label, command)]
+        self.steps = steps
         self.current = 0
         self.pct = 0
         self.status = ""
-        self.running = True
         self.error = None
+        self.log_lines = []
 
     def draw(self):
         t = self.tui
@@ -339,37 +253,30 @@ class ProgressScreen:
 
         t.draw_title_bar(self.title)
 
-        # Main box
         box_y = 3
         box_h = h - 8
         box_x = 4
         box_w = w - 8
         t.draw_box(box_y, box_x, box_h, box_w)
 
-        # Title inside box
         t.draw_centered(box_y + 2, "Installing NexVE...", 5)
-
-        # Status text
         t.draw_centered(box_y + 4, self.status, 1)
 
-        # Progress bar
         bar_y = box_y + 6
         bar_x = box_x + 4
         bar_w = box_w - 8
         t.draw_progress(bar_y, bar_x, bar_w, self.pct)
 
-        # Current step
-        step_text = f"Step {self.current}/{len(self.steps)}: {self.status[:50]}"
+        step_text = f"Step {self.current}/{len(self.steps)}"
         t.draw_centered(box_y + 8, step_text, 8)
 
-        # Log tail
         log_y = box_y + 10
-        if os.path.exists(LOG):
-            with open(LOG) as f:
-                lines = f.readlines()[-8:]
-            for i, line in enumerate(lines):
-                if log_y + i < box_y + box_h - 2:
-                    t.draw_text(log_y + i, box_x + 3, line.rstrip()[:box_w - 6], 8)
+        visible_lines = box_h - 13
+        tail = self.log_lines[-visible_lines:]
+        for i, line in enumerate(tail):
+            if log_y + i < box_y + box_h - 2:
+                truncated = line[:box_w - 6]
+                t.draw_text(log_y + i, box_x + 3, truncated, 8)
 
         if self.error:
             t.draw_centered(box_y + box_h - 2, f"Error: {self.error}", 11)
@@ -377,29 +284,29 @@ class ProgressScreen:
         t.stdscr.refresh()
 
     def run(self):
-        """Execute all steps with progress updates."""
         total = len(self.steps)
         for i, (label, cmd) in enumerate(self.steps):
             self.current = i + 1
             self.pct = int((i / total) * 100)
             self.status = label
+            self.log_lines.append(f"> {label}")
             self.draw()
             try:
                 result = subprocess.run(
                     cmd, shell=True, capture_output=True,
                     text=True, timeout=300
                 )
-                with open(LOG, "a") as f:
-                    f.write(f"[{label}] {result.stdout}\n")
-                    if result.stderr:
-                        f.write(f"[{label} ERR] {result.stderr}\n")
+                if result.returncode == 0:
+                    self.log_lines.append(f"  \u2713 {label} - done")
+                else:
+                    self.log_lines.append(f"  \u2717 {label} - failed (rc={result.returncode})")
+                    if result.stderr.strip():
+                        self.log_lines.append(f"    {result.stderr.strip()[:80]}")
             except subprocess.TimeoutExpired:
-                with open(LOG, "a") as f:
-                    f.write(f"[{label}] TIMEOUT\n")
+                self.log_lines.append(f"  \u2717 {label} - timeout")
             except Exception as e:
                 self.error = str(e)
-                self.draw()
-                time.sleep(2)
+                self.log_lines.append(f"  \u2717 {label} - {e}")
 
         self.pct = 100
         self.status = "Installation complete!"
@@ -408,13 +315,13 @@ class ProgressScreen:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Results screen — post-install verification
+# Results screen
 # ═══════════════════════════════════════════════════════════════
 
 class ResultsScreen:
     def __init__(self, tui):
         self.tui = tui
-        self.results = []  # [(name, ok)]
+        self.results = []
 
     def check_all(self):
         """Check installed binaries and Python packages."""
@@ -422,41 +329,43 @@ class ResultsScreen:
         has_venv = os.path.isfile(venv_python)
 
         bins = [
-            ("Python 3", "python3"),
-            ("QEMU/KVM", "qemu-system-x86_64"),
-            ("libvirt (virsh)", "virsh"),
-            ("nftables", "nft"),
-            ("ZFS (zpool)", "zpool"),
-            ("BTRFS", "btrfs"),
-            ("iSCSI", "iscsiadm"),
-            ("SMART tools", "smartctl"),
-            ("PCI utils (lspci)", "lspci"),
-            ("noVNC/websockify", "websockify"),
+            ("Python 3", "python3", None),
+            ("QEMU/KVM", "qemu-system-x86_64", None),
+            ("libvirt (virsh)", "virsh", None),
+            ("nftables", "nft", None),
+            ("ZFS (zpool)", "zpool", "Enable contrib: apt install zfsutils-linux"),
+            ("BTRFS", "btrfs", "apt install btrfs-progs"),
+            ("iSCSI", "iscsiadm", "apt install open-iscsi"),
+            ("SMART tools", "smartctl", "apt install smartmontools"),
+            ("PCI utils (lspci)", "lspci", None),
+            ("noVNC/websockify", "websockify", "pip install websockify"),
         ]
-        for name, cmd in bins:
-            ok = subprocess.run(f"which {cmd}", shell=True, capture_output=True).returncode == 0
-            self.results.append((name, ok))
+        for name, cmd, fix in bins:
+            ok = subprocess.run(
+                f"which {cmd}", shell=True, capture_output=True
+            ).returncode == 0
+            self.results.append((name, ok, fix))
 
         py_mods = [
-            ("FastAPI", "fastapi"),
-            ("SQLAlchemy", "sqlalchemy"),
-            ("psutil", "psutil"),
-            ("bcrypt", "bcrypt"),
-            ("pyotp (2FA)", "pyotp"),
-            ("ldap3", "ldap3"),
+            ("FastAPI", "fastapi", None),
+            ("SQLAlchemy", "sqlalchemy", None),
+            ("psutil", "psutil", None),
+            ("bcrypt", "bcrypt", None),
+            ("pyotp (2FA)", "pyotp", None),
+            ("ldap3", "ldap3", None),
         ]
-        for name, mod in py_mods:
+        for name, mod, fix in py_mods:
             py = venv_python if has_venv else "python3"
             ok = subprocess.run(
                 f'{py} -c "import {mod}"', shell=True, capture_output=True
             ).returncode == 0
-            self.results.append((name, ok))
+            self.results.append((name, ok, fix))
 
-        # Service check
         svc_ok = subprocess.run(
             "systemctl is-active nexve", shell=True, capture_output=True
         ).returncode == 0
-        self.results.append(("NexVE service", svc_ok))
+        self.results.append(("NexVE service", svc_ok,
+                            "Check: journalctl -u nexve -f"))
 
     def draw(self):
         t = self.tui
@@ -469,20 +378,22 @@ class ResultsScreen:
         box_h = h - 5
         box_x = 3
         box_w = w - 6
-        t.draw_box(box_y, box_x, box_h, box_w, "Installation Complete ✓")
+        t.draw_box(box_y, box_x, box_h, box_w, "Installation Complete \u2713")
 
-        # Results
         y = box_y + 2
-        for name, ok in self.results:
+        for name, ok, fix in self.results:
             if y >= box_y + box_h - 6:
                 break
-            icon = "  ✓  " if ok else "  ✗  "
+            icon = "  \u2713  " if ok else "  \u2717  "
             color = 10 if ok else 11
             t.draw_text(y, box_x + 3, icon, color)
             t.draw_text(y, box_x + 9, name, 1)
-            y += 1
+            if not ok and fix:
+                t.draw_text(y + 1, box_x + 14, f"Fix: {fix}", 8)
+                y += 2
+            else:
+                y += 1
 
-        # Dashboard URL
         try:
             ip = subprocess.run(
                 "hostname -I | awk '{print $1}'",
@@ -494,13 +405,12 @@ class ResultsScreen:
         y += 1
         t.draw_text(y, box_x + 3, f"Dashboard:  http://{ip}:8000", 5)
         y += 1
-        t.draw_text(y, box_x + 3, f"Status:     systemctl status nexve", 8)
+        t.draw_text(y, box_x + 3, "Status:     systemctl status nexve", 8)
         y += 1
-        t.draw_text(y, box_x + 3, f"Logs:       journalctl -u nexve -f", 8)
+        t.draw_text(y, box_x + 3, "Logs:       journalctl -u nexve -f", 8)
         y += 1
         t.draw_text(y, box_x + 3, f"Install:    {INSTALL_DIR}", 8)
 
-        # Button
         btn_y = box_y + box_h - 2
         btn_text = "<Finish>"
         btn_x = (w - len(btn_text) - 2) // 2
@@ -513,7 +423,7 @@ class ResultsScreen:
         self.draw()
         while True:
             key = self.tui.stdscr.getch()
-            if key in (10, 13, 27):  # Enter, Return, Escape
+            if key in (10, 13, 27):
                 return
 
 
@@ -543,40 +453,34 @@ class TextInput:
 
         t.draw_text(box_y + 2, box_x + 3, self.prompt, 5)
 
-        # Input field
         field_y = box_y + 4
         field_x = box_x + 3
         field_w = box_w - 6
 
         t.stdscr.attron(curses.color_pair(1))
         t.stdscr.addnstr(field_y, field_x, " " * field_w, field_w)
-
         display = self.value[:field_w - 1]
         t.stdscr.addnstr(field_y, field_x, display, field_w)
-
-        # Cursor
         cx = field_x + min(self.cursor, field_w - 1)
         t.stdscr.addch(field_y, cx, "_")
         t.stdscr.attroff(curses.color_pair(1))
 
-        # Buttons
         btn_y = box_y + 7
         btn1_x = w // 2 - 14
         btn2_x = w // 2 + 4
         t.draw_button(btn_y, btn1_x, "<Continue>", selected=True)
         t.draw_button(btn_y, btn2_x, "<Cancel>", selected=False)
 
-        t.draw_text(h - 2, 4, "Type to enter  │  Enter: confirm  │  Tab: switch", 8)
+        t.draw_text(h - 2, 4, "Type to enter  \u2502  Enter: confirm  \u2502  Tab: switch", 8)
         t.stdscr.refresh()
 
     def run(self):
         self.draw()
         while True:
             key = self.tui.stdscr.getch()
-
-            if key in (10, 13):  # Enter
+            if key in (10, 13):
                 return self.value
-            elif key == 27:  # Escape
+            elif key == 27:
                 return None
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 if self.cursor > 0:
@@ -585,121 +489,172 @@ class TextInput:
             elif 32 <= key <= 126:
                 self.value = self.value[:self.cursor] + chr(key) + self.value[self.cursor:]
                 self.cursor += 1
-
             self.draw()
 
 
 # ═══════════════════════════════════════════════════════════════
-# Main installer flow
+# Package installer helper — tries multiple package names
+# ═══════════════════════════════════════════════════════════════
+
+def apt_install(*pkgs, extra_args=""):
+    """Try to install packages with fallbacks. Always succeeds."""
+    pkg_str = " ".join(pkgs)
+    return (
+        f"apt-get install -y -qq {extra_args} {pkg_str} 2>/dev/null || "
+        f"apt-get install -y {extra_args} {pkg_str} 2>/dev/null || "
+        f"echo 'Packages not available: {pkg_str}' && true"
+    )
+
+
+def systemd_enable(service_name):
+    """Enable a systemd service, ignoring errors."""
+    return (
+        f"systemctl enable {service_name} 2>/dev/null || true"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# Build install steps based on selected components
 # ═══════════════════════════════════════════════════════════════
 
 def get_install_steps(choices):
-    """Build the list of (label, command) pairs based on selected components."""
     steps = []
+    pip = f"{INSTALL_DIR}/venv/bin/pip"
+    venv = f"{INSTALL_DIR}/venv/bin/python3"
 
-    steps.append(("Updating package lists", "apt-get update -qq 2>/dev/null || true"))
+    # Step 1: System update
+    steps.append(("Updating package lists",
+        "apt-get update -qq 2>/dev/null || apt-get update 2>/dev/null || true"))
 
+    # Step 2: Enable contrib/non-free repos for ZFS
+    if "ZFS" in choices:
+        steps.append(("Enabling contrib/non-free repos",
+            "sed -i 's/^# *deb /deb /' /etc/apt/sources.list 2>/dev/null || true; "
+            "if [ -f /etc/apt/sources.list.d/debian.sources ]; then "
+            "  sed -i 's/Components: main$/Components: main contrib non-free non-free-firmware/' "
+            "  /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; "
+            "fi; "
+            "apt-get update -qq 2>/dev/null || true"))
+
+    # ── CORE ──
     if "CORE" in choices:
         steps.append(("Installing Python 3 + dev headers",
-            "apt-get install -y -qq python3 python3-pip python3-venv python3-dev "
-            "libffi-dev libssl-dev libjpeg-dev zlib1g-dev"))
+            apt_install("python3", "python3-pip", "python3-venv", "python3-dev",
+                        "libffi-dev", "libssl-dev", "libjpeg-dev", "zlib1g-dev")))
         steps.append(("Installing build tools",
-            "apt-get install -y -qq build-essential gcc g++ make"))
-        steps.append(("Installing Git, curl, wget, jq",
-            "apt-get install -y -qq git curl wget jq openssl sudo cron"))
+            apt_install("build-essential", "gcc", "g++", "make")))
+        steps.append(("Installing system utilities",
+            apt_install("git", "curl", "wget", "jq", "openssl", "sudo", "cron",
+                        "lsb-release", "ca-certificates", "gnupg")))
 
+    # ── KVM/QEMU ──
     if "KVM" in choices:
-        steps.append(("Installing QEMU/KVM emulator",
-            "apt-get install -y -qq qemu-kvm qemu-system-x86 qemu-utils 2>/dev/null || "
-            "apt-get install -y -qq qemu-system-x86 qemu-utils 2>/dev/null || true"))
+        steps.append(("Installing QEMU/KVM",
+            f"({apt_install('qemu-kvm', 'qemu-system-x86', 'qemu-utils')} || "
+            f"{apt_install('qemu-system-x86', 'qemu-utils')}) && true"))
         steps.append(("Installing libvirt daemon",
-            "apt-get install -y -qq libvirt-daemon-system libvirt-clients 2>/dev/null || "
-            "apt-get install -y -qq libvirt-daemon libvirt-clients 2>/dev/null || true"))
-        steps.append(("Installing virt-manager + OVMF",
-            "apt-get install -y -qq virtinst ovmf 2>/dev/null || "
-            "apt-get install -y -qq ovmf 2>/dev/null || true"))
-        steps.append(("Installing libvirt Python bindings",
-            f"{INSTALL_DIR}/venv/bin/pip install libvirt-python -q 2>/dev/null || "
-            "apt-get install -y -qq python3-libvirt 2>/dev/null || true"))
+            f"({apt_install('libvirt-daemon-system', 'libvirt-clients')} || "
+            f"{apt_install('libvirt-daemon', 'libvirt-clients')}) && true"))
+        steps.append(("Installing virt-manager + OVMF UEFI firmware",
+            f"{apt_install('virtinst', 'ovmf')} && true"))
         steps.append(("Enabling libvirtd",
             "systemctl enable --now libvirtd 2>/dev/null || "
             "systemctl enable libvirtd 2>/dev/null || true"))
 
+    # ── LXC ──
     if "LXC" in choices:
-        steps.append(("Installing LXC containers",
-            "apt-get install -y -qq lxc lxc-utils 2>/dev/null || "
-            "apt-get install -y -qq lxc-utils 2>/dev/null || true"))
-        steps.append(("Installing debootstrap",
-            "apt-get install -y -qq debootstrap"))
+        steps.append(("Installing LXC container runtime",
+            f"{apt_install('lxc', 'lxc-utils')} && true"))
+        steps.append(("Installing debootstrap for containers",
+            apt_install("debootstrap")))
 
+    # ── ZFS ──
     if "ZFS" in choices:
-        steps.append(("Installing ZFS",
-            "apt-get install -y -qq zfsutils-linux 2>/dev/null || "
-            "apt-get install -y -qq zfsutils 2>/dev/null || "
-            "apt-get install -y -qq zfs-linux 2>/dev/null || true"))
+        steps.append(("Installing ZFS utilities",
+            f"({apt_install('zfsutils-linux')} || "
+            f"{apt_install('zfsutils')} || "
+            f"echo 'ZFS not available - install zfsutils-linux from contrib repo') && true"))
+
+    # ── LVM ──
     if "LVM" in choices:
         steps.append(("Installing LVM2",
-            "apt-get install -y -qq lvm2"))
+            apt_install("lvm2")))
+
+    # ── BTRFS ──
     if "BTRFS" in choices:
         steps.append(("Installing BTRFS tools",
-            "apt-get install -y -qq btrfs-progs"))
+            apt_install("btrfs-progs")))
+
+    # ── NFS ──
     if "NFS" in choices:
         steps.append(("Installing NFS client",
-            "apt-get install -y -qq nfs-common"))
+            apt_install("nfs-common")))
+
+    # ── CIFS ──
     if "CIFS" in choices:
         steps.append(("Installing CIFS/SMB client",
-            "apt-get install -y -qq cifs-utils 2>/dev/null; "
-            "apt-get install -y -qq samba-common-bin 2>/dev/null || true"))
+            f"{apt_install('cifs-utils')}; {apt_install('samba-common-bin')} && true"))
+
+    # ── iSCSI ──
     if "ISCSI" in choices:
         steps.append(("Installing iSCSI initiator",
-            "apt-get install -y -qq open-iscsi 2>/dev/null || "
-            "apt-get install -y -qq iscsi-initiator-utils 2>/dev/null || true; "
-            "systemctl enable iscsid 2>/dev/null || true"))
+            f"({apt_install('open-iscsi')} || "
+            f"{apt_install('iscsi-initiator-utils')}) && "
+            f"{systemd_enable('iscsid')} && true"))
         steps.append(("Installing SMART + disk tools",
-            "apt-get install -y -qq smartmontools 2>/dev/null || true; "
-            "apt-get install -y -qq gdisk hdparm 2>/dev/null || true"))
+            f"{apt_install('smartmontools')}; "
+            f"{apt_install('gdisk')}; "
+            f"{apt_install('hdparm')} && true"))
 
+    # ── NETWORKING ──
     if "NET" in choices:
         steps.append(("Installing networking tools",
-            "apt-get install -y -qq bridge-utils iproute2 net-tools 2>/dev/null || true; "
-            "apt-get install -y -qq vlan ethtool 2>/dev/null || true"))
+            f"{apt_install('bridge-utils', 'iproute2', 'net-tools')}; "
+            f"{apt_install('vlan', 'ethtool')} && true"))
+        steps.append(("Installing PCI/USB utils for passthrough",
+            apt_install("pciutils", "usbutils")))
+
+    # ── FIREWALL ──
     if "FIREWALL" in choices:
         steps.append(("Installing nftables firewall",
-            "apt-get install -y -qq nftables && systemctl enable nftables 2>/dev/null || true"))
-    if "GPU" in choices:
-        steps.append(("Installing PCI/USB detection",
-            "apt-get install -y -qq pciutils usbutils"))
+            f"{apt_install('nftables')} && "
+            f"{systemd_enable('nftables')} && true"))
 
+    # ── CONSOLE ──
     if "CONSOLE" in choices:
         steps.append(("Installing noVNC + websockify",
-            "apt-get install -y -qq novnc 2>/dev/null || "
-            "apt-get install -y -qq python3-novnc 2>/dev/null || "
-            f"{INSTALL_DIR}/venv/bin/pip install websockify -q 2>/dev/null || true; "
-            "apt-get install -y -qq websockify 2>/dev/null || "
-            f"{INSTALL_DIR}/venv/bin/pip install websockify -q 2>/dev/null || true"))
-        steps.append(("Installing xterm",
-            "apt-get install -y -qq xterm 2>/dev/null || true"))
+            f"({apt_install('novnc', 'websockify')} || "
+            f"{apt_install('python3-novnc')} || "
+            f"({pip} install websockify -q 2>/dev/null || true)) && true"))
+        steps.append(("Installing xterm for shell",
+            apt_install("xterm")))
 
+    # ── CLOUD-INIT ──
     if "CLOUD" in choices:
         steps.append(("Installing cloud-init",
-            "apt-get install -y -qq cloud-init 2>/dev/null || true; "
-            "apt-get install -y -qq cloud-utils 2>/dev/null || true"))
-        steps.append(("Installing ISO tools",
-            "apt-get install -y -qq genisoimage 2>/dev/null || true; "
-            "apt-get install -y -qq xorriso 2>/dev/null || true"))
+            f"{apt_install('cloud-init')}; {apt_install('cloud-utils')} && true"))
+        steps.append(("Installing ISO creation tools",
+            f"{apt_install('genisoimage')}; {apt_install('xorriso')} && true"))
 
+    # ── MONITORING ──
     if "MONITOR" in choices:
-        steps.append(("Installing sysstat + procps",
-            "apt-get install -y -qq sysstat procps 2>/dev/null || true"))
+        steps.append(("Installing system monitoring tools",
+            apt_install("sysstat", "procps")))
+
+    # ── BACKUP ──
     if "BACKUP" in choices:
         steps.append(("Enabling cron daemon",
-            "systemctl enable cron 2>/dev/null || "
-            "systemctl enable cronie 2>/dev/null || true"))
+            f"{systemd_enable('cron')} || "
+            f"{systemd_enable('cronie')} || true"))
 
+    # Always install rsyslog
     steps.append(("Installing rsyslog",
-        "apt-get install -y -qq rsyslog 2>/dev/null || true"))
+        apt_install("rsyslog")))
 
+    # ═══════════════════════════════════════════════════════════
     # Project setup
+    # ═══════════════════════════════════════════════════════════
+
     steps.append(("Copying NexVE files",
         f"mkdir -p {INSTALL_DIR} && "
         f"cp -r {SCRIPT_DIR}/backend {INSTALL_DIR}/ 2>/dev/null || true; "
@@ -712,21 +667,31 @@ def get_install_steps(choices):
         f"true"))
 
     steps.append(("Creating data directories",
-        f"mkdir -p {INSTALL_DIR}/data/{{backups,cloud-init,isos,uploads,metrics}} && "
-        f"mkdir -p {INSTALL_DIR}/static/{{css,js,images,fonts}} && "
+        f"mkdir -p {INSTALL_DIR}/data/backups {INSTALL_DIR}/data/cloud-init "
+        f"{INSTALL_DIR}/data/isos {INSTALL_DIR}/data/uploads "
+        f"{INSTALL_DIR}/data/metrics && "
+        f"mkdir -p {INSTALL_DIR}/static/css {INSTALL_DIR}/static/js "
+        f"{INSTALL_DIR}/static/images {INSTALL_DIR}/static/fonts && "
         f"mkdir -p /var/lib/libvirt/images 2>/dev/null || true && "
-        f"mkdir -p /var/lib/vz/{{template/cache,images,rootdir}} 2>/dev/null || true && "
-        f"mkdir -p /var/lib/nexve/{{backups,iso}} 2>/dev/null || true"))
+        f"mkdir -p /var/lib/vz/template/cache /var/lib/vz/images "
+        f"/var/lib/vz/rootdir 2>/dev/null || true && "
+        f"mkdir -p /var/lib/nexve/backups /var/lib/nexve/iso 2>/dev/null || true && "
+        f"true"))
 
     steps.append(("Creating Python virtual environment",
         f"python3 -m venv {INSTALL_DIR}/venv && "
-        f"{INSTALL_DIR}/venv/bin/pip install --upgrade pip setuptools wheel -q 2>/dev/null"))
+        f"{pip} install --upgrade pip setuptools wheel -q 2>/dev/null"))
 
     steps.append(("Installing Python dependencies",
-        f"{INSTALL_DIR}/venv/bin/pip install -r {INSTALL_DIR}/requirements.txt 2>/dev/null"))
+        f"{pip} install -r {INSTALL_DIR}/requirements.txt 2>/dev/null || "
+        f"{pip} install -r {INSTALL_DIR}/requirements.txt 2>&1 | tail -5"))
 
-    steps.append(("Installing libvirt Python package",
-        f"{INSTALL_DIR}/venv/bin/pip install libvirt-python 2>/dev/null || true"))
+    steps.append(("Installing libvirt Python bindings",
+        f"{pip} install libvirt-python 2>/dev/null || true"))
+
+    # ═══════════════════════════════════════════════════════════
+    # Permissions & firewall
+    # ═══════════════════════════════════════════════════════════
 
     steps.append(("Setting user permissions",
         "usermod -aG libvirt ${SUDO_USER:-root} 2>/dev/null || true; "
@@ -736,44 +701,58 @@ def get_install_steps(choices):
         "nft add table inet nexve 2>/dev/null || true; "
         "nft add chain inet nexve input '{ policy accept; }' 2>/dev/null || true; "
         "nft add chain inet nexve forward '{ policy accept; }' 2>/dev/null || true; "
-        "nft add chain inet nexve host '{ policy accept; }' 2>/dev/null || true"))
+        "nft add chain inet nexve host '{ policy accept; }' 2>/dev/null || true; true"))
 
-    # Create systemd service file
-    svc_cmd = (
-        f"SECRET=$(openssl rand -hex 32) && "
-        f"cat > /etc/systemd/system/nexve.service << 'SVCEOF' && "
-        f"[Unit]\n"
-        f"Description=NexVE Hypervisor Management Dashboard\n"
-        f"After=network-online.target libvirtd.service\n"
-        f"Wants=network-online.target\n"
-        f"Requires=libvirtd.service\n"
-        f"[Service]\n"
-        f"Type=simple\n"
-        f"WorkingDirectory={INSTALL_DIR}/backend\n"
-        f"Environment=NEXVE_SECRET=$SECRET\n"
-        f"Environment=PYTHONUNBUFFERED=1\n"
-        f"ExecStart={INSTALL_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000\n"
-        f"Restart=always\n"
-        f"RestartSec=5\n"
-        f"User=root\n"
-        f"Group=root\n"
-        f"[Install]\n"
-        f"WantedBy=multi-user.target\n"
-        f"SVCEOF"
-    )
-    steps.append(("Creating systemd service", svc_cmd))
+    # ═══════════════════════════════════════════════════════════
+    # Create systemd service file using a proper heredoc
+    # ═══════════════════════════════════════════════════════════
+
+    secret = subprocess.run(
+        "openssl rand -hex 32", shell=True, capture_output=True, text=True
+    ).stdout.strip() or "changeme_generate_a_real_secret"
+
+    svc_content = f"""[Unit]
+Description=NexVE Hypervisor Management Dashboard
+After=network-online.target libvirtd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={INSTALL_DIR}/backend
+Environment=NEXVE_SECRET={secret}
+Environment=PYTHONUNBUFFERED=1
+ExecStart={INSTALL_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+    steps.append(("Creating systemd service",
+        f"mkdir -p /etc/systemd/system && "
+        f"cat > /etc/systemd/system/nexve.service << 'SVCEOF'\n{svc_content}SVCEOF"))
 
     steps.append(("Starting NexVE service",
-        "systemctl daemon-reload 2>/dev/null; "
+        "systemctl daemon-reload 2>/dev/null || true; "
         "systemctl enable nexve 2>/dev/null || true; "
-        "systemctl start nexve 2>/dev/null || true; sleep 2"))
+        "systemctl restart nexve 2>/dev/null || true; "
+        "sleep 3; "
+        "if systemctl is-active nexve >/dev/null 2>&1; then "
+        "  echo 'NexVE service started successfully'; "
+        "else "
+        "  echo 'Service start may require reboot'; "
+        "fi"))
 
-    steps.append(("Setting permissions",
+    steps.append(("Setting file permissions",
         f"chmod -R 755 {INSTALL_DIR}/static 2>/dev/null || true; "
-        f"chmod 600 /etc/systemd/system/nexve.service 2>/dev/null || true; "
         f"chmod 700 {INSTALL_DIR}/data 2>/dev/null || true; true"))
 
-    steps.append(("Cleaning up",
+    steps.append(("Cleaning up package cache",
         "apt-get autoremove -y -qq 2>/dev/null || true; "
         "apt-get clean 2>/dev/null || true; true"))
 
@@ -781,7 +760,6 @@ def get_install_steps(choices):
 
 
 def get_uninstall_steps():
-    """Build uninstall steps."""
     steps = []
     steps.append(("Stopping NexVE service",
         "systemctl stop nexve 2>/dev/null || true; "
@@ -800,12 +778,15 @@ def get_uninstall_steps():
     return steps
 
 
+# ═══════════════════════════════════════════════════════════════
+# Main
+# ═══════════════════════════════════════════════════════════════
+
 def main(stdscr):
     global INSTALL_DIR
     init_colors()
     tui = TUI(stdscr)
 
-    # Root check
     if os.geteuid() != 0:
         tui.clear()
         tui.draw_centered(tui.h // 2, "Error: Must be run as root", 11)
@@ -813,7 +794,7 @@ def main(stdscr):
         tui.stdscr.getch()
         return
 
-    # ── Main menu: Install / Uninstall / Exit ──
+    # ── Main menu ──
     main_items = [
         ("INSTALL", "Install NexVE", "Set up NexVE hypervisor management platform"),
         ("UNINSTALL", "Uninstall NexVE", "Remove NexVE and all associated files"),
@@ -821,18 +802,17 @@ def main(stdscr):
     ]
     main_menu = Menu(
         tui,
-        "NexVE v2.0 Installer",
+        "NexVE v2.1 Installer",
         main_items,
         description="NexVE Hypervisor Management Platform\n"
                    "Choose an action below.",
     )
     choice = main_menu.run()
 
-    if choice is None or choice == 2:  # Exit
+    if choice is None or choice == 2:
         return
 
-    if choice == 1:  # Uninstall
-        # Confirm uninstall
+    if choice == 1:
         confirm_items = [
             ("UNINSTALL", "UNINSTALL", "Remove all NexVE files and services"),
         ]
@@ -852,7 +832,6 @@ def main(stdscr):
         progress = ProgressScreen(tui, "Uninstalling NexVE...", steps)
         progress.run()
 
-        # Done message
         tui.clear()
         tui.draw_title_bar("Uninstall Complete")
         tui.draw_centered(tui.h // 2, "NexVE has been uninstalled.", 10)
@@ -888,8 +867,6 @@ def main(stdscr):
                     "All components are recommended for a full installation.",
         multi_select=True,
     )
-
-    # Pre-select all components
     selector.checked = set(range(len(components)))
     result = selector.run()
 
@@ -899,12 +876,11 @@ def main(stdscr):
     selected_tags = [components[i][0] for i in result]
 
     # Install location
-    current_dir = INSTALL_DIR
     location_input = TextInput(
         tui,
         "Installation Directory",
         "Enter the installation path for NexVE:",
-        default=current_dir
+        default=INSTALL_DIR
     )
     install_dir = location_input.run()
     if install_dir:
@@ -917,10 +893,15 @@ def main(stdscr):
         "Confirm Installation",
         confirm_items if confirm_items else [("ALL", "ALL", "Install everything")],
         description=f"Directory: {INSTALL_DIR}\n"
+                   f"Components: {len(selected_tags)} selected\n"
                    "Press Enter to begin installation.",
     )
     if confirm.run() is None:
         return
+
+    # Clear log
+    with open(LOG, "w") as f:
+        f.write("")
 
     # Run installation
     steps = get_install_steps(selected_tags)
