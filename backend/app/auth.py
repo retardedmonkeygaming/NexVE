@@ -2,7 +2,10 @@ from datetime import datetime, timedelta
 from fastapi import Request, HTTPException
 from fastapi.responses import RedirectResponse
 import secrets
-import pyotp
+try:
+    import pyotp
+except ImportError:
+    pyotp = None
 from .database import SessionLocal
 from .models.user import User, Session as UserSession
 

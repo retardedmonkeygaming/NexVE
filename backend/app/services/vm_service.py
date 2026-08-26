@@ -1,5 +1,4 @@
 import subprocess
-import libvirt
 import os
 import json
 import uuid
@@ -9,12 +8,28 @@ from datetime import datetime
 from ..models.vm import VM
 
 
+# Lazy import: only load libvirt when first needed
+try:
+    import libvirt
+    HAS_LIBVIRT = True
+except ImportError:
+    libvirt = None
+    HAS_LIBVIRT = False
+
+
+def _get_libvirt_conn():
+    """Get a libvirt connection, returning None if unavailable."""
+    if not HAS_LIBVIRT:
+        return None
+    try:
+        return libvirt.open("qemu:///system")
+    except Exception:
+        return None
+
+
 class VMService:
     def __init__(self):
-        try:
-            self.conn = libvirt.open("qemu:///system")
-        except libvirt.libvirtError:
-            self.conn = None
+        self.conn = _get_libvirt_conn()
 
     def get_all_vms(self, db) -> List[dict]:
         db_vms = db.query(VM).all()

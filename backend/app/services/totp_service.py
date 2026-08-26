@@ -1,7 +1,10 @@
 import pyotp
-import qrcode
-import io
-import base64
+try:
+    import qrcode
+    import io
+    import base64
+except ImportError:
+    qrcode = None
 
 
 class TOTPService:

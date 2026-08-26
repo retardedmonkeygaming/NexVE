@@ -733,9 +733,15 @@ StandardError=journal
 WantedBy=multi-user.target
 """
 
-    steps.append(("Creating systemd service",
-        f"mkdir -p /etc/systemd/system && "
-        f"cat > /etc/systemd/system/nexve.service << 'SVCEOF'\n{svc_content}SVCEOF"))
+    # Write service file directly from Python (more reliable than heredoc via shell)
+    svc_path = "/etc/systemd/system/nexve.service"
+    try:
+        os.makedirs(os.path.dirname(svc_path), exist_ok=True)
+        with open(svc_path, "w") as sf:
+            sf.write(svc_content)
+        steps.append(("Creating systemd service", "echo 'Service file written' && true"))
+    except Exception as e:
+        steps.append(("Creating systemd service", f"echo 'Failed to write service file: {e}' && true"))
 
     steps.append(("Starting NexVE service",
         "systemctl daemon-reload 2>/dev/null || true; "

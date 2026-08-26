@@ -5,9 +5,12 @@ from ..models.user import User
 from ..auth import get_current_user, generate_totp_secret, get_totp_uri, verify_totp, create_session
 from ..security import generate_csrf_token
 import pyotp
-import qrcode
-import io
-import base64
+try:
+    import qrcode
+    import io
+    import base64
+except ImportError:
+    qrcode = None
 
 router = APIRouter()
 

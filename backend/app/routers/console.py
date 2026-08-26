@@ -3,7 +3,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from ..services.console_service import console_svc
 from ..auth import get_current_user
 import asyncio
-import websockets
+try:
+    import websockets
+except ImportError:
+    websockets = None
 import subprocess
 
 router = APIRouter()
