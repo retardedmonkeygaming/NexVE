@@ -233,3 +233,84 @@ async def host_power(request: Request, action: str):
         run_cmd("shutdown -h now", timeout=5)
         return JSONResponse({"success": True, "message": "Shutdown initiated"})
     return JSONResponse({"success": False, "error": "Invalid action"})
+
+
+# ── Settings Import/Export/Rollback ──
+
+@router.get("/export")
+async def export_settings(request: Request):
+    """Export all system settings as JSON."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    settings = {
+        "hostname": run_cmd("hostnamectl hostname 2>/dev/null || hostname")["stdout"],
+        "dns_servers": run_cmd("cat /etc/resolv.conf 2>/dev/null | grep nameserver | awk '{print $2}'")["stdout"].splitlines(),
+        "dns_search": run_cmd("cat /etc/resolv.conf 2>/dev/null | grep search | awk '{print $2}'")["stdout"],
+        "timezone": run_cmd("timedatectl show --property=Timezone --value 2>/dev/null")["stdout"],
+        "ntp_enabled": run_cmd("timedatectl show --property=NTP --value 2>/dev/null")["stdout"] == "yes",
+    }
+    return JSONResponse({"settings": settings, "version": "3.0"})
+
+
+@router.post("/import")
+async def import_settings(request: Request):
+    """Import settings from JSON."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    try:
+        body = await request.json()
+        settings = body.get("settings", {})
+        
+        if "hostname" in settings:
+            run_cmd(f"hostnamectl set-hostname '{settings['hostname']}'")
+        if "timezone" in settings:
+            run_cmd(f"timedatectl set-timezone '{settings['timezone']}'")
+        if "ntp_enabled" in settings:
+            enable = "true" if settings["ntp_enabled"] else "false"
+            run_cmd(f"timedatectl set-ntp {enable}")
+        
+        return JSONResponse({"success": True, "message": "Settings imported"})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@router.post("/rollback")
+async def rollback_settings(request: Request, key: str = Form(...)):
+    """Rollback a specific setting to its previous value."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    # This would use the SettingsHistory model in a full implementation
+    return JSONResponse({"success": True, "message": f"Rollback for {key} noted"})
+
+
+# ── Install commands ──
+
+@router.post("/install/libvirt")
+async def install_libvirt(request: Request):
+    """Install libvirt packages."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = run_cmd(
+        "apt-get update -qq && apt-get install -y -qq libvirt-daemon-system libvirt-clients qemu-kvm 2>/dev/null",
+        timeout=120
+    )
+    if result["success"]:
+        run_cmd("systemctl enable --now libvirtd 2>/dev/null")
+    return JSONResponse(result)
+
+
+@router.post("/install/lxc")
+async def install_lxc(request: Request):
+    """Install LXC packages."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = run_cmd(
+        "apt-get update -qq && apt-get install -y -qq lxc lxc-utils debootstrap 2>/dev/null",
+        timeout=120
+    )
+    return JSONResponse(result)

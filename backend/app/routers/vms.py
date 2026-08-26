@@ -547,3 +547,34 @@ async def vm_metrics(request: Request, vm_id: int):
         return JSONResponse(content=metrics)
     finally:
         db.close()
+
+
+# ── VM Status (for libvirt check) ──
+
+@router.get("/status")
+async def vm_status(request: Request):
+    """Check VM management availability (libvirt connection)."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    
+    import shutil
+    has_libvirt = shutil.which('virsh') is not None
+    
+    libvirt_connected = False
+    if has_libvirt:
+        try:
+            import libvirt
+            conn = libvirt.open('qemu:///system')
+            if conn:
+                libvirt_connected = True
+                conn.close()
+        except Exception:
+            pass
+    
+    return JSONResponse({
+        "available": has_libvirt and libvirt_connected,
+        "libvirt_installed": has_libvirt,
+        "libvirt_connected": libvirt_connected,
+        "message": "" if libvirt_connected else "libvirt not available. Install: apt install libvirt-daemon-system libvirt-clients",
+    })

@@ -1,100 +1,178 @@
+"""
+NexVE Console Service
+Manages VM console access via noVNC, SPICE, serial, and xterm.js.
+"""
 import subprocess
 import os
-import signal
 import json
-from typing import Optional
+import signal
+from typing import Optional, Dict
 
 
 class ConsoleService:
-    """Manages VNC/noVNC console sessions for VMs and containers."""
-
-    # noVNC path on Debian
-    NOVNC_PATH = "/usr/share/novnc"
-    WEBSOCKIFY = "/usr/bin/websockify"
+    """Manages VM console access."""
 
     def __init__(self):
-        self.processes = {}  # port -> subprocess
+        self.websockify_procs = {}
 
-    def start_novnc(self, vm_id: int, vnc_port: int) -> dict:
-        """Start a websockify proxy for noVNC. Returns the websocket URL."""
-        ws_port = 6080 + vm_id  # unique WS port per VM
-        # Kill existing if running
-        if ws_port in self.processes:
-            self.stop_novnc(vm_id)
-
+    def get_vnc_info(self, vm_name: str) -> dict:
+        """Get VNC connection info for a VM."""
         try:
-            proc = subprocess.Popen(
-                [
-                    self.WEBSOCKIFY,
-                    "--web", self.NOVNC_PATH,
-                    str(ws_port),
-                    f"localhost:{vnc_port}",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+            r = subprocess.run(
+                f"virsh vncdisplay {vm_name} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=5
             )
-            self.processes[ws_port] = proc
+            if r.returncode == 0 and r.stdout.strip():
+                display = r.stdout.strip()
+                # Parse display number (e.g., :0 -> port 5900)
+                display_num = int(display.lstrip(":")) if display.lstrip(":").isdigit() else 0
+                port = 5900 + display_num
+
+                return {
+                    "available": True,
+                    "display": display,
+                    "port": port,
+                    "host": "0.0.0.0",
+                    "websocket_port": port + 10000,  # websockify port
+                }
+            return {"available": False, "error": "VNC not enabled for this VM"}
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+
+    def start_websockify(self, vm_name: str, vnc_port: int = 5900,
+                        ws_port: int = 6080) -> dict:
+        """Start websockify proxy for VNC."""
+        try:
+            # Check if websockify is available
+            check = subprocess.run(
+                "which websockify 2>/dev/null || echo ''",
+                shell=True, capture_output=True, text=True
+            )
+            if not check.stdout.strip():
+                return {"success": False, "error": "websockify not installed"}
+
+            # Kill existing process for this VM
+            if vm_name in self.websockify_procs:
+                try:
+                    os.kill(self.websockify_procs[vm_name], signal.SIGTERM)
+                except (ProcessLookupError, OSError):
+                    pass
+
+            # Start websockify in background
+            proc = subprocess.Popen(
+                f"websockify --web /usr/share/novnc {ws_port} 127.0.0.1:{vnc_port}",
+                shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self.websockify_procs[vm_name] = proc.pid
+
             return {
                 "success": True,
+                "pid": proc.pid,
                 "ws_port": ws_port,
-                "url": f"ws://0.0.0.0:{ws_port}/websockify",
-                "novnc_url": f"/static/novnc/vnc.html?autoconnect=true&resize=scale&path=ws://0.0.0.0:{ws_port}/websockify",
+                "url": f"/websockify/?host=127.0.0.1&port={ws_port}",
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def stop_novnc(self, vm_id: int) -> dict:
-        ws_port = 6080 + vm_id
-        if ws_port in self.processes:
-            try:
-                self.processes[ws_port].terminate()
-                self.processes[ws_port].wait(timeout=5)
-            except Exception:
-                try:
-                    self.processes[ws_port].kill()
-                except Exception:
-                    pass
-            del self.processes[ws_port]
-        return {"success": True}
-
-    def get_vnc_port(self, vm_id: int) -> int:
-        """Get VNC display port for a VM via libvirt."""
+    def stop_websockify(self, vm_name: str) -> dict:
+        """Stop websockify proxy for a VM."""
         try:
-            import libvirt
-            conn = libvirt.open("qemu:///system")
-            if conn:
-                dom = conn.lookupByID(vm_id)
-                if dom:
-                    xml = dom.XMLDesc(0)
-                    # Parse VNC port from XML
-                    import re
-                    match = re.search(r'port=\'(\d+)\'', xml)
-                    if match:
-                        return int(match.group(1))
-                    # Try graphics info
-                    if dom.isActive():
-                        info = dom.graphicsStats(0)
-                        return info.get("port", 5900 + vm_id)
-                conn.close()
+            if vm_name in self.websockify_procs:
+                pid = self.websockify_procs[vm_name]
+                os.kill(pid, signal.SIGTERM)
+                del self.websockify_procs[vm_name]
+            return {"success": True}
         except Exception:
-            pass
-        return 5900 + vm_id  # default VNC port
+            return {"success": True}
 
-    def console_for_vm(self, vm_id: int) -> dict:
-        """Start noVNC session and return connection info."""
-        vnc_port = self.get_vnc_port(vm_id)
-        return self.start_novnc(vm_id, vnc_port)
+    def get_spice_info(self, vm_name: str) -> dict:
+        """Get SPICE connection info for a VM."""
+        try:
+            r = subprocess.run(
+                f"virsh domdisplay {vm_name} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            if r.returncode == 0:
+                output = r.stdout.strip()
+                if "spice" in output.lower():
+                    return {
+                        "available": True,
+                        "uri": output,
+                        "port": 5900,  # Default SPICE port
+                    }
+            return {"available": False, "error": "SPICE not enabled for this VM"}
+        except Exception as e:
+            return {"available": False, "error": str(e)}
 
-    def console_for_container(self, ct_id: int) -> dict:
-        """For LXC containers, use attach with a terminal instead.
-        Returns info for a simple web terminal via xterm.js."""
-        # Containers don't use VNC — they use attach. We return info
-        # for the frontend to open a WebSocket shell session.
-        return {
-            "success": True,
-            "type": "shell",
-            "url": f"/api/console/shell/{ct_id}",
-        }
+    def get_serial_info(self, vm_name: str) -> dict:
+        """Get serial console info for a VM."""
+        try:
+            # Check if serial console is configured
+            r = subprocess.run(
+                f"virsh dominfo {vm_name} 2>/dev/null | grep -i serial",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            has_serial = "pty" in r.stdout.lower() or "serial" in r.stdout.lower()
 
+            if has_serial:
+                return {
+                    "available": True,
+                    "type": "pty",
+                    "command": f"virsh console {vm_name}",
+                }
+            return {"available": False, "error": "Serial console not configured"}
+        except Exception as e:
+            return {"available": False, "error": str(e)}
 
-console_svc = ConsoleService()
+    def get_container_console(self, ct_id: int) -> dict:
+        """Get container console info."""
+        try:
+            # Check if pct is available
+            check = subprocess.run(
+                "which pct 2>/dev/null || echo ''",
+                shell=True, capture_output=True, text=True
+            )
+            if check.stdout.strip():
+                return {
+                    "available": True,
+                    "type": "lxc",
+                    "command": f"pct enter {ct_id}",
+                    "exec_command": f"pct exec {ct_id} -- /bin/bash",
+                }
+
+            # Fallback: check if lxc-attach is available
+            check2 = subprocess.run(
+                "which lxc-attach 2>/dev/null || echo ''",
+                shell=True, capture_output=True, text=True
+            )
+            if check2.stdout.strip():
+                return {
+                    "available": True,
+                    "type": "lxc",
+                    "command": f"lxc-attach -n {ct_id}",
+                }
+
+            return {"available": False, "error": "No container runtime found"}
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+
+    def get_console_types(self, vm_name: str) -> list:
+        """Get available console types for a VM."""
+        types = []
+
+        vnc = self.get_vnc_info(vm_name)
+        if vnc.get("available"):
+            types.append({"type": "vnc", "label": "noVNC", "available": True})
+
+        spice = self.get_spice_info(vm_name)
+        if spice.get("available"):
+            types.append({"type": "spice", "label": "SPICE", "available": True})
+
+        serial = self.get_serial_info(vm_name)
+        if serial.get("available"):
+            types.append({"type": "serial", "label": "Serial Console", "available": True})
+
+        # xterm.js is always available via WebSocket
+        types.append({"type": "xterm", "label": "xterm.js", "available": True})
+
+        return types

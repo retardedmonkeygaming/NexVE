@@ -28,7 +28,7 @@ def create_session(user_id: int) -> str:
         db.close()
 
 
-def get_current_user(request: Request) -> dict | None:
+def get_current_user(request: Request):
     token = request.cookies.get("nexve_session")
     if not token:
         return None

@@ -1,0 +1,132 @@
+"""
+NexVE Ceph Router
+API endpoints for Ceph distributed storage management.
+"""
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import RedirectResponse, JSONResponse
+from ..services.ceph_service import CephService
+from ..auth import get_current_user
+
+router = APIRouter()
+ceph_svc = CephService()
+
+
+def auth_check(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return None, RedirectResponse(url="/login", status_code=302)
+    return user, None
+
+
+@router.get("/status")
+async def ceph_status(request: Request):
+    """Get Ceph cluster status."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    status = ceph_svc.get_ceph_status()
+    return JSONResponse(status)
+
+
+@router.get("/osds")
+async def list_osds(request: Request):
+    """List OSDs."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    osds = ceph_svc.get_osd_list()
+    return JSONResponse({"osds": osds})
+
+
+@router.get("/pools")
+async def list_pools(request: Request):
+    """List RBD pools."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    pools = ceph_svc.list_pools()
+    return JSONResponse({"pools": pools})
+
+
+@router.post("/pools")
+async def create_pool(
+    request: Request,
+    name: str = Form(...),
+    pg_num: int = Form(128),
+):
+    """Create an RBD pool."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = ceph_svc.create_pool(name, pg_num)
+    return JSONResponse(result)
+
+
+@router.delete("/pools/{name}")
+async def delete_pool(name: str, request: Request):
+    """Delete an RBD pool."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = ceph_svc.delete_pool(name)
+    return JSONResponse(result)
+
+
+@router.get("/images")
+async def list_images(request: Request, pool: str = "rbd"):
+    """List RBD images."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    images = ceph_svc.list_images(pool)
+    return JSONResponse({"images": images})
+
+
+@router.post("/images")
+async def create_image(
+    request: Request,
+    pool: str = Form("rbd"),
+    name: str = Form(...),
+    size_gb: int = Form(10),
+):
+    """Create an RBD image."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = ceph_svc.create_image(pool, name, size_gb)
+    return JSONResponse(result)
+
+
+@router.delete("/images/{pool}/{name}")
+async def delete_image(pool: str, name: str, request: Request):
+    """Delete an RBD image."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = ceph_svc.delete_image(pool, name)
+    return JSONResponse(result)
+
+
+@router.post("/images/resize")
+async def resize_image(
+    request: Request,
+    pool: str = Form("rbd"),
+    name: str = Form(...),
+    size_gb: int = Form(...),
+):
+    """Resize an RBD image."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = ceph_svc.resize_image(pool, name, size_gb)
+    return JSONResponse(result)
+
+
+@router.get("/cephfs")
+async def list_cephfs(request: Request):
+    """List CephFS filesystems."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    fs = ceph_svc.list_cephfs()
+    return JSONResponse({"filesystems": fs})

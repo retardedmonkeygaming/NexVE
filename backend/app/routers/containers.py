@@ -279,3 +279,24 @@ async def backup_container(request: Request, ct_id: int):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(content=container_service.backup_container(ct_id))
+
+
+@router.get("/status")
+async def container_status(request: Request):
+    """Check container management availability (LXC tools)."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    import shutil
+    has_pct = shutil.which('pct') is not None
+    has_lxc = shutil.which('lxc-ls') is not None
+    has_lxc_attach = shutil.which('lxc-attach') is not None
+    
+    return JSONResponse({
+        "available": has_pct or has_lxc,
+        "pct": has_pct,
+        "lxc": has_lxc,
+        "lxc_attach": has_lxc_attach,
+        "message": "" if (has_pct or has_lxc) else "LXC tools not installed. Install: apt install lxc-utils",
+    })

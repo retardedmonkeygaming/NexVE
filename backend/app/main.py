@@ -20,6 +20,13 @@ from .models.feature_models import (
     SecurityGroupAssignment, NetworkFirewallAlias, FirewallAliasEntry,
     NetworkRateLimit,
 )
+from .models.enhanced_models import (
+    MigrationJob, HAGroup, HAGuest, ClusterNode, ClusterConfig,
+    SDNZone, SDNVnet, CephConfig, SSLCertificate, ACMEAccount,
+    BackupRecord, BackupRemote, NotificationTarget, NotificationRule,
+    SystemSetting, SettingsHistory, UserSSHKey, UserQuota, UserSession,
+    StorageTier, FirewallStats, VMFirewallRule, FirewallMacro,
+)
 from .security import generate_csrf_token
 
 # Import all routers
@@ -29,11 +36,14 @@ from .routers import (
     monitor, firewall, logs, activity, api_tokens, templates_route,
     tags, resource_pools, ldap,
 )
+from .routers import (
+    migration, ha, cluster, sdn, ceph, acme, notifications,
+)
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="NexVE", version="1.0.0")
+app = FastAPI(title="NexVE", version="3.0.0")
 
 # Mount static files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "../../static")
@@ -74,6 +84,14 @@ app.include_router(shell.router, prefix="/api/shell", tags=["Shell"])
 app.include_router(tags.router, prefix="/api/tags", tags=["Tags"])
 app.include_router(resource_pools.router, prefix="/api/resource-pools", tags=["Resource Pools"])
 app.include_router(ldap.router, prefix="/api/ldap", tags=["LDAP"])
+# New v3.0 routers
+app.include_router(migration.router, prefix="/api/migration", tags=["Migration"])
+app.include_router(ha.router, prefix="/api/ha", tags=["High Availability"])
+app.include_router(cluster.router, prefix="/api/cluster", tags=["Cluster"])
+app.include_router(sdn.router, prefix="/api/sdn", tags=["SDN"])
+app.include_router(ceph.router, prefix="/api/ceph", tags=["Ceph"])
+app.include_router(acme.router, prefix="/api/acme", tags=["ACME"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 
 
 # ─── Start background monitor collector ───
