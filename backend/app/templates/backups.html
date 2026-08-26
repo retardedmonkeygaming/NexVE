@@ -6,37 +6,154 @@
 <div class="nx-page-header">
     <div>
         <div class="nx-page-title">Backups</div>
-        <div class="nx-page-subtitle">Backup schedules and history</div>
+        <div class="nx-page-subtitle">Scheduled and on-demand backups</div>
     </div>
     <div class="nx-flex nx-gap-2">
-        <button class="nx-btn nx-btn-secondary" onclick="showBackupNow()">Backup Now</button>
+        <button class="nx-btn nx-btn-secondary" onclick="backupNow()">Backup Now</button>
         <button class="nx-btn nx-btn-primary" onclick="showScheduleModal()">+ Add Schedule</button>
     </div>
 </div>
 
-<div class="nx-tabs">
+<!-- Tabs -->
+<div class="nx-flex nx-gap-0 nx-mb-4">
     <button class="nx-tab active" onclick="showTab(this,'schedules')">Schedules</button>
     <button class="nx-tab" onclick="showTab(this,'history')">History</button>
 </div>
 
+<!-- Schedules Tab -->
 <div class="nx-tab-content active" id="tab-schedules">
     <div class="nx-card">
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Target</th><th>Type</th><th>Schedule</th><th>Retention</th><th>Last Run</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="schedule-list"><tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No backup schedules configured</td></tr></tbody>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Target</th>
+                        <th>Frequency</th>
+                        <th>Retention</th>
+                        <th>Last Run</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="schedule-list">
+                    <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:48px;">Loading schedules...</td></tr>
+                </tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- History Tab -->
 <div class="nx-tab-content" id="tab-history">
     <div class="nx-card">
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Date</th><th>Target</th><th>Type</th><th>Size</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="history-list"><tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">No backup history</td></tr></tbody>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Type</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Size</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="history-list">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:48px;">Loading history...</td></tr>
+                </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Schedule Modal -->
+<div class="nx-modal" id="schedule-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideScheduleModal()"></div>
+    <div class="nx-modal-content" style="max-width:480px;">
+        <div class="nx-modal-header">
+            <h3>Add Backup Schedule</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideScheduleModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="schedule-form" onsubmit="submitSchedule(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group">
+                        <label class="nx-label">Schedule Name</label>
+                        <input type="text" name="name" class="nx-input" placeholder="Daily VM Backup" required>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Target Type</label>
+                            <select name="target_type" class="nx-select">
+                                <option value="vm">Virtual Machine</option>
+                                <option value="container">Container</option>
+                            </select>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Target ID</label>
+                            <input type="number" name="target_id" class="nx-input" placeholder="100" required>
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Frequency</label>
+                            <select name="frequency" class="nx-select">
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="hourly">Hourly</option>
+                            </select>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Retention (keep last N)</label>
+                            <input type="number" name="retention" class="nx-input" value="7" min="1" max="365">
+                        </div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Time (HH:MM)</label>
+                        <input type="time" name="time" class="nx-input" value="02:00">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideScheduleModal()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('schedule-form').requestSubmit()">Create Schedule</button>
+        </div>
+    </div>
+</div>
+
+<!-- Backup Now Modal -->
+<div class="nx-modal" id="backup-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideBackupModal()"></div>
+    <div class="nx-modal-content" style="max-width:400px;">
+        <div class="nx-modal-header">
+            <h3>Backup Now</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideBackupModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="backup-form" onsubmit="submitBackup(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Type</label>
+                            <select name="target_type" class="nx-select">
+                                <option value="vm">Virtual Machine</option>
+                                <option value="container">Container</option>
+                            </select>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">ID</label>
+                            <input type="number" name="target_id" class="nx-input" placeholder="100" required>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideBackupModal()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('backup-form').requestSubmit()">Start Backup</button>
         </div>
     </div>
 </div>
@@ -44,11 +161,128 @@
 
 {% block scripts %}
 <script>
+// ── Tab Switching ──
 function showTab(btn, name) {
     document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
 }
+
+// ── Load Schedules ──
+async function loadSchedules() {
+    try {
+        const r = await fetch('/api/backups/schedules');
+        const data = await r.json();
+        const list = document.getElementById('schedule-list');
+        const schedules = data.schedules || [];
+        if (schedules.length === 0) {
+            list.innerHTML = '<tr><td colspan="7" class="nx-text-center" style="padding:48px;"><span class="nx-text-muted">No backup schedules configured.</span> <a href="#" onclick="showScheduleModal();return false;">Create one</a></td></tr>';
+        } else {
+            list.innerHTML = schedules.map(s => `
+                <tr>
+                    <td style="font-weight:500;">${s.name}</td>
+                    <td><span class="nx-badge nx-badge-info">${s.target_type}</span> ${s.target_id}</td>
+                    <td>${s.frequency || 'daily'}</td>
+                    <td>Keep last ${s.retention || 7}</td>
+                    <td style="color:var(--text-muted);font-size:var(--text-xs);">${s.last_run || 'Never'}</td>
+                    <td><span class="nx-badge ${s.enabled ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${s.enabled ? 'Active' : 'Paused'}</span></td>
+                    <td>
+                        <div class="nx-flex nx-gap-1">
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="toggleSchedule(${s.id})">${s.enabled ? 'Pause' : 'Enable'}</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteSchedule(${s.id})">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) { console.error('loadSchedules:', e); }
+}
+
+// ── Load History ──
+async function loadHistory() {
+    try {
+        const r = await fetch('/api/backups/list');
+        const data = await r.json();
+        const list = document.getElementById('history-list');
+        const backups = data.backups || [];
+        if (backups.length === 0) {
+            list.innerHTML = '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:48px;">No backup history</td></tr>';
+        } else {
+            list.innerHTML = backups.map(b => `
+                <tr>
+                    <td style="font-size:var(--text-xs);">${b.created_at || '-'}</td>
+                    <td><span class="nx-badge ${b.type === 'vm' ? 'nx-badge-accent' : 'nx-badge-info'}">${b.type || '-'}</span></td>
+                    <td>${b.target_name || b.target_id || '-'}</td>
+                    <td><span class="nx-badge ${b.status === 'completed' ? 'nx-badge-success' : b.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${b.status}</span></td>
+                    <td style="color:var(--text-muted);">${b.size || '-'}</td>
+                    <td style="color:var(--text-muted);font-size:var(--text-xs);">${b.duration || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) { console.error('loadHistory:', e); }
+}
+
+// ── Schedule Actions ──
+async function toggleSchedule(id) {
+    try {
+        await fetch(`/api/backups/schedules/${id}/toggle`, {method: 'POST'});
+        loadSchedules();
+    } catch (e) { showToast('Error', 'error'); }
+}
+
+async function deleteSchedule(id) {
+    if (!confirm('Delete this backup schedule?')) return;
+    try {
+        await fetch(`/api/backups/schedules/${id}/delete`, {method: 'POST'});
+        showToast('Schedule deleted', 'success');
+        loadSchedules();
+    } catch (e) { showToast('Error', 'error'); }
+}
+
+// ── Modals ──
+function showScheduleModal() { document.getElementById('schedule-modal').style.display = 'flex'; }
+function hideScheduleModal() { document.getElementById('schedule-modal').style.display = 'none'; }
+function backupNow() { document.getElementById('backup-modal').style.display = 'flex'; }
+function hideBackupModal() { document.getElementById('backup-modal').style.display = 'none'; }
+
+async function submitSchedule(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/backups/schedules/create', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast('Schedule created', 'success');
+            hideScheduleModal();
+            loadSchedules();
+        } else {
+            showToast(`Error: ${data.error || 'failed'}`, 'error');
+        }
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function submitBackup(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const type = fd.get('target_type');
+    const id = fd.get('target_id');
+    try {
+        const endpoint = type === 'vm' ? `/api/backups/vm/${id}/backup` : `/api/backups/container/${id}/backup`;
+        const r = await fetch(endpoint, {method: 'POST'});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast('Backup started!', 'success');
+            hideBackupModal();
+            setTimeout(loadHistory, 2000);
+        } else {
+            showToast(`Backup failed: ${data.error || 'unknown'}`, 'error');
+        }
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── Init ──
+loadSchedules();
+loadHistory();
 </script>
 {% endblock %}

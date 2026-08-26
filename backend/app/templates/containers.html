@@ -8,9 +8,10 @@
         <div class="nx-page-title">Containers</div>
         <div class="nx-page-subtitle">LXC system containers</div>
     </div>
-    <a href="/containers/create" class="nx-btn nx-btn-primary">+ Create CT</a>
+    <button class="nx-btn nx-btn-primary" onclick="showCreateModal()">+ Create CT</button>
 </div>
 
+<!-- Container list -->
 <div class="nx-card">
     <div class="nx-card-body" style="padding:0;">
         <table class="nx-table">
@@ -22,16 +23,18 @@
                     <th>CPU</th>
                     <th>Memory</th>
                     <th>Disk</th>
+                    <th>Template</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="ct-list">
-                <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:48px;">Loading...</td></tr>
+                <tr><td colspan="8" class="nx-text-center nx-text-muted" style="padding:48px;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
 </div>
 
+<!-- Template catalog -->
 <div class="nx-card nx-mt-6">
     <div class="nx-card-header">
         <span class="nx-card-title">Available Templates</span>
@@ -41,23 +44,106 @@
             <thead>
                 <tr>
                     <th>Template</th>
-                    <th>OS</th>
-                    <th>Version</th>
-                    <th>Size</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="template-list">
-                <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading templates...</td></tr>
+                <tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">Loading templates...</td></tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Create Container Modal -->
+<div class="nx-modal" id="create-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideCreateModal()"></div>
+    <div class="nx-modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto;">
+        <div class="nx-modal-header">
+            <h3>Create Container</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideCreateModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="ct-form" onsubmit="submitCT(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Container ID</label>
+                            <input type="number" name="ct_id" class="nx-input" value="1000" min="100" max="999999999" required>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Name</label>
+                            <input type="text" name="name" class="nx-input" placeholder="my-container" required>
+                        </div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Hostname</label>
+                        <input type="text" name="hostname" class="nx-input" placeholder="Same as name if empty">
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">CPU Cores</label>
+                            <input type="number" name="vcpu" class="nx-input" value="1" min="1" max="128">
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Memory (MB)</label>
+                            <input type="number" name="memory_mb" class="nx-input" value="512" min="64" max="1048576">
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Swap (MB)</label>
+                            <input type="number" name="swap_mb" class="nx-input" value="512" min="0">
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Disk (GB)</label>
+                            <input type="number" name="disk_gb" class="nx-input" value="8" min="1" max="1024">
+                        </div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Template</label>
+                        <select name="template" class="nx-select" id="ct-template-select">
+                            <option value="debian-12-standard_12.7-1_amd64.tar.zst">Debian 12</option>
+                            <option value="ubuntu-24.04-standard_24.04-2_amd64.tar.zst">Ubuntu 24.04</option>
+                            <option value="alpine-3.19-default_3.19-1_amd64.tar.zst">Alpine 3.19</option>
+                            <option value="fedora-40-default_40-2_amd64.tar.zst">Fedora 40</option>
+                            <option value="centos-9-default_9.4-1_amd64.tar.zst">CentOS 9</option>
+                        </select>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">IP Address (leave empty for DHCP)</label>
+                        <input type="text" name="ip_address" class="nx-input" placeholder="192.168.1.100/24">
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" name="unprivileged" checked> Unprivileged
+                            </label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" name="nesting"> Nesting
+                            </label>
+                        </div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Notes</label>
+                        <textarea name="notes" class="nx-input" rows="2" placeholder="Optional description..."></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideCreateModal()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('ct-form').requestSubmit()">Create Container</button>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── Load Containers ──
 async function loadContainers() {
     try {
         const r = await fetch('/api/containers/');
@@ -65,20 +151,22 @@ async function loadContainers() {
         const list = document.getElementById('ct-list');
         const containers = data.containers || [];
         if (containers.length === 0) {
-            list.innerHTML = '<tr><td colspan="7" class="nx-text-center" style="padding:48px;"><span class="nx-text-muted">No containers found.</span> <a href="/containers/create">Create one</a></td></tr>';
+            list.innerHTML = '<tr><td colspan="8" class="nx-text-center" style="padding:48px;"><span class="nx-text-muted">No containers found.</span> <a href="#" onclick="showCreateModal();return false;">Create one</a></td></tr>';
         } else {
             list.innerHTML = containers.map(c => `
                 <tr>
                     <td>${c.id || '-'}</td>
                     <td style="font-weight:500;color:var(--text-primary);">${c.name}</td>
                     <td><span class="nx-badge ${c.status === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${c.status}</span></td>
-                    <td>${c.cores || '-'} cores</td>
-                    <td>${(c.memory || 0) / 1024} GB</td>
-                    <td>${c.disk || '-'} GB</td>
+                    <td>${c.vcpu || '-'} cores</td>
+                    <td>${(c.memory_mb || 0) / 1024} GB</td>
+                    <td>${c.disk_gb || '-'} GB</td>
+                    <td style="color:var(--text-muted);font-size:var(--text-xs);">${c.template || '-'}</td>
                     <td>
                         <div class="nx-flex nx-gap-1">
                             ${c.status === 'running'
-                                ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="actionCT(${c.id},'stop')">Stop</button>`
+                                ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="actionCT(${c.id},'stop')">Stop</button>
+                                   <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="actionCT(${c.id},'restart')">Restart</button>`
                                 : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="actionCT(${c.id},'start')">Start</button>`}
                             <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="actionCT(${c.id},'delete')">Delete</button>
                         </div>
@@ -86,18 +174,94 @@ async function loadContainers() {
                 </tr>
             `).join('');
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('loadContainers:', e); }
 }
 
+// ── Load Templates ──
+async function loadTemplates() {
+    try {
+        const r = await fetch('/api/containers/templates');
+        const data = await r.json();
+        const list = document.getElementById('template-list');
+        const templates = data.templates || [];
+        if (templates.length === 0) {
+            list.innerHTML = '<tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No templates available</td></tr>';
+        } else {
+            list.innerHTML = templates.map(t => `
+                <tr>
+                    <td style="font-weight:500;">${t.name}</td>
+                    <td><span class="nx-badge ${t.status === 'ready' ? 'nx-badge-success' : 'nx-badge-warning'}"><span class="dot"></span>${t.status}</span></td>
+                    <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="selectTemplate('${t.id}')">Use</button></td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) { console.error('loadTemplates:', e); }
+}
+
+function selectTemplate(id) {
+    const sel = document.getElementById('ct-template-select');
+    for (let opt of sel.options) {
+        if (opt.value === id) { sel.value = id; break; }
+    }
+    showCreateModal();
+    window.scrollTo(0, 0);
+}
+
+// ── Container Actions ──
 async function actionCT(id, action) {
-    if (action === 'delete' && !confirm('Delete this container?')) return;
+    if (action === 'delete' && !confirm('Delete this container? This cannot be undone.')) return;
     try {
         const r = await fetch(`/api/containers/${id}/${action}`, {method: 'POST'});
-        if (r.ok) { showToast(`${action} succeeded`, 'success'); setTimeout(loadContainers, 1000); }
-        else { showToast(`${action} failed`, 'error'); }
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast(`${action} succeeded`, 'success');
+            setTimeout(loadContainers, 1500);
+        } else {
+            showToast(`${action} failed: ${data.error || 'unknown error'}`, 'error');
+        }
     } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
 }
 
+// ── Create Container ──
+function showCreateModal() {
+    document.getElementById('create-modal').style.display = 'flex';
+}
+function hideCreateModal() {
+    document.getElementById('create-modal').style.display = 'none';
+}
+
+async function submitCT(e) {
+    e.preventDefault();
+    const form = document.getElementById('ct-form');
+    const fd = new FormData(form);
+    // Convert checkboxes
+    fd.set('unprivileged', form.querySelector('[name="unprivileged"]').checked ? 'true' : 'false');
+    fd.set('nesting', form.querySelector('[name="nesting"]').checked ? 'true' : 'false');
+    if (!fd.get('hostname')) fd.set('hostname', fd.get('name'));
+
+    try {
+        const r = await fetch('/api/containers/create', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            showToast('Container created!', 'success');
+            hideCreateModal();
+            form.reset();
+            setTimeout(loadContainers, 1000);
+        } else {
+            showToast(`Create failed: ${data.error || 'unknown error'}`, 'error');
+        }
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── Container Detail ──
+async function showCTDetail(id) {
+    document.getElementById('create-modal').style.display = 'flex';
+    // Could expand to show container details in the modal
+}
+
+// ── Init ──
 loadContainers();
+loadTemplates();
+setInterval(loadContainers, 10000);
 </script>
 {% endblock %}

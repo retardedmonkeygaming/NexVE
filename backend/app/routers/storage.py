@@ -461,6 +461,18 @@ async def migrate_disk(
     return JSONResponse(result)
 
 
+# ── ISOs ──
+
+@router.get("/isos")
+async def list_isos(request: Request):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    from ..services.iso_service import ISOService
+    iso_svc = ISOService()
+    return JSONResponse({"isos": iso_svc.list_local()})
+
+
 # ── Registered storage backends ──
 
 @router.get("/backends")

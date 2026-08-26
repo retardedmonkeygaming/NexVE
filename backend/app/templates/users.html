@@ -58,10 +58,8 @@
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
                 <thead><tr><th>Role</th><th>Description</th><th>Permissions</th></tr></thead>
-                <tbody>
-                    <tr><td style="font-weight:500;">admin</td><td>Full system access</td><td><span class="nx-badge nx-badge-danger">All permissions</span></td></tr>
-                    <tr><td style="font-weight:500;">auditor</td><td>Read-only access to everything</td><td><span class="nx-badge nx-badge-info">Read-only</span></td></tr>
-                    <tr><td style="font-weight:500;">user</td><td>Manage assigned VMs/CTs only</td><td><span class="nx-badge nx-badge-warning">Limited</span></td></tr>
+                <tbody id="role-list">
+                    <tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">Loading roles...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -164,5 +162,60 @@ async function deleteUser(id) {
 }
 
 loadUsers();
+loadGroups();
+loadRoles();
+
+// ── Groups ──
+async function loadGroups() {
+    try {
+        const r = await fetch('/api/users/groups');
+        const data = await r.json();
+        const list = document.getElementById('group-list');
+        const groups = data.groups || [];
+        list.innerHTML = groups.map(g => `
+            <tr>
+                <td style="font-weight:500;">${g.name}</td>
+                <td style="color:var(--text-muted);">${g.description || '-'}</td>
+                <td>-</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteGroup(${g.id})">Delete</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups defined</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function createGroup() {
+    const form = document.getElementById('group-form');
+    const data = new FormData(form);
+    try {
+        const r = await fetch('/api/users/groups/create', {method:'POST', body: data});
+        if (r.ok) { closeModal('group-modal'); loadGroups(); showToast('Group created', 'success'); }
+        else { showToast('Failed to create group', 'error'); }
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function deleteGroup(id) {
+    if (!confirm('Delete this group?')) return;
+    try {
+        await fetch(`/api/users/groups/${id}`, {method:'DELETE'});
+        loadGroups(); showToast('Group deleted', 'success');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Roles ──
+async function loadRoles() {
+    try {
+        const r = await fetch('/api/users/roles');
+        const data = await r.json();
+        const list = document.getElementById('role-list');
+        const roles = data.roles || [];
+        list.innerHTML = roles.map(r => `
+            <tr>
+                <td><span class="nx-badge ${r.name === 'admin' ? 'nx-badge-danger' : r.name === 'auditor' ? 'nx-badge-info' : 'nx-badge-neutral'}">${r.name}</span></td>
+                <td style="color:var(--text-muted);">${r.description || '-'}</td>
+                <td style="font-family:monospace;font-size:var(--text-xs);">${r.permissions}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No roles defined</td></tr>';
+    } catch(e) { console.error(e); }
+}
 </script>
 {% endblock %}

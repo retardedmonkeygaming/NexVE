@@ -101,3 +101,22 @@ class TaskLog(Base):
     started_at = Column(DateTime, server_default=func.now())
     ended_at = Column(DateTime, nullable=True)
 
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    permissions = Column(Text, nullable=True)  # JSON list of permissions
+    created_at = Column(DateTime, server_default=func.now())
+

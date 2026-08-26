@@ -1,321 +1,541 @@
 {% extends "base.html" %}
-{% block title %}NexVE — Create Virtual Machine{% endblock %}
-{% block breadcrumb %}Virtual Machines › Create{% endblock %}
+{% block title %}NexVE — Virtual Machines{% endblock %}
+{% block breadcrumb %}Virtual Machines{% endblock %}
 
 {% block content %}
-<div class="nx-wizard">
-    <!-- Steps -->
-    <div class="nx-wizard-steps" id="wizard-steps">
-        <div class="nx-wizard-step active" data-step="1"><div class="nx-wizard-step-num">1</div><div class="nx-wizard-step-label">General</div></div>
-        <div class="nx-wizard-step" data-step="2"><div class="nx-wizard-step-num">2</div><div class="nx-wizard-step-label">OS</div></div>
-        <div class="nx-wizard-step" data-step="3"><div class="nx-wizard-step-num">3</div><div class="nx-wizard-step-label">System</div></div>
-        <div class="nx-wizard-step" data-step="4"><div class="nx-wizard-step-num">4</div><div class="nx-wizard-step-label">Disks</div></div>
-        <div class="nx-wizard-step" data-step="5"><div class="nx-wizard-step-num">5</div><div class="nx-wizard-step-label">Network</div></div>
-        <div class="nx-wizard-step" data-step="6"><div class="nx-wizard-step-num">6</div><div class="nx-wizard-step-label">Confirm</div></div>
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">Virtual Machines</div>
+        <div class="nx-page-subtitle">KVM/QEMU virtual machines</div>
     </div>
+    <div class="nx-flex nx-gap-2">
+        <button class="nx-btn nx-btn-secondary" onclick="showBulkActions()">Bulk Actions</button>
+        <button class="nx-btn nx-btn-primary" onclick="showCreateVM()">+ Create VM</button>
+    </div>
+</div>
 
-    <div class="nx-wizard-body">
-        <!-- Step 1: General -->
-        <div class="wizard-page" id="page-1">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">General Settings</h2>
-            <div class="nx-form-grid">
-                <div class="nx-input-group full">
-                    <label class="nx-label">Name *</label>
-                    <input type="text" name="name" class="nx-input" placeholder="e.g. web-server-01" required>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Node</label>
-                    <select name="node" class="nx-select">
-                        <option value="local">Local</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Template</label>
-                    <select name="template" class="nx-select">
-                        <option value="">None</option>
-                    </select>
-                </div>
-                <div class="nx-input-group full">
-                    <label class="nx-label">Description</label>
-                    <textarea name="description" class="nx-input" rows="2" placeholder="Optional description for this VM"></textarea>
-                </div>
-            </div>
+<!-- VM List -->
+<div class="nx-card">
+    <div class="nx-card-body" style="padding:0;">
+        <table class="nx-table">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>CPU</th>
+                    <th>Memory</th>
+                    <th>Disk</th>
+                    <th>OS</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="vm-list">
+                <tr><td colspan="9" class="nx-text-center nx-text-muted" style="padding:48px;">Loading virtual machines...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- VM Detail Panel (slides in when a VM is selected) -->
+<div class="nx-modal" id="vm-detail-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideDetail()"></div>
+    <div class="nx-modal-content" style="max-width:720px;max-height:90vh;overflow-y:auto;">
+        <div class="nx-modal-header">
+            <h3 id="detail-title">VM Details</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideDetail()">✕</button>
         </div>
-
-        <!-- Step 2: OS -->
-        <div class="wizard-page nx-hidden" id="page-2">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Operating System</h2>
-            <div class="nx-form-grid">
-                <div class="nx-input-group full">
-                    <label class="nx-label">ISO Image</label>
-                    <select name="iso" class="nx-select" id="iso-select">
-                        <option value="">No media</option>
-                    </select>
-                    <span class="nx-hint" id="iso-hint">Upload ISOs at <a href="/templates">ISO Management</a></span>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">OS Type</label>
-                    <select name="os_type" class="nx-select">
-                        <option value="linux">Linux</option>
-                        <option value="windows">Windows</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Guest OS</label>
-                    <select name="guest_os" class="nx-select">
-                        <option value="ubuntu">Ubuntu</option>
-                        <option value="debian">Debian</option>
-                        <option value="centos">CentOS/RHEL</option>
-                        <option value="fedora">Fedora</option>
-                        <option value="arch">Arch Linux</option>
-                        <option value="windows10">Windows 10/11</option>
-                        <option value="windows2022">Windows Server 2022</option>
-                        <option value="other">Other</option>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 3: System -->
-        <div class="wizard-page nx-hidden" id="page-3">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">System Configuration</h2>
-            <div class="nx-form-grid">
-                <div class="nx-input-group">
-                    <label class="nx-label">CPU Cores</label>
-                    <input type="number" name="vcpu" class="nx-input" value="2" min="1" max="128">
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">CPU Type</label>
-                    <select name="cpu_type" class="nx-select">
-                        <option value="host">Host</option>
-                        <option value="qemu64">QEMU64</option>
-                        <option value="kvm64">KVM64</option>
-                        <option value="max">Max</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Memory (MB)</label>
-                    <input type="number" name="memory_mb" class="nx-input" value="2048" min="128">
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Machine Type</label>
-                    <select name="machine_type" class="nx-select">
-                        <option value="q35">q35 (recommended)</option>
-                        <option value="i440fx">i440fx</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">BIOS</label>
-                    <select name="bios" class="nx-select">
-                        <option value="ovmf">UEFI (OVMF)</option>
-                        <option value="seabios">SeaBIOS (Legacy)</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">SCSI Controller</label>
-                    <select name="scsi_controller" class="nx-select">
-                        <option value="virtio-scsi-single">VirtIO SCSI Single</option>
-                        <option value="virtio-scsi">VirtIO SCSI</option>
-                        <option value="lsi53c895a">LSI 53C895A</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Boot Order</label>
-                    <input type="text" name="boot_order" class="nx-input" value="c" placeholder="e.g. c,d,n">
-                    <span class="nx-hint">c=CD-ROM, d=Disk, n=Network</span>
-                </div>
-                <div class="nx-input-group">
-                    <div class="nx-checkbox-group" style="margin-top:24px;">
-                        <input type="checkbox" name="serial_console" class="nx-checkbox" id="serial-check">
-                        <label for="serial-check" class="nx-label" style="margin:0;">Enable Serial Console</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 4: Disks -->
-        <div class="wizard-page nx-hidden" id="page-4">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Disk Configuration</h2>
-            <div class="nx-form-grid">
-                <div class="nx-input-group">
-                    <label class="nx-label">Storage Backend</label>
-                    <select name="storage" class="nx-select">
-                        <option value="local">local (Directory)</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Disk Size (GB)</label>
-                    <input type="number" name="disk_gb" class="nx-input" value="32" min="1">
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Cache Mode</label>
-                    <select name="cache" class="nx-select">
-                        <option value="none">None</option>
-                        <option value="writethrough">Write Through</option>
-                        <option value="writeback">Write Back</option>
-                        <option value="directsync">Direct Sync</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <div class="nx-checkbox-group" style="margin-top:24px;">
-                        <input type="checkbox" name="discard" class="nx-checkbox" id="discard-check">
-                        <label for="discard-check" class="nx-label" style="margin:0;">Enable Discard (TRIM)</label>
-                    </div>
-                    <div class="nx-checkbox-group" style="margin-top:8px;">
-                        <input type="checkbox" name="ssd_emulation" class="nx-checkbox" id="ssd-check">
-                        <label for="ssd-check" class="nx-label" style="margin:0;">SSD Emulation</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 5: Network -->
-        <div class="wizard-page nx-hidden" id="page-5">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Network Configuration</h2>
-            <div class="nx-form-grid">
-                <div class="nx-input-group">
-                    <label class="nx-label">Bridge</label>
-                    <select name="bridge" class="nx-select" id="bridge-select">
-                        <option value="vmbr0">vmbr0</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Model</label>
-                    <select name="nic_model" class="nx-select">
-                        <option value="virtio">VirtIO (paravirtualized)</option>
-                        <option value="e1000">Intel E1000</option>
-                        <option value="rtl8139">Realtek RTL8139</option>
-                    </select>
-                </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">VLAN Tag</label>
-                    <input type="number" name="vlan" class="nx-input" placeholder="None" min="1" max="4094">
-                </div>
-                <div class="nx-input-group">
-                    <div class="nx-checkbox-group" style="margin-top:24px;">
-                        <input type="checkbox" name="firewall" class="nx-checkbox" id="fw-check" checked>
-                        <label for="fw-check" class="nx-label" style="margin:0;">Enable Firewall</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 6: Confirm -->
-        <div class="wizard-page nx-hidden" id="page-6">
-            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Confirm & Create</h2>
-            <div id="vm-summary" style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;"></div>
-            <div id="vm-error" style="margin-top:12px;"></div>
-            <div id="vm-success" style="margin-top:12px;" class="nx-hidden">
-                <div style="background:var(--success-dim);border:1px solid rgba(34,197,94,0.2);color:var(--success);padding:12px 16px;border-radius:var(--radius-lg);font-size:var(--text-sm);">
-                    ✓ Virtual machine created! Redirecting...
-                </div>
-            </div>
+        <div class="nx-modal-body">
+            <div id="detail-content">Loading...</div>
         </div>
     </div>
+</div>
 
-    <div class="nx-wizard-nav">
-        <button class="nx-btn nx-btn-secondary" id="btn-back" onclick="prevStep()" style="visibility:hidden;">← Back</button>
-        <button class="nx-btn nx-btn-primary" id="btn-next" onclick="nextStep()">Next →</button>
+<!-- Create VM Modal (full wizard) -->
+<div class="nx-modal" id="create-vm-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideCreateVM()"></div>
+    <div class="nx-modal-content" style="max-width:640px;max-height:90vh;overflow-y:auto;">
+        <div class="nx-modal-header">
+            <h3>Create Virtual Machine</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideCreateVM()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="vm-create-form" onsubmit="submitCreateVM(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group">
+                        <label class="nx-label">Name *</label>
+                        <input type="text" name="name" class="nx-input" placeholder="e.g. web-server" required>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">CPU Cores</label>
+                            <input type="number" name="vcpu" class="nx-input" value="2" min="1" max="128">
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Memory (MB)</label>
+                            <input type="number" name="memory_mb" class="nx-input" value="2048" min="128">
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Disk (GB)</label>
+                            <input type="number" name="disk_gb" class="nx-input" value="50" min="1">
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">CPU Type</label>
+                            <select name="cpu_type" class="nx-select">
+                                <option value="host">Host</option>
+                                <option value="qemu64">QEMU64</option>
+                                <option value="kvm64">KVM64</option>
+                                <option value="max">Max</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Machine Type</label>
+                            <select name="machine_type" class="nx-select">
+                                <option value="q35">Q35</option>
+                                <option value="i440fx">i440FX</option>
+                            </select>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">BIOS</label>
+                            <select name="bios_type" class="nx-select">
+                                <option value="seabios">SeaBIOS</option>
+                                <option value="ovmf">OVMF (UEFI)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Boot Order</label>
+                            <input type="text" name="boot_order" class="nx-input" value="c" placeholder="c, d, n">
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Disk Interface</label>
+                            <select name="disk_interface" class="nx-select">
+                                <option value="virtio">VirtIO</option>
+                                <option value="scsi">SCSI</option>
+                                <option value="ide">IDE</option>
+                                <option value="sata">SATA</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" name="serial_console"> Serial Console
+                            </label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" name="agent_enabled" checked> QEMU Agent
+                            </label>
+                        </div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" name="balloon"> Memory Ballooning
+                            </label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">OS Type</label>
+                            <select name="os_type" class="nx-select">
+                                <option value="linux">Linux</option>
+                                <option value="windows">Windows</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Notes</label>
+                        <textarea name="notes" class="nx-input" rows="2" placeholder="Optional notes..."></textarea>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideCreateVM()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('vm-create-form').requestSubmit()">Create VM</button>
+        </div>
+    </div>
+</div>
+
+<!-- GPU/USB Passthrough Modal -->
+<div class="nx-modal" id="passthrough-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hidePassthrough()"></div>
+    <div class="nx-modal-content" style="max-width:640px;max-height:90vh;overflow-y:auto;">
+        <div class="nx-modal-header">
+            <h3 id="passthrough-title">Hardware Passthrough</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hidePassthrough()">✕</button>
+        </div>
+        <div class="nx-modal-body" id="passthrough-content">Loading...</div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let currentStep = 1;
-const totalSteps = 6;
+let allVMs = [];
 
-function showStep(n) {
-    document.querySelectorAll('.wizard-page').forEach(p => p.classList.add('nx-hidden'));
-    document.getElementById('page-' + n).classList.remove('nx-hidden');
-    document.querySelectorAll('.nx-wizard-step').forEach(s => {
-        const sn = parseInt(s.dataset.step);
-        s.classList.remove('active', 'done');
-        if (sn === n) s.classList.add('active');
-        if (sn < n) s.classList.add('done');
-    });
-    document.getElementById('btn-back').style.visibility = n === 1 ? 'hidden' : 'visible';
-    document.getElementById('btn-next').textContent = n === totalSteps ? 'Create VM →' : 'Next →';
-    if (n === 6) buildSummary();
-}
-
-function buildSummary() {
-    const g = (n) => document.querySelector(`[name="${n}"]`)?.value || '-';
-    document.getElementById('vm-summary').innerHTML = `
-        <div style="display:grid;grid-template-columns:130px 1fr;gap:6px 16px;font-size:var(--text-sm);">
-            <span class="nx-text-muted">Name</span><span style="font-weight:500;">${g('name')}</span>
-            <span class="nx-text-muted">ISO</span><span>${g('iso') || 'No media'}</span>
-            <span class="nx-text-muted">CPU</span><span>${g('vcpu')} cores (${g('cpu_type')})</span>
-            <span class="nx-text-muted">Memory</span><span>${g('memory_mb')} MB</span>
-            <span class="nx-text-muted">Disk</span><span>${g('disk_gb')} GB (${g('storage')})</span>
-            <span class="nx-text-muted">Network</span><span>${g('bridge')} (${g('nic_model')})</span>
-            <span class="nx-text-muted">BIOS</span><span>${g('bios') === 'ovmf' ? 'UEFI (OVMF)' : 'SeaBIOS'}</span>
-        </div>`;
-}
-
-function nextStep() {
-    if (currentStep === 1 && !document.querySelector('[name="name"]').value) {
-        showToast('VM name is required', 'error'); return;
-    }
-    if (currentStep < totalSteps) { currentStep++; showStep(currentStep); }
-    else { submitVM(); }
-}
-
-function prevStep() { if (currentStep > 1) { currentStep--; showStep(currentStep); } }
-
-async function submitVM() {
-    const btn = document.getElementById('btn-next');
-    btn.disabled = true; btn.textContent = 'Creating...';
-    const formData = new FormData(document.querySelector('.wizard-page:not(.nx-hidden)')?.closest('form') || document.body);
-    // Collect all form data
-    const data = {};
-    document.querySelectorAll('.wizard-page input, .wizard-page select, .wizard-page textarea').forEach(el => {
-        if (el.name) data[el.name] = el.type === 'checkbox' ? el.checked : el.value;
-    });
+// ── Load VMs ──
+async function loadVMs() {
     try {
-        const r = await fetch('/api/vms/create', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: new URLSearchParams(data)
-        });
-        const result = await r.json();
-        if (result.success) {
-            document.getElementById('vm-success').classList.remove('nx-hidden');
-            document.getElementById('wizard-steps').parentElement.querySelector('.nx-wizard-nav').classList.add('nx-hidden');
-            setTimeout(() => window.location.href = '/vms', 1500);
-        } else {
-            document.getElementById('vm-error').innerHTML = `<div style="color:var(--danger);">${result.error || 'Failed to create VM'}</div>`;
-            btn.disabled = false; btn.textContent = 'Create VM →';
-        }
-    } catch (e) {
-        document.getElementById('vm-error').innerHTML = `<div style="color:var(--danger);">Network error</div>`;
-        btn.disabled = false; btn.textContent = 'Create VM →';
+        const r = await fetch('/api/vms/');
+        const data = await r.json();
+        allVMs = data.vms || [];
+        renderVMs();
+    } catch (e) { console.error('loadVMs:', e); }
+}
+
+function renderVMs() {
+    const list = document.getElementById('vm-list');
+    if (allVMs.length === 0) {
+        list.innerHTML = '<tr><td colspan="9" class="nx-text-center" style="padding:48px;"><span class="nx-text-muted">No virtual machines found.</span> <a href="#" onclick="showCreateVM();return false;">Create one</a></td></tr>';
+    } else {
+        list.innerHTML = allVMs.map(vm => `
+            <tr>
+                <td><input type="checkbox" class="vm-select" value="${vm.id}"></td>
+                <td>${vm.id}</td>
+                <td style="font-weight:500;color:var(--text-primary);cursor:pointer;" onclick="showDetail(${vm.id})">${vm.name}</td>
+                <td><span class="nx-badge ${vm.status === 'running' ? 'nx-badge-success' : vm.status === 'paused' ? 'nx-badge-warning' : 'nx-badge-neutral'}"><span class="dot"></span>${vm.status}</span></td>
+                <td>${vm.vcpu || vm.cores || '-'} cores</td>
+                <td>${((vm.memory_mb || vm.memory || 0) / 1024).toFixed(1)} GB</td>
+                <td>${vm.disk_gb || '-'} GB</td>
+                <td style="color:var(--text-muted);font-size:var(--text-xs);">${vm.os_type || vm.os || '-'}</td>
+                <td>
+                    <div class="nx-flex nx-gap-1" style="flex-wrap:nowrap;">
+                        ${vm.status === 'running'
+                            ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${vm.id},'stop')" title="Stop">⏹</button>
+                               <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${vm.id},'restart')" title="Restart">🔄</button>`
+                            : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${vm.id},'start')" title="Start">▶</button>`}
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showDetail(${vm.id})" title="Details">⚙</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="vmAction(${vm.id},'delete')" title="Delete">🗑</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
     }
 }
 
-// Load ISOs
-fetch('/api/storage/isos').then(r=>r.json()).then(data => {
-    const sel = document.getElementById('iso-select');
-    (data.isos || []).forEach(iso => {
-        const opt = document.createElement('option');
-        opt.value = iso.filename || iso.name;
-        opt.textContent = iso.name + (iso.size ? ` (${(iso.size/1073741824).toFixed(1)} GB)` : '');
-        sel.appendChild(opt);
-    });
-}).catch(()=>{});
+// ── VM Actions ──
+async function vmAction(id, action) {
+    if (action === 'delete' && !confirm('Delete this VM? This cannot be undone.')) return;
+    try {
+        const r = await fetch(`/api/vms/${id}/${action}`, {method: 'POST'});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast(`${action} succeeded`, 'success');
+            setTimeout(loadVMs, 1500);
+        } else {
+            showToast(`${action} failed: ${data.error || 'unknown'}`, 'error');
+        }
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
 
-// Load bridges
-fetch('/api/network/bridges').then(r=>r.json()).then(data => {
-    const sel = document.getElementById('bridge-select');
-    sel.innerHTML = '';
-    (data.bridges || []).forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.name;
-        sel.appendChild(opt);
-    });
-}).catch(()=>{});
+// ── VM Detail Panel ──
+async function showDetail(id) {
+    document.getElementById('vm-detail-modal').style.display = 'flex';
+    document.getElementById('detail-title').textContent = 'Loading...';
+    document.getElementById('detail-content').innerHTML = '<div class="nx-text-center nx-text-muted" style="padding:32px;">Loading VM details...</div>';
 
-showStep(1);
+    try {
+        const r = await fetch(`/api/vms/${id}`);
+        const vm = await r.json();
+        document.getElementById('detail-title').textContent = vm.name || `VM ${id}`;
+
+        const status = vm.status || 'unknown';
+        document.getElementById('detail-content').innerHTML = `
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <!-- Status Bar -->
+                <div class="nx-flex nx-gap-2" style="flex-wrap:wrap;">
+                    <span class="nx-badge ${status === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${status}</span>
+                    ${status === 'running' ? `
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'stop')">Stop</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'restart')">Restart</button>
+                    ` : `
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'start')">Start</button>
+                    `}
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showHotplug(${id})">Hot-Add Resources</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showPassthroughModal(${id})">GPU/USB Passthrough</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showSnapshots(${id})">Snapshots</button>
+                </div>
+
+                <!-- Hardware Summary -->
+                <div class="nx-card" style="margin:0;">
+                    <div class="nx-card-header"><span class="nx-card-title">Hardware</span></div>
+                    <div class="nx-card-body">
+                        <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:var(--text-sm);">
+                            <span class="nx-text-muted">CPU</span><span>${vm.vcpu || vm.cores || '-'} cores (${vm.cpu_type || 'host'})</span>
+                            <span class="nx-text-muted">Memory</span><span>${((vm.memory_mb || vm.memory || 0) / 1024).toFixed(1)} GB ${vm.balloon ? '(balloon)' : ''}</span>
+                            <span class="nx-text-muted">Disk</span><span>${vm.disk_gb || '-'} GB (${vm.disk_interface || 'virtio'})</span>
+                            <span class="nx-text-muted">Machine</span><span>${vm.machine_type || 'q35'} / ${vm.bios_type || 'seabios'}</span>
+                            <span class="nx-text-muted">Boot</span><span>${vm.boot_order || 'c'}</span>
+                            <span class="nx-text-muted">OS</span><span>${vm.os_type || vm.os || '-'}</span>
+                            <span class="nx-text-muted">Agent</span><span>${vm.agent_enabled ? 'Yes' : 'No'}</span>
+                            <span class="nx-text-muted">Serial</span><span>${vm.serial_console ? 'Yes' : 'No'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                ${vm.notes ? `<div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Notes</span></div><div class="nx-card-body" style="font-size:var(--text-sm);">${vm.notes}</div></div>` : ''}
+            </div>
+        `;
+    } catch (e) {
+        document.getElementById('detail-content').innerHTML = `<div style="color:var(--danger);">Error loading VM: ${e.message}</div>`;
+    }
+}
+
+function hideDetail() { document.getElementById('vm-detail-modal').style.display = 'none'; }
+
+// ── Create VM ──
+function showCreateVM() { document.getElementById('create-vm-modal').style.display = 'flex'; }
+function hideCreateVM() { document.getElementById('create-vm-modal').style.display = 'none'; }
+
+async function submitCreateVM(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.set('serial_console', e.target.querySelector('[name="serial_console"]').checked ? 'true' : 'false');
+    fd.set('agent_enabled', e.target.querySelector('[name="agent_enabled"]').checked ? 'true' : 'false');
+    fd.set('balloon', e.target.querySelector('[name="balloon"]').checked ? 'true' : 'false');
+
+    try {
+        const r = await fetch('/api/vms/create', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast('VM created!', 'success');
+            hideCreateVM();
+            e.target.reset();
+            loadVMs();
+        } else {
+            showToast(`Create failed: ${data.error || 'unknown'}`, 'error');
+        }
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── Hot-Add Resources ──
+async function showHotplug(id) {
+    const vm = allVMs.find(v => v.id === id);
+    if (!vm) return;
+    const content = document.getElementById('detail-content');
+    content.innerHTML += `
+        <div class="nx-card nx-mt-4" style="margin:0;border-color:var(--accent);">
+            <div class="nx-card-header"><span class="nx-card-title">Hot-Add Resources</span></div>
+            <div class="nx-card-body">
+                <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:16px;">
+                    <div>
+                        <label class="nx-label">Add CPU Cores (current: ${vm.vcpu || vm.cores || 0})</label>
+                        <div class="nx-flex nx-gap-2">
+                            <input type="number" id="hotplug-cpu" class="nx-input" value="${(vm.vcpu || vm.cores || 0) + 1}" min="1">
+                            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="hotplugCPU(${id})">Add</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="nx-label">Set Memory MB (current: ${vm.memory_mb || vm.memory || 0})</label>
+                        <div class="nx-flex nx-gap-2">
+                            <input type="number" id="hotplug-ram" class="nx-input" value="${(vm.memory_mb || vm.memory || 0) + 1024}" min="128">
+                            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="hotplugRAM(${id})">Set</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function hotplugCPU(id) {
+    const vcpus = parseInt(document.getElementById('hotplug-cpu').value);
+    try {
+        const fd = new FormData();
+        fd.append('vcpus', vcpus);
+        const r = await fetch(`/api/vms/${id}/hotplug/cpu`, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) { showToast('CPU updated', 'success'); loadVMs(); showDetail(id); }
+        else showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function hotplugRAM(id) {
+    const mb = parseInt(document.getElementById('hotplug-ram').value);
+    try {
+        const fd = new FormData();
+        fd.append('memory_mb', mb);
+        const r = await fetch(`/api/vms/${id}/hotplug/ram`, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) { showToast('Memory updated', 'success'); loadVMs(); showDetail(id); }
+        else showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── GPU/USB Passthrough ──
+async function showPassthroughModal(id) {
+    document.getElementById('passthrough-modal').style.display = 'flex';
+    document.getElementById('passthrough-title').textContent = 'Hardware Passthrough';
+    document.getElementById('passthrough-content').innerHTML = '<div class="nx-text-center nx-text-muted" style="padding:32px;">Loading devices...</div>';
+
+    try {
+        const [gpuRes, usbRes] = await Promise.all([
+            fetch('/api/vms/passthrough/gpu'),
+            fetch('/api/vms/passthrough/usb')
+        ]);
+        const gpuData = await gpuRes.json();
+        const usbData = await usbRes.json();
+        const gpus = gpuData.devices || [];
+        const usbs = usbData.devices || [];
+
+        document.getElementById('passthrough-content').innerHTML = `
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-card" style="margin:0;">
+                    <div class="nx-card-header"><span class="nx-card-title">GPU / PCI Devices</span></div>
+                    <div class="nx-card-body" style="padding:0;">
+                        <table class="nx-table">
+                            <thead><tr><th>Address</th><th>Name</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                ${gpus.length > 0 ? gpus.map(g => `
+                                    <tr>
+                                        <td style="font-family:monospace;font-size:var(--text-xs);">${g.address || '-'}</td>
+                                        <td>${g.name || g.description || '-'}</td>
+                                        <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachPCI(${id},'${g.address}')">Attach</button></td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:24px;">No GPU/PCI devices found</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="nx-card" style="margin:0;">
+                    <div class="nx-card-header"><span class="nx-card-title">USB Devices</span></div>
+                    <div class="nx-card-body" style="padding:0;">
+                        <table class="nx-table">
+                            <thead><tr><th>Vendor:Product</th><th>Name</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                ${usbs.length > 0 ? usbs.map(u => `
+                                    <tr>
+                                        <td style="font-family:monospace;font-size:var(--text-xs);">${u.vendor_id}:${u.product_id}</td>
+                                        <td>${u.name || '-'}</td>
+                                        <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachUSB(${id},'${u.vendor_id}','${u.product_id}')">Attach</button></td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:24px;">No USB devices found</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        document.getElementById('passthrough-content').innerHTML = `<div style="color:var(--danger);">Error: ${e.message}</div>`;
+    }
+}
+
+function hidePassthrough() { document.getElementById('passthrough-modal').style.display = 'none'; }
+
+async function attachPCI(vmId, addr) {
+    try {
+        const fd = new FormData(); fd.append('pci_addr', addr);
+        const r = await fetch(`/api/vms/${vmId}/passthrough/pci`, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) { showToast('GPU attached', 'success'); hidePassthrough(); loadVMs(); }
+        else showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function attachUSB(vmId, vendorId, productId) {
+    try {
+        const fd = new FormData(); fd.append('vendor_id', vendorId); fd.append('product_id', productId);
+        const r = await fetch(`/api/vms/${vmId}/passthrough/usb`, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success !== false) { showToast('USB attached', 'success'); hidePassthrough(); loadVMs(); }
+        else showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── Snapshots ──
+async function showSnapshots(id) {
+    const content = document.getElementById('detail-content');
+    try {
+        const r = await fetch(`/api/vms/${id}/snapshots`);
+        const data = await r.json();
+        const snaps = data.snapshots || [];
+        content.innerHTML += `
+            <div class="nx-card nx-mt-4" style="margin:0;">
+                <div class="nx-card-header">
+                    <span class="nx-card-title">Snapshots</span>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="createSnapshot(${id})">+ Create</button>
+                </div>
+                <div class="nx-card-body" style="padding:0;">
+                    <table class="nx-table">
+                        <thead><tr><th>Name</th><th>Description</th><th>Created</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${snaps.length > 0 ? snaps.map(s => `
+                                <tr>
+                                    <td style="font-weight:500;">${s.name}</td>
+                                    <td style="color:var(--text-muted);">${s.description || '-'}</td>
+                                    <td style="font-size:var(--text-xs);">${s.creation_time || '-'}</td>
+                                    <td>
+                                        <div class="nx-flex nx-gap-1">
+                                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="restoreSnapshot(${id},'${s.name}')">Restore</button>
+                                            <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteSnapshot(${id},'${s.name}')">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:24px;">No snapshots</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } catch (e) { console.error(e); }
+}
+
+async function createSnapshot(id) {
+    const name = prompt('Snapshot name:');
+    if (!name) return;
+    try {
+        const fd = new FormData(); fd.append('name', name);
+        await fetch(`/api/vms/${id}/snapshot/create`, {method: 'POST', body: fd});
+        showToast('Snapshot created', 'success'); showDetail(id);
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function restoreSnapshot(id, name) {
+    if (!confirm(`Restore snapshot "${name}"?`)) return;
+    try {
+        await fetch(`/api/vms/${id}/snapshot/${name}/restore`, {method: 'POST'});
+        showToast('Snapshot restored', 'success'); showDetail(id); loadVMs();
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function deleteSnapshot(id, name) {
+    if (!confirm(`Delete snapshot "${name}"?`)) return;
+    try {
+        await fetch(`/api/vms/${id}/snapshot/${name}/delete`, {method: 'POST'});
+        showToast('Snapshot deleted', 'success'); showDetail(id);
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+// ── Bulk Actions ──
+function toggleSelectAll(cb) {
+    document.querySelectorAll('.vm-select').forEach(c => c.checked = cb.checked);
+}
+
+function showBulkActions() {
+    const selected = [...document.querySelectorAll('.vm-select:checked')].map(c => parseInt(c.value));
+    if (selected.length === 0) { showToast('Select VMs first', 'error'); return; }
+    const action = prompt(`Bulk action for ${selected.length} VMs:\n1 = Start\n2 = Stop\n3 = Delete`);
+    if (!action) return;
+    const act = action === '1' ? 'start' : action === '2' ? 'stop' : action === '3' ? 'delete' : null;
+    if (!act) return;
+    if (act === 'delete' && !confirm(`Delete ${selected.length} VMs?`)) return;
+
+    selected.forEach(id => vmAction(id, act));
+}
+
+// ── Init ──
+loadVMs();
+setInterval(loadVMs, 10000);
 </script>
 {% endblock %}

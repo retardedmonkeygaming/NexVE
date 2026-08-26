@@ -4,10 +4,36 @@ from ..database import SessionLocal
 from ..models.vm import Container
 from ..services.container_service import ContainerService
 from ..auth import get_current_user
+from ..security import generate_csrf_token
 import json
 
 router = APIRouter()
 container_service = ContainerService()
+
+
+@router.get("/create")
+async def create_container_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+    # Import here to avoid circular imports
+    from fastapi.templating import Jinja2Templates
+    import os
+    TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "../templates")
+    templates = Jinja2Templates(directory=TEMPLATE_DIR)
+    return templates.TemplateResponse(request=request, name="containers.html", context={
+        "user": user, "csrf_token": csrf, "page": "containers",
+        "hostname": os.uname().nodename, "show_create": True
+    })
+
+
+@router.get("/templates")
+async def list_templates(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse({"templates": container_service.list_templates()})
 
 
 @router.get("/")
