@@ -1,102 +1,166 @@
 {% extends "base.html" %}
+{% block title %}NexVE — Users & Groups{% endblock %}
+{% block breadcrumb %}Users & Groups{% endblock %}
+
 {% block content %}
-<div class="p-6">
-    <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold">Users</h1>
-        <button onclick="showModal('user-modal')" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">+ Add User</button>
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">Users & Groups</div>
+        <div class="nx-page-subtitle">Manage user accounts and role-based access</div>
     </div>
-
-    <div id="users-list" class="space-y-3"></div>
-</div>
-
-<!-- Create User Modal -->
-<div id="user-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md">
-        <h2 class="text-xl font-bold mb-4">Create User</h2>
-        <form hx-post="/api/users" hx-swap="none" hx-on::after-request="closeAllModals(); loadUsers();">
-            <div class="space-y-3">
-                <div>
-                    <label class="text-zinc-400 text-sm">Username</label>
-                    <input name="username" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Email</label>
-                    <input name="email" type="email" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Password</label>
-                    <input name="password" type="password" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Role</label>
-                    <select name="role" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="admin">Admin</option>
-                        <option value="auditor">Auditor (read-only + logs)</option>
-                        <option value="user">User (basic view)</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex justify-end gap-2 mt-6">
-                <button type="button" onclick="closeAllModals()" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-            </div>
-        </form>
+    <div class="nx-flex nx-gap-2">
+        <button class="nx-btn nx-btn-secondary" onclick="showGroupModal()">+ New Group</button>
+        <button class="nx-btn nx-btn-primary" onclick="showUserModal()">+ New User</button>
     </div>
 </div>
 
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab('users')">Users</button>
+    <button class="nx-tab" onclick="showTab('groups')">Groups</button>
+    <button class="nx-tab" onclick="showTab('roles')">Roles</button>
+</div>
+
+<!-- Users -->
+<div class="nx-tab-content active" id="tab-users">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead>
+                    <tr><th>Username</th><th>Email</th><th>Role</th><th>2FA</th><th>Status</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="user-list">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Groups -->
+<div class="nx-tab-content" id="tab-groups">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead>
+                    <tr><th>Group Name</th><th>Description</th><th>Members</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="group-list">
+                    <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups defined</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Roles -->
+<div class="nx-tab-content" id="tab-roles">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Role</th><th>Description</th><th>Permissions</th></tr></thead>
+                <tbody>
+                    <tr><td style="font-weight:500;">admin</td><td>Full system access</td><td><span class="nx-badge nx-badge-danger">All permissions</span></td></tr>
+                    <tr><td style="font-weight:500;">auditor</td><td>Read-only access to everything</td><td><span class="nx-badge nx-badge-info">Read-only</span></td></tr>
+                    <tr><td style="font-weight:500;">user</td><td>Manage assigned VMs/CTs only</td><td><span class="nx-badge nx-badge-warning">Limited</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- User Modal -->
+<div class="nx-modal-overlay" id="user-modal">
+    <div class="nx-modal">
+        <div class="nx-modal-header">
+            <span class="nx-modal-title">Create User</span>
+            <button class="nx-modal-close" onclick="closeModal('user-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="user-form" class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group"><label class="nx-label">Username *</label><input type="text" name="username" class="nx-input" required></div>
+                <div class="nx-input-group"><label class="nx-label">Email *</label><input type="email" name="email" class="nx-input" required></div>
+                <div class="nx-input-group"><label class="nx-label">Password *</label><input type="password" name="password" class="nx-input" required minlength="8"></div>
+                <div class="nx-input-group"><label class="nx-label">Role</label>
+                    <select name="role" class="nx-select"><option value="user">User</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="closeModal('user-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createUser()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Group Modal -->
+<div class="nx-modal-overlay" id="group-modal">
+    <div class="nx-modal">
+        <div class="nx-modal-header">
+            <span class="nx-modal-title">Create Group</span>
+            <button class="nx-modal-close" onclick="closeModal('group-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="group-form" class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group"><label class="nx-label">Group Name *</label><input type="text" name="name" class="nx-input" required></div>
+                <div class="nx-input-group"><label class="nx-label">Description</label><input type="text" name="description" class="nx-input" placeholder="Optional description"></div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="closeModal('group-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createGroup()">Create</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeAllModals() { document.querySelectorAll('[id$="-modal"]').forEach(m => m.classList.add('hidden')); }
+function showTab(name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+}
+
+function showUserModal() { document.getElementById('user-modal').classList.add('open'); }
+function showGroupModal() { document.getElementById('group-modal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 async function loadUsers() {
-    const r = await fetch('/api/users/');
-    const d = await r.json();
-    let h = '';
-    (d.users || []).forEach(u => {
-        const roleColor = u.role === 'admin' ? 'text-orange-400' : u.role === 'auditor' ? 'text-blue-400' : 'text-zinc-400';
-        h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between">
-            <div>
-                <div class="flex items-center gap-3">
-                    <span class="text-white font-semibold">${u.username}</span>
-                    <span class="${roleColor} text-xs uppercase">${u.role}</span>
-                    ${!u.is_active ? '<span class="text-red-400 text-xs">Disabled</span>' : ''}
-                </div>
-                <div class="text-sm text-zinc-400 mt-1">${u.email} | Created: ${u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</div>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="toggleUser(${u.id}, ${u.role === 'admin' ? "'auditor'" : "'admin'"}, ${u.is_active})" class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-lg transition">
-                    ${u.role === 'admin' ? 'Demote' : 'Promote'}
-                </button>
-                <button onclick="toggleActive(${u.id}, '${u.role}', ${!u.is_active})" class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-lg transition">
-                    ${u.is_active ? 'Disable' : 'Enable'}
-                </button>
-                <button onclick="deleteUser(${u.id})" class="text-xs bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition">Delete</button>
-            </div>
-        </div>`;
-    });
-    document.getElementById('users-list').innerHTML = h || '<p class="text-zinc-500">No users.</p>';
+    try {
+        const r = await fetch('/api/users/');
+        const data = await r.json();
+        const list = document.getElementById('user-list');
+        const users = data.users || [];
+        list.innerHTML = users.map(u => `
+            <tr>
+                <td style="font-weight:500;color:var(--text-primary);">${u.username}</td>
+                <td>${u.email || '-'}</td>
+                <td><span class="nx-badge ${u.role === 'admin' ? 'nx-badge-danger' : u.role === 'auditor' ? 'nx-badge-info' : 'nx-badge-neutral'}">${u.role}</span></td>
+                <td>${u.totp_enabled ? '<span class="nx-badge nx-badge-success"><span class="dot"></span>Enabled</span>' : '<span class="nx-text-muted">Disabled</span>'}</td>
+                <td><span class="nx-badge ${u.is_active ? 'nx-badge-success' : 'nx-badge-danger'}">${u.is_active ? 'Active' : 'Disabled'}</span></td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteUser(${u.id})">Delete</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">No users</td></tr>';
+    } catch(e) { console.error(e); }
 }
 
-async function toggleUser(id, role, active) {
-    const fd = new FormData();
-    fd.append('role', role);
-    fd.append('is_active', active);
-    await fetch(`/api/users/${id}`, { method: 'PUT', body: fd });
-    loadUsers();
-}
-
-async function toggleActive(id, role, active) {
-    const fd = new FormData();
-    fd.append('role', role);
-    fd.append('is_active', active);
-    await fetch(`/api/users/${id}`, { method: 'PUT', body: fd });
-    loadUsers();
+async function createUser() {
+    const form = document.getElementById('user-form');
+    const data = new FormData(form);
+    try {
+        const r = await fetch('/api/users/create', {method:'POST', body: data});
+        if (r.ok) { closeModal('user-modal'); loadUsers(); showToast('User created', 'success'); }
+        else { showToast('Failed to create user', 'error'); }
+    } catch(e) { showToast('Error', 'error'); }
 }
 
 async function deleteUser(id) {
     if (!confirm('Delete this user?')) return;
-    await fetch(`/api/users/${id}`, { method: 'DELETE' });
-    loadUsers();
+    try {
+        await fetch(`/api/users/${id}`, {method:'DELETE'});
+        loadUsers(); showToast('User deleted', 'success');
+    } catch(e) { showToast('Error', 'error'); }
 }
 
 loadUsers();

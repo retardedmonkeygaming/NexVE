@@ -3,151 +3,47 @@
 {% block breadcrumb %}Logs{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="nx-page-header">
     <div>
-        <h1 class="text-2xl font-bold">Logs</h1>
-        <p class="text-gray-500 text-sm mt-1">Audit trail, task history, and system logs</p>
+        <div class="nx-page-title">Activity Logs</div>
+        <div class="nx-page-subtitle">Audit trail of all system actions</div>
     </div>
+    <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadLogs()">↻ Refresh</button>
 </div>
 
-<!-- Tabs -->
-<div class="flex gap-1 bg-zinc-900 p-1 rounded-lg mb-6 w-fit">
-    <button onclick="showTab('audit')" id="tab-audit" class="px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">Audit Log</button>
-    <button onclick="showTab('tasks')" id="tab-tasks" class="px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Tasks</button>
-    <button onclick="showTab('syslog')" id="tab-syslog" class="px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Syslog</button>
-</div>
-
-<!-- Audit Log Panel -->
-<div id="panel-audit" class="tab-panel">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-zinc-800/50 text-zinc-400">
-                <tr>
-                    <th class="px-4 py-3 text-left">Time</th>
-                    <th class="px-4 py-3 text-left">User</th>
-                    <th class="px-4 py-3 text-left">Action</th>
-                    <th class="px-4 py-3 text-left">Target</th>
-                    <th class="px-4 py-3 text-left">IP</th>
-                    <th class="px-4 py-3 text-left">Details</th>
-                </tr>
+<div class="nx-card">
+    <div class="nx-card-body" style="padding:0;">
+        <table class="nx-table">
+            <thead>
+                <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr>
             </thead>
-            <tbody class="divide-y divide-zinc-800" id="audit-tbody">
-                <tr><td colspan="6" class="text-zinc-500 text-center py-8">Loading audit log...</td></tr>
+            <tbody id="log-list">
+                <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading logs...</td></tr>
             </tbody>
         </table>
-    </div>
-</div>
-
-<!-- Tasks Panel -->
-<div id="panel-tasks" class="tab-panel hidden">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-zinc-800/50 text-zinc-400">
-                <tr>
-                    <th class="px-4 py-3 text-left">Time</th>
-                    <th class="px-4 py-3 text-left">User</th>
-                    <th class="px-4 py-3 text-left">Action</th>
-                    <th class="px-4 py-3 text-left">Target</th>
-                    <th class="px-4 py-3 text-left">Status</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-zinc-800" id="tasks-tbody">
-                <tr><td colspan="5" class="text-zinc-500 text-center py-8">Loading tasks...</td></tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Syslog Panel -->
-<div id="panel-syslog" class="tab-panel hidden">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <div class="flex items-center justify-between mb-3">
-            <span class="text-zinc-400 text-sm">System Log (journalctl)</span>
-            <button onclick="loadSyslog()" class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-lg transition">Refresh</button>
-        </div>
-        <pre id="syslog-content" class="text-zinc-300 text-xs whitespace-pre-wrap font-mono max-h-[500px] overflow-y-auto bg-zinc-950 rounded-lg p-3">Loading...</pre>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function showTab(name) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-    document.querySelectorAll('[id^="tab-"]').forEach(b => { b.classList.remove('bg-zinc-700', 'text-white'); b.classList.add('text-zinc-400'); });
-    document.getElementById('panel-' + name).classList.remove('hidden');
-    document.getElementById('tab-' + name).classList.add('bg-zinc-700', 'text-white');
-    document.getElementById('tab-' + name).classList.remove('text-zinc-400');
-}
-
-async function loadAudit() {
+async function loadLogs() {
     try {
-        const res = await fetch('/api/logs/audit?limit=100');
-        const data = await res.json();
+        const r = await fetch('/api/activity/?limit=50');
+        const data = await r.json();
         const logs = data.logs || [];
-        const tbody = document.getElementById('audit-tbody');
-        if (logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-zinc-500 text-center py-8">No audit entries.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = logs.map(l => `
-            <tr class="hover:bg-zinc-800/50 transition">
-                <td class="px-4 py-3 text-zinc-500 text-xs">${l.created_at ? new Date(l.created_at).toLocaleString() : '-'}</td>
-                <td class="px-4 py-3 text-zinc-300">${l.username || 'system'}</td>
-                <td class="px-4 py-3 text-white">${l.action}</td>
-                <td class="px-4 py-3 text-zinc-400 text-xs">${l.target_type || ''} ${l.target_name || ''}</td>
-                <td class="px-4 py-3 text-zinc-500 text-xs">${l.ip_address || '-'}</td>
-                <td class="px-4 py-3 text-zinc-500 text-xs max-w-[200px] truncate">${l.details || ''}</td>
+        document.getElementById('log-list').innerHTML = logs.map(l => `
+            <tr>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);white-space:nowrap;">${l.created_at ? new Date(l.created_at).toLocaleString() : '-'}</td>
+                <td>${l.username || 'system'}</td>
+                <td><span class="nx-badge nx-badge-accent">${l.action || '-'}</span></td>
+                <td>${l.target_type ? l.target_type + (l.target_name ? ': ' + l.target_name : '') : '-'}</td>
+                <td style="color:var(--text-muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.details || ''}</td>
             </tr>
-        `).join('');
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No logs found</td></tr>';
     } catch(e) { console.error(e); }
 }
 
-async function loadTasks() {
-    try {
-        const res = await fetch('/api/logs/tasks?limit=100');
-        const data = await res.json();
-        const tasks = data.tasks || [];
-        const tbody = document.getElementById('tasks-tbody');
-        if (tasks.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-zinc-500 text-center py-8">No tasks.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = tasks.map(t => `
-            <tr class="hover:bg-zinc-800/50 transition">
-                <td class="px-4 py-3 text-zinc-500 text-xs">${t.started_at ? new Date(t.started_at).toLocaleString() : '-'}</td>
-                <td class="px-4 py-3 text-zinc-300">${t.username || 'system'}</td>
-                <td class="px-4 py-3 text-white">${t.action}</td>
-                <td class="px-4 py-3 text-zinc-400 text-xs">${t.target_type || ''} ${t.target_name || ''}</td>
-                <td class="px-4 py-3">
-                    <span class="text-xs px-2 py-0.5 rounded-full ${
-                        t.status === 'completed' || t.status === 'ok' ? 'bg-green-900/50 text-green-400' :
-                        t.status === 'failed' || t.status === 'error' ? 'bg-red-900/50 text-red-400' :
-                        'bg-yellow-900/50 text-yellow-400'
-                    }">${t.status}</span>
-                </td>
-            </tr>
-        `).join('');
-    } catch(e) { console.error(e); }
-}
-
-async function loadSyslog() {
-    try {
-        const res = await fetch('/api/logs/syslog?lines=200');
-        const data = await res.json();
-        document.getElementById('syslog-content').textContent = data.log || 'No syslog data available.';
-    } catch(e) {
-        document.getElementById('syslog-content').textContent = 'Error loading syslog.';
-    }
-}
-
-// Load all on tab switch
-function loadTab(name) {
-    if (name === 'audit') loadAudit();
-    else if (name === 'tasks') loadTasks();
-    else if (name === 'syslog') loadSyslog();
-}
-
-loadAudit();
+loadLogs();
 </script>
 {% endblock %}

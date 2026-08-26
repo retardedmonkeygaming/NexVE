@@ -1,535 +1,321 @@
 {% extends "base.html" %}
-{% block title %}NexVE — Virtual Machines{% endblock %}
-{% block breadcrumb %}Virtual Machines{% endblock %}
+{% block title %}NexVE — Create Virtual Machine{% endblock %}
+{% block breadcrumb %}Virtual Machines › Create{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-    <div>
-        <h1 class="text-2xl font-bold">Virtual Machines</h1>
-        <p class="text-gray-500 text-sm mt-1">Manage your KVM/QEMU virtual machines</p>
+<div class="nx-wizard">
+    <!-- Steps -->
+    <div class="nx-wizard-steps" id="wizard-steps">
+        <div class="nx-wizard-step active" data-step="1"><div class="nx-wizard-step-num">1</div><div class="nx-wizard-step-label">General</div></div>
+        <div class="nx-wizard-step" data-step="2"><div class="nx-wizard-step-num">2</div><div class="nx-wizard-step-label">OS</div></div>
+        <div class="nx-wizard-step" data-step="3"><div class="nx-wizard-step-num">3</div><div class="nx-wizard-step-label">System</div></div>
+        <div class="nx-wizard-step" data-step="4"><div class="nx-wizard-step-num">4</div><div class="nx-wizard-step-label">Disks</div></div>
+        <div class="nx-wizard-step" data-step="5"><div class="nx-wizard-step-num">5</div><div class="nx-wizard-step-label">Network</div></div>
+        <div class="nx-wizard-step" data-step="6"><div class="nx-wizard-step-num">6</div><div class="nx-wizard-step-label">Confirm</div></div>
     </div>
-    <div class="flex gap-2">
-        <!-- Bulk actions -->
-        <div id="bulk-actions" class="hidden flex gap-2">
-            <button onclick="bulkStart()" class="bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg transition">▶ Start Selected</button>
-            <button onclick="bulkStop()" class="bg-yellow-700 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded-lg transition">⏸ Stop Selected</button>
-            <button onclick="bulkDelete()" class="bg-red-700 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition">🗑 Delete Selected</button>
-        </div>
-        <button onclick="openModal('import-modal')" class="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-3 py-2 rounded-lg transition">📥 Import OVF</button>
-        <button onclick="openModal('create-vm-modal')" class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">+ Create VM</button>
-    </div>
-</div>
 
-<!-- Tags filter bar -->
-<div class="flex items-center gap-2 mb-4" id="tags-bar">
-    <span class="text-zinc-500 text-xs">Tags:</span>
-    <div id="tag-filters" class="flex gap-1"></div>
-    <button onclick="openModal('tag-modal')" class="text-zinc-500 hover:text-orange-400 text-xs transition">+ New Tag</button>
-</div>
-
-<!-- VM Table -->
-<div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-    <table class="w-full text-sm" id="vm-table">
-        <thead class="bg-zinc-800/50 text-zinc-400">
-            <tr>
-                <th class="px-4 py-3 w-10"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"></th>
-                <th class="px-4 py-3 text-left sortable">ID</th>
-                <th class="px-4 py-3 text-left sortable">Name</th>
-                <th class="px-4 py-3 text-left sortable">Status</th>
-                <th class="px-4 py-3 text-left sortable">CPU</th>
-                <th class="px-4 py-3 text-left sortable">Memory</th>
-                <th class="px-4 py-3 text-left sortable">Disk</th>
-                <th class="px-4 py-3 text-left">Tags</th>
-                <th class="px-4 py-3 text-left">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-zinc-800" id="vm-tbody">
-            <tr><td colspan="9" class="text-zinc-500 text-center py-8">Loading VMs...</td></tr>
-        </tbody>
-    </table>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<!-- Create VM Modal -->
-<div id="create-vm-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">Create Virtual Machine</h3>
-        <form id="create-vm-form" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Name</label>
-                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white focus:ring-2 focus:ring-orange-500 outline-none">
+    <div class="nx-wizard-body">
+        <!-- Step 1: General -->
+        <div class="wizard-page" id="page-1">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">General Settings</h2>
+            <div class="nx-form-grid">
+                <div class="nx-input-group full">
+                    <label class="nx-label">Name *</label>
+                    <input type="text" name="name" class="nx-input" placeholder="e.g. web-server-01" required>
                 </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">OS Type</label>
-                    <select name="os_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
+                <div class="nx-input-group">
+                    <label class="nx-label">Node</label>
+                    <select name="node" class="nx-select">
+                        <option value="local">Local</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Template</label>
+                    <select name="template" class="nx-select">
+                        <option value="">None</option>
+                    </select>
+                </div>
+                <div class="nx-input-group full">
+                    <label class="nx-label">Description</label>
+                    <textarea name="description" class="nx-input" rows="2" placeholder="Optional description for this VM"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: OS -->
+        <div class="wizard-page nx-hidden" id="page-2">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Operating System</h2>
+            <div class="nx-form-grid">
+                <div class="nx-input-group full">
+                    <label class="nx-label">ISO Image</label>
+                    <select name="iso" class="nx-select" id="iso-select">
+                        <option value="">No media</option>
+                    </select>
+                    <span class="nx-hint" id="iso-hint">Upload ISOs at <a href="/templates">ISO Management</a></span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">OS Type</label>
+                    <select name="os_type" class="nx-select">
                         <option value="linux">Linux</option>
                         <option value="windows">Windows</option>
                         <option value="other">Other</option>
                     </select>
                 </div>
-            </div>
-            <div class="grid grid-cols-3 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">CPU Cores</label>
-                    <input name="vcpu" type="number" value="2" min="1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Memory (MB)</label>
-                    <input name="memory_mb" type="number" value="2048" min="256" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Disk (GB)</label>
-                    <input name="disk_gb" type="number" value="50" min="10" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-3 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">CPU Type</label>
-                    <select name="cpu_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="host">host</option>
-                        <option value="qemu64">qemu64</option>
-                        <option value="kvm64">kvm64</option>
-                        <option value="max">max</option>
+                <div class="nx-input-group">
+                    <label class="nx-label">Guest OS</label>
+                    <select name="guest_os" class="nx-select">
+                        <option value="ubuntu">Ubuntu</option>
+                        <option value="debian">Debian</option>
+                        <option value="centos">CentOS/RHEL</option>
+                        <option value="fedora">Fedora</option>
+                        <option value="arch">Arch Linux</option>
+                        <option value="windows10">Windows 10/11</option>
+                        <option value="windows2022">Windows Server 2022</option>
+                        <option value="other">Other</option>
                     </select>
                 </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Machine Type</label>
-                    <select name="machine_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="q35">q35</option>
+            </div>
+        </div>
+
+        <!-- Step 3: System -->
+        <div class="wizard-page nx-hidden" id="page-3">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">System Configuration</h2>
+            <div class="nx-form-grid">
+                <div class="nx-input-group">
+                    <label class="nx-label">CPU Cores</label>
+                    <input type="number" name="vcpu" class="nx-input" value="2" min="1" max="128">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">CPU Type</label>
+                    <select name="cpu_type" class="nx-select">
+                        <option value="host">Host</option>
+                        <option value="qemu64">QEMU64</option>
+                        <option value="kvm64">KVM64</option>
+                        <option value="max">Max</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Memory (MB)</label>
+                    <input type="number" name="memory_mb" class="nx-input" value="2048" min="128">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Machine Type</label>
+                    <select name="machine_type" class="nx-select">
+                        <option value="q35">q35 (recommended)</option>
                         <option value="i440fx">i440fx</option>
                     </select>
                 </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">BIOS</label>
-                    <select name="bios_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="seabios">SeaBIOS</option>
-                        <option value="ovmf">OVMF (UEFI)</option>
+                <div class="nx-input-group">
+                    <label class="nx-label">BIOS</label>
+                    <select name="bios" class="nx-select">
+                        <option value="ovmf">UEFI (OVMF)</option>
+                        <option value="seabios">SeaBIOS (Legacy)</option>
                     </select>
                 </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Boot Order</label>
-                    <input name="boot_order" value="c" placeholder="c, d, n" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Disk Interface</label>
-                    <select name="disk_interface" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="virtio">VirtIO</option>
-                        <option value="scsi">SCSI</option>
-                        <option value="ide">IDE</option>
-                        <option value="sata">SATA</option>
+                <div class="nx-input-group">
+                    <label class="nx-label">SCSI Controller</label>
+                    <select name="scsi_controller" class="nx-select">
+                        <option value="virtio-scsi-single">VirtIO SCSI Single</option>
+                        <option value="virtio-scsi">VirtIO SCSI</option>
+                        <option value="lsi53c895a">LSI 53C895A</option>
                     </select>
                 </div>
-            </div>
-            <div class="flex flex-wrap gap-4">
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="serial_console" class="rounded"> Serial Console</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="agent_enabled" checked class="rounded"> QEMU Agent</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="balloon" class="rounded"> Memory Balloon</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="hotplug_cpu" class="rounded"> Hot-add CPU</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="hotplug_ram" class="rounded"> Hot-add RAM</label>
-            </div>
-            <div>
-                <label class="text-zinc-400 text-sm">Notes</label>
-                <textarea name="notes" rows="2" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none"></textarea>
-            </div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('create-vm-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Import OVF Modal -->
-<div id="import-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">Import OVF/OVA</h3>
-        <form id="import-form" enctype="multipart/form-data" class="space-y-4">
-            <div>
-                <label class="text-zinc-400 text-sm">Select OVF or OVA file</label>
-                <input name="file" type="file" accept=".ovf,.ova,.vmdk" required
-                    class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-orange-600 file:text-white">
-            </div>
-            <div id="import-result" class="hidden"></div>
-            <div class="flex justify-end gap-3">
-                <button type="button" onclick="closeModal('import-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Import</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Tag Modal -->
-<div id="tag-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">Create Tag</h3>
-        <form id="tag-form" class="space-y-4">
-            <div>
-                <label class="text-zinc-400 text-sm">Name</label>
-                <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-            </div>
-            <div>
-                <label class="text-zinc-400 text-sm">Color</label>
-                <input name="color" type="color" value="#f97316" class="w-full h-10 bg-zinc-800 border border-zinc-700 rounded-lg mt-1 outline-none">
-            </div>
-            <div class="flex justify-end gap-3">
-                <button type="button" onclick="closeModal('tag-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Edit/Hot-add Modal -->
-<div id="edit-vm-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">VM Settings</h3>
-        <form id="edit-vm-form" class="space-y-4">
-            <input type="hidden" name="vm_id" id="edit-vm-id">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">CPU Cores</label>
-                    <input name="vcpu" type="number" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                <div class="nx-input-group">
+                    <label class="nx-label">Boot Order</label>
+                    <input type="text" name="boot_order" class="nx-input" value="c" placeholder="e.g. c,d,n">
+                    <span class="nx-hint">c=CD-ROM, d=Disk, n=Network</span>
                 </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Memory (MB)</label>
-                    <input name="memory_mb" type="number" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Disk (GB)</label>
-                    <input name="disk_gb" type="number" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">BIOS</label>
-                    <select name="bios_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="seabios">SeaBIOS</option>
-                        <option value="ovmf">OVMF (UEFI)</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-4">
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="balloon" class="rounded"> Memory Balloon</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="hotplug_cpu" class="rounded"> Hot-add CPU</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="hotplug_ram" class="rounded"> Hot-add RAM</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="serial_console" class="rounded"> Serial Console</label>
-                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="agent_enabled" class="rounded"> QEMU Agent</label>
-            </div>
-            <!-- Hot-add section -->
-            <div class="border-t border-zinc-800 pt-4">
-                <h4 class="text-zinc-400 text-sm font-medium mb-3">Hot-Add Resources (running VM)</h4>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-zinc-400 text-xs">New CPU count</label>
-                        <input id="hotplug-cpu" type="number" placeholder="e.g. 4" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                    </div>
-                    <div>
-                        <label class="text-zinc-400 text-xs">New RAM (MB)</label>
-                        <input id="hotplug-ram" type="number" placeholder="e.g. 4096" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                <div class="nx-input-group">
+                    <div class="nx-checkbox-group" style="margin-top:24px;">
+                        <input type="checkbox" name="serial_console" class="nx-checkbox" id="serial-check">
+                        <label for="serial-check" class="nx-label" style="margin:0;">Enable Serial Console</label>
                     </div>
                 </div>
-                <div class="flex gap-2 mt-3">
-                    <button type="button" onclick="hotplugCPU()" class="bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Apply CPU</button>
-                    <button type="button" onclick="hotplugRAM()" class="bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Apply RAM</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Disks -->
+        <div class="wizard-page nx-hidden" id="page-4">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Disk Configuration</h2>
+            <div class="nx-form-grid">
+                <div class="nx-input-group">
+                    <label class="nx-label">Storage Backend</label>
+                    <select name="storage" class="nx-select">
+                        <option value="local">local (Directory)</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Disk Size (GB)</label>
+                    <input type="number" name="disk_gb" class="nx-input" value="32" min="1">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Cache Mode</label>
+                    <select name="cache" class="nx-select">
+                        <option value="none">None</option>
+                        <option value="writethrough">Write Through</option>
+                        <option value="writeback">Write Back</option>
+                        <option value="directsync">Direct Sync</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <div class="nx-checkbox-group" style="margin-top:24px;">
+                        <input type="checkbox" name="discard" class="nx-checkbox" id="discard-check">
+                        <label for="discard-check" class="nx-label" style="margin:0;">Enable Discard (TRIM)</label>
+                    </div>
+                    <div class="nx-checkbox-group" style="margin-top:8px;">
+                        <input type="checkbox" name="ssd_emulation" class="nx-checkbox" id="ssd-check">
+                        <label for="ssd-check" class="nx-label" style="margin:0;">SSD Emulation</label>
+                    </div>
                 </div>
             </div>
-            <!-- Resize disk -->
-            <div class="border-t border-zinc-800 pt-4">
-                <h4 class="text-zinc-400 text-sm font-medium mb-3">Resize Disk</h4>
-                <div class="flex gap-2">
-                    <input id="resize-disk" type="number" placeholder="New size (GB)" class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white outline-none">
-                    <button type="button" onclick="resizeDisk()" class="bg-purple-700 hover:bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg transition">Resize</button>
+        </div>
+
+        <!-- Step 5: Network -->
+        <div class="wizard-page nx-hidden" id="page-5">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Network Configuration</h2>
+            <div class="nx-form-grid">
+                <div class="nx-input-group">
+                    <label class="nx-label">Bridge</label>
+                    <select name="bridge" class="nx-select" id="bridge-select">
+                        <option value="vmbr0">vmbr0</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Model</label>
+                    <select name="nic_model" class="nx-select">
+                        <option value="virtio">VirtIO (paravirtualized)</option>
+                        <option value="e1000">Intel E1000</option>
+                        <option value="rtl8139">Realtek RTL8139</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">VLAN Tag</label>
+                    <input type="number" name="vlan" class="nx-input" placeholder="None" min="1" max="4094">
+                </div>
+                <div class="nx-input-group">
+                    <div class="nx-checkbox-group" style="margin-top:24px;">
+                        <input type="checkbox" name="firewall" class="nx-checkbox" id="fw-check" checked>
+                        <label for="fw-check" class="nx-label" style="margin:0;">Enable Firewall</label>
+                    </div>
                 </div>
             </div>
-            <!-- Convert to template -->
-            <div class="border-t border-zinc-800 pt-4">
-                <button type="button" onclick="convertToTemplate()" class="bg-zinc-700 hover:bg-zinc-600 text-white text-xs px-4 py-2 rounded-lg transition">Convert to Template</button>
+        </div>
+
+        <!-- Step 6: Confirm -->
+        <div class="wizard-page nx-hidden" id="page-6">
+            <h2 style="font-size:var(--text-lg);font-weight:600;margin-bottom:16px;">Confirm & Create</h2>
+            <div id="vm-summary" style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;"></div>
+            <div id="vm-error" style="margin-top:12px;"></div>
+            <div id="vm-success" style="margin-top:12px;" class="nx-hidden">
+                <div style="background:var(--success-dim);border:1px solid rgba(34,197,94,0.2);color:var(--success);padding:12px 16px;border-radius:var(--radius-lg);font-size:var(--text-sm);">
+                    ✓ Virtual machine created! Redirecting...
+                </div>
             </div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('edit-vm-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Save</button>
-            </div>
-        </form>
+        </div>
+    </div>
+
+    <div class="nx-wizard-nav">
+        <button class="nx-btn nx-btn-secondary" id="btn-back" onclick="prevStep()" style="visibility:hidden;">← Back</button>
+        <button class="nx-btn nx-btn-primary" id="btn-next" onclick="nextStep()">Next →</button>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-let selectedVMs = new Set();
-let allTags = [];
+let currentStep = 1;
+const totalSteps = 6;
 
-async function loadVMs() {
-    try {
-        const res = await fetch('/api/vms/');
-        const data = await res.json();
-        const vms = data.vms || [];
-        const tbody = document.getElementById('vm-tbody');
-        
-        if (vms.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-zinc-500 text-center py-8">No VMs configured. Click "Create VM" to get started.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = vms.map(vm => `
-            <tr class="vm-row hover:bg-zinc-800/50 transition data-type="vm" data-id="${vm.id}" data-status="${vm.status}">
-                <td class="px-4 py-3"><input type="checkbox" value="${vm.id}" onchange="toggleSelect(this)" ${selectedVMs.has(vm.id) ? 'checked' : ''}></td>
-                <td class="px-4 py-3 text-zinc-500">${vm.id}</td>
-                <td class="px-4 py-3 font-medium">${vm.name}</td>
-                <td class="px-4 py-3">
-                    <span class="text-xs px-2 py-0.5 rounded-full ${vm.status === 'running' ? 'bg-green-900/50 text-green-400' : vm.status === 'paused' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-zinc-800 text-zinc-500'}">
-                        ${vm.status}
-                    </span>
-                </td>
-                <td class="px-4 py-3">${vm.vcpu} cores</td>
-                <td class="px-4 py-3">${vm.memory_mb >= 1024 ? (vm.memory_mb/1024) + 'G' : vm.memory_mb + 'M'}</td>
-                <td class="px-4 py-3">${vm.disk_gb}G</td>
-                <td class="px-4 py-3" id="tags-${vm.id}"></td>
-                <td class="px-4 py-3">
-                    <div class="flex gap-1">
-                        ${vm.status !== 'running' ? `<button onclick="vmAction(${vm.id},'start')" class="text-green-400 hover:text-green-300 text-xs px-2 py-1 rounded bg-green-900/30 transition">▶</button>` : ''}
-                        ${vm.status === 'running' ? `<button onclick="vmAction(${vm.id},'stop')" class="text-yellow-400 hover:text-yellow-300 text-xs px-2 py-1 rounded bg-yellow-900/30 transition">⏸</button>` : ''}
-                        ${vm.status === 'running' ? `<button onclick="vmAction(${vm.id},'restart')" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded bg-blue-900/30 transition">🔄</button>` : ''}
-                        <button onclick="openEditVM(${vm.id})" class="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded bg-zinc-800 transition">⚙</button>
-                        <button onclick="openConsole(${vm.id})" class="text-cyan-400 hover:text-cyan-300 text-xs px-2 py-1 rounded bg-cyan-900/30 transition">🖥</button>
-                        <button onclick="vmAction(${vm.id},'delete')" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-900/30 transition">🗑</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-
-        // Load tags for each VM
-        vms.forEach(vm => loadTagsForVM(vm.id));
-    } catch(e) { console.error(e); }
-}
-
-async function loadTagsForVM(vmId) {
-    try {
-        const res = await fetch(`/api/tags/for/vm/${vmId}`);
-        const data = await res.json();
-        const el = document.getElementById(`tags-${vmId}`);
-        if (el && data.tags) {
-            el.innerHTML = data.tags.map(t => 
-                `<span class="text-xs px-2 py-0.5 rounded-full" style="background:${t.color}22;color:${t.color}">${t.name}</span>`
-            ).join(' ');
-        }
-    } catch(e) {}
-}
-
-async function loadTags() {
-    try {
-        const res = await fetch('/api/tags/');
-        const data = await res.json();
-        allTags = data.tags || [];
-        const bar = document.getElementById('tag-filters');
-        bar.innerHTML = allTags.map(t =>
-            `<button class="text-xs px-2 py-0.5 rounded-full cursor-pointer transition" style="background:${t.color}22;color:${t.color}" onclick="filterByTag(${t.id})">${t.name}</button>`
-        ).join('');
-    } catch(e) {}
-}
-
-async function vmAction(id, action) {
-    if (action === 'delete' && !confirm('Delete this VM?')) return;
-    try {
-        await fetch(`/api/vms/${id}/${action}`, {method: 'POST'});
-        showToast(`${action} succeeded`, 'success');
-        setTimeout(loadVMs, 500);
-    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
-}
-
-async function openEditVM(id) {
-    try {
-        const res = await fetch(`/api/vms/${id}`);
-        const vm = await res.json();
-        document.getElementById('edit-vm-id').value = id;
-        const form = document.getElementById('edit-vm-form');
-        form.vcpu.value = vm.vcpu;
-        form.memory_mb.value = vm.memory_mb;
-        form.disk_gb.value = vm.disk_gb;
-        form.bios_type.value = vm.bios_type;
-        form.balloon.checked = vm.balloon;
-        form.hotplug_cpu.checked = vm.hotplug_cpu;
-        form.hotplug_ram.checked = vm.hotplug_ram;
-        form.serial_console.checked = vm.serial_console;
-        form.agent_enabled.checked = vm.agent_enabled;
-        document.getElementById('resize-disk').placeholder = `Current: ${vm.disk_gb}GB`;
-        openModal('edit-vm-modal');
-    } catch(e) { showToast('Error loading VM', 'error'); }
-}
-
-async function openConsole(id) {
-    try {
-        const res = await fetch(`/api/console/vm/${id}`);
-        const data = await res.json();
-        if (data.success && data.novnc_url) {
-            window.open(data.novnc_url, '_blank');
-        } else {
-            showToast('Console not available: ' + (data.error || ''), 'error');
-        }
-    } catch(e) { showToast('Error opening console', 'error'); }
-}
-
-function toggleSelect(cb) {
-    const id = parseInt(cb.value);
-    if (cb.checked) selectedVMs.add(id); else selectedVMs.delete(id);
-    document.getElementById('bulk-actions').classList.toggle('hidden', selectedVMs.size === 0);
-}
-
-function toggleSelectAll(cb) {
-    document.querySelectorAll('#vm-tbody input[type=checkbox]').forEach(c => {
-        c.checked = cb.checked;
-        toggleSelect(c);
+function showStep(n) {
+    document.querySelectorAll('.wizard-page').forEach(p => p.classList.add('nx-hidden'));
+    document.getElementById('page-' + n).classList.remove('nx-hidden');
+    document.querySelectorAll('.nx-wizard-step').forEach(s => {
+        const sn = parseInt(s.dataset.step);
+        s.classList.remove('active', 'done');
+        if (sn === n) s.classList.add('active');
+        if (sn < n) s.classList.add('done');
     });
+    document.getElementById('btn-back').style.visibility = n === 1 ? 'hidden' : 'visible';
+    document.getElementById('btn-next').textContent = n === totalSteps ? 'Create VM →' : 'Next →';
+    if (n === 6) buildSummary();
 }
 
-async function bulkStart() { await bulkAction('start'); }
-async function bulkStop() { await bulkAction('stop'); }
-async function bulkDelete() {
-    if (!confirm(`Delete ${selectedVMs.size} VMs?`)) return;
-    await bulkAction('delete');
+function buildSummary() {
+    const g = (n) => document.querySelector(`[name="${n}"]`)?.value || '-';
+    document.getElementById('vm-summary').innerHTML = `
+        <div style="display:grid;grid-template-columns:130px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+            <span class="nx-text-muted">Name</span><span style="font-weight:500;">${g('name')}</span>
+            <span class="nx-text-muted">ISO</span><span>${g('iso') || 'No media'}</span>
+            <span class="nx-text-muted">CPU</span><span>${g('vcpu')} cores (${g('cpu_type')})</span>
+            <span class="nx-text-muted">Memory</span><span>${g('memory_mb')} MB</span>
+            <span class="nx-text-muted">Disk</span><span>${g('disk_gb')} GB (${g('storage')})</span>
+            <span class="nx-text-muted">Network</span><span>${g('bridge')} (${g('nic_model')})</span>
+            <span class="nx-text-muted">BIOS</span><span>${g('bios') === 'ovmf' ? 'UEFI (OVMF)' : 'SeaBIOS'}</span>
+        </div>`;
 }
 
-async function bulkAction(action) {
+function nextStep() {
+    if (currentStep === 1 && !document.querySelector('[name="name"]').value) {
+        showToast('VM name is required', 'error'); return;
+    }
+    if (currentStep < totalSteps) { currentStep++; showStep(currentStep); }
+    else { submitVM(); }
+}
+
+function prevStep() { if (currentStep > 1) { currentStep--; showStep(currentStep); } }
+
+async function submitVM() {
+    const btn = document.getElementById('btn-next');
+    btn.disabled = true; btn.textContent = 'Creating...';
+    const formData = new FormData(document.querySelector('.wizard-page:not(.nx-hidden)')?.closest('form') || document.body);
+    // Collect all form data
+    const data = {};
+    document.querySelectorAll('.wizard-page input, .wizard-page select, .wizard-page textarea').forEach(el => {
+        if (el.name) data[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+    });
     try {
-        await fetch(`/api/vms/bulk/${action}`, {
+        const r = await fetch('/api/vms/create', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `vm_ids=${[...selectedVMs].join(',')}`
+            body: new URLSearchParams(data)
         });
-        showToast(`Bulk ${action} completed`, 'success');
-        selectedVMs.clear();
-        document.getElementById('bulk-actions').classList.add('hidden');
-        document.getElementById('select-all').checked = false;
-        setTimeout(loadVMs, 500);
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function hotplugCPU() {
-    const id = document.getElementById('edit-vm-id').value;
-    const vcpus = document.getElementById('hotplug-cpu').value;
-    if (!vcpus) return;
-    try {
-        const form = new FormData();
-        form.append('vcpus', vcpus);
-        const res = await fetch(`/api/vms/${id}/hotplug/cpu`, {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? `CPU updated to ${vcpus} cores` : data.error, data.success ? 'success' : 'error');
-        loadVMs();
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function hotplugRAM() {
-    const id = document.getElementById('edit-vm-id').value;
-    const ram = document.getElementById('hotplug-ram').value;
-    if (!ram) return;
-    try {
-        const form = new FormData();
-        form.append('memory_mb', ram);
-        const res = await fetch(`/api/vms/${id}/hotplug/ram`, {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? `RAM updated to ${ram}MB` : data.error, data.success ? 'success' : 'error');
-        loadVMs();
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function resizeDisk() {
-    const id = document.getElementById('edit-vm-id').value;
-    const size = document.getElementById('resize-disk').value;
-    if (!size) return;
-    try {
-        const form = new FormData();
-        form.append('new_size_gb', size);
-        const res = await fetch(`/api/vms/${id}/resize-disk`, {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? `Disk resized to ${size}GB` : data.error, data.success ? 'success' : 'error');
-        loadVMs();
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function convertToTemplate() {
-    const id = document.getElementById('edit-vm-id').value;
-    if (!confirm('Convert this VM to a template? It cannot be started directly.')) return;
-    try {
-        await fetch(`/api/vms/${id}/convert-template`, {method: 'POST'});
-        showToast('Converted to template', 'success');
-        closeModal('edit-vm-modal');
-        loadVMs();
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-// ── Create VM Form ──
-document.getElementById('create-vm-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-        const res = await fetch('/api/vms/create', {method: 'POST', body: form});
-        const data = await res.json();
-        if (data.success) {
-            showToast('VM created', 'success');
-            closeModal('create-vm-modal');
-            loadVMs();
+        const result = await r.json();
+        if (result.success) {
+            document.getElementById('vm-success').classList.remove('nx-hidden');
+            document.getElementById('wizard-steps').parentElement.querySelector('.nx-wizard-nav').classList.add('nx-hidden');
+            setTimeout(() => window.location.href = '/vms', 1500);
         } else {
-            showToast(data.error || 'Failed', 'error');
+            document.getElementById('vm-error').innerHTML = `<div style="color:var(--danger);">${result.error || 'Failed to create VM'}</div>`;
+            btn.disabled = false; btn.textContent = 'Create VM →';
         }
-    } catch(e) { showToast('Error creating VM', 'error'); }
-};
+    } catch (e) {
+        document.getElementById('vm-error').innerHTML = `<div style="color:var(--danger);">Network error</div>`;
+        btn.disabled = false; btn.textContent = 'Create VM →';
+    }
+}
 
-// ── Edit VM Form ──
-document.getElementById('edit-vm-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const id = document.getElementById('edit-vm-id').value;
-    const form = new FormData(e.target);
-    try {
-        const res = await fetch(`/api/vms/${id}/update`, {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? 'VM updated' : data.error, data.success ? 'success' : 'error');
-        closeModal('edit-vm-modal');
-        loadVMs();
-    } catch(e) { showToast('Error', 'error'); }
-};
+// Load ISOs
+fetch('/api/storage/isos').then(r=>r.json()).then(data => {
+    const sel = document.getElementById('iso-select');
+    (data.isos || []).forEach(iso => {
+        const opt = document.createElement('option');
+        opt.value = iso.filename || iso.name;
+        opt.textContent = iso.name + (iso.size ? ` (${(iso.size/1073741824).toFixed(1)} GB)` : '');
+        sel.appendChild(opt);
+    });
+}).catch(()=>{});
 
-// ── Import Form ──
-document.getElementById('import-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-        const res = await fetch('/api/vms/import', {method: 'POST', body: form});
-        const data = await res.json();
-        const el = document.getElementById('import-result');
-        el.classList.remove('hidden');
-        if (data.success) {
-            el.innerHTML = `<div class="bg-green-900/30 border border-green-800 rounded-lg p-3 text-green-400 text-sm">
-                <p>Imported: <strong>${data.vm.name}</strong></p>
-                <p>${data.vm.vcpu} vCPU, ${data.vm.memory_mb}MB RAM, ${data.vm.disk_gb}GB Disk</p>
-                <p class="text-zinc-500 text-xs mt-2">${data.message}</p>
-            </div>`;
-        } else {
-            el.innerHTML = `<div class="bg-red-900/30 border border-red-800 rounded-lg p-3 text-red-400 text-sm">${data.error}</div>`;
-        }
-    } catch(e) { showToast('Import error', 'error'); }
-};
+// Load bridges
+fetch('/api/network/bridges').then(r=>r.json()).then(data => {
+    const sel = document.getElementById('bridge-select');
+    sel.innerHTML = '';
+    (data.bridges || []).forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.name;
+        sel.appendChild(opt);
+    });
+}).catch(()=>{});
 
-// ── Tag Form ──
-document.getElementById('tag-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-        await fetch('/api/tags/create', {method: 'POST', body: form});
-        showToast('Tag created', 'success');
-        closeModal('tag-modal');
-        loadTags();
-    } catch(e) { showToast('Error', 'error'); }
-};
-
-// ── Modal helpers ──
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-// Init
-loadVMs();
-loadTags();
-setInterval(loadVMs, 10000);
+showStep(1);
 </script>
 {% endblock %}

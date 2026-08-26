@@ -1,97 +1,105 @@
 {% extends "base.html" %}
-{% block title %}NexVE — Dashboard{% endblock %}
-{% block breadcrumb %}Dashboard{% endblock %}
+{% block title %}NexVE — Summary{% endblock %}
+{% block breadcrumb %}Summary{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<!-- Page header -->
+<div class="nx-page-header">
     <div>
-        <h1 class="text-2xl font-bold">{{ hostname }}</h1>
-        <p class="text-gray-500 text-sm mt-1">System Overview</p>
+        <div class="nx-page-title">{{ hostname }}</div>
+        <div class="nx-page-subtitle">System Overview</div>
     </div>
-    <div class="flex gap-2">
-        <a href="/vms" class="bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">+ Create VM</a>
-        <a href="/settings" class="bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">Settings</a>
-    </div>
-</div>
-
-<!-- System Stats -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-        <div class="text-zinc-400 text-sm mb-1">CPU Usage</div>
-        <div class="text-3xl font-bold text-orange-500" id="stat-cpu">{{ cpu }}%</div>
-        <div class="w-full bg-zinc-800 rounded-full h-2 mt-3">
-            <div class="bg-orange-500 h-2 rounded-full transition-all" style="width:{{ cpu }}%" id="bar-cpu"></div>
-        </div>
-    </div>
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-        <div class="text-zinc-400 text-sm mb-1">Memory</div>
-        <div class="text-3xl font-bold text-blue-500" id="stat-mem">{{ "%.1f"|format(memory.percent) }}%</div>
-        <p class="text-zinc-500 text-xs mt-1">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</p>
-        <div class="w-full bg-zinc-800 rounded-full h-2 mt-2">
-            <div class="bg-blue-500 h-2 rounded-full" style="width:{{ memory.percent }}%" id="bar-mem"></div>
-        </div>
-    </div>
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-        <div class="text-zinc-400 text-sm mb-1">Disk</div>
-        <div class="text-3xl font-bold text-green-500">{{ "%.1f"|format(disk.percent) }}%</div>
-        <p class="text-zinc-500 text-xs mt-1">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</p>
-        <div class="w-full bg-zinc-800 rounded-full h-2 mt-2">
-            <div class="bg-green-500 h-2 rounded-full" style="width:{{ disk.percent }}%"></div>
-        </div>
-    </div>
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-        <div class="text-zinc-400 text-sm mb-1">Status</div>
-        <div class="flex items-center gap-2 mt-3">
-            <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-            <span class="text-green-400 font-semibold">Online</span>
-        </div>
-        <p class="text-zinc-500 text-xs mt-3" id="uptime-info">Loading...</p>
+    <div class="nx-flex nx-gap-2">
+        <a href="/vms" class="nx-btn nx-btn-primary">+ Create VM</a>
+        <a href="/containers" class="nx-btn nx-btn-secondary">+ Create CT</a>
     </div>
 </div>
 
-<!-- VMs + Activity -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <!-- VMs -->
-    <div class="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-xl">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-            <span class="font-semibold">Virtual Machines</span>
-            <a href="/vms" class="text-orange-400 hover:text-orange-300 text-sm transition">View All →</a>
+<!-- Resource stats -->
+<div class="nx-grid nx-grid-4 nx-mb-6">
+    <div class="nx-stat">
+        <div class="nx-stat-label">CPU Usage</div>
+        <div class="nx-stat-value" style="color:var(--accent);" id="stat-cpu">{{ cpu }}%</div>
+        <div class="nx-progress nx-mt-4">
+            <div class="nx-progress-bar accent" style="width:{{ cpu }}%" id="bar-cpu"></div>
         </div>
-        <div id="dash-vm-list" class="divide-y divide-zinc-800">
-            <p class="text-zinc-500 text-sm text-center py-8">Loading...</p>
+    </div>
+    <div class="nx-stat">
+        <div class="nx-stat-label">Memory</div>
+        <div class="nx-stat-value" style="color:var(--info);">{{ "%.1f"|format(memory.percent) }}%</div>
+        <div class="nx-stat-detail">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-progress nx-mt-4">
+            <div class="nx-progress-bar info" style="width:{{ memory.percent }}%"></div>
+        </div>
+    </div>
+    <div class="nx-stat">
+        <div class="nx-stat-label">Disk</div>
+        <div class="nx-stat-value" style="color:var(--success);">{{ "%.1f"|format(disk.percent) }}%</div>
+        <div class="nx-stat-detail">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-progress nx-mt-4">
+            <div class="nx-progress-bar success" style="width:{{ disk.percent }}%"></div>
+        </div>
+    </div>
+    <div class="nx-stat">
+        <div class="nx-stat-label">Status</div>
+        <div class="nx-flex nx-items-center nx-gap-2" style="margin-top:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--success);"></span>
+            <span style="font-weight:600;color:var(--success);">Online</span>
+        </div>
+        <div class="nx-stat-detail" id="uptime-info" style="margin-top:12px;">Loading...</div>
+    </div>
+</div>
+
+<!-- Guest summary + Storage -->
+<div class="nx-grid" style="grid-template-columns: 2fr 1fr;" class="nx-mb-6">
+    <!-- Guest Summary -->
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Guest Summary</span>
+            <a href="/vms" style="font-size:var(--text-xs);">View All →</a>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table" id="guest-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
+                        <th>Uptime</th>
+                    </tr>
+                </thead>
+                <tbody id="guest-list">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
-    <!-- Activity -->
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-            <span class="font-semibold">Recent Activity</span>
-            <a href="/logs" class="text-orange-400 hover:text-orange-300 text-sm transition">View All →</a>
+    <!-- Storage Overview -->
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Storage</span>
+            <a href="/storage" style="font-size:var(--text-xs);">Manage →</a>
         </div>
-        <div id="dash-activity" class="divide-y divide-zinc-800 max-h-80 overflow-y-auto">
-            <p class="text-zinc-500 text-sm text-center py-8">No activity yet</p>
+        <div class="nx-card-body" id="storage-overview">
+            <div class="nx-text-muted nx-text-center" style="padding:32px;">Loading...</div>
         </div>
     </div>
 </div>
 
-<!-- Quick Stats Row -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-    <a href="/vms" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
-        <div class="text-zinc-400 text-xs">Virtual Machines</div>
-        <div class="text-2xl font-bold mt-1" id="dash-vm-count">0</div>
-    </a>
-    <a href="/containers" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
-        <div class="text-zinc-400 text-xs">Containers</div>
-        <div class="text-2xl font-bold mt-1" id="dash-ct-count">0</div>
-    </a>
-    <a href="/storage" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
-        <div class="text-zinc-400 text-xs">Storage</div>
-        <div class="text-2xl font-bold mt-1" id="dash-storage-count">0</div>
-    </a>
-    <a href="/network" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
-        <div class="text-zinc-400 text-xs">Interfaces</div>
-        <div class="text-2xl font-bold mt-1" id="dash-iface-count">0</div>
-    </a>
+<!-- Recent Tasks -->
+<div class="nx-card">
+    <div class="nx-card-header">
+        <span class="nx-card-title">Recent Tasks</span>
+        <a href="/logs" style="font-size:var(--text-xs);">View All →</a>
+    </div>
+    <div class="nx-card-body" style="padding:0;">
+        <div id="task-list">
+            <div class="nx-text-center nx-text-muted" style="padding:24px;">No recent tasks</div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -99,57 +107,48 @@
 <script>
 async function loadDashboard() {
     try {
-        // Load VMs
+        // Load guests (VMs + Containers)
         const vmRes = await fetch('/api/vms/');
         const vmData = await vmRes.json();
         const vms = vmData.vms || [];
-        document.getElementById('dash-vm-count').textContent = vms.length;
 
-        const vmList = document.getElementById('dash-vm-list');
-        if (vms.length === 0) {
-            vmList.innerHTML = '<p class="text-zinc-500 text-sm text-center py-8">No VMs. <a href="/vms" class="text-orange-400">Create one</a></p>';
+        const ctRes = await fetch('/api/containers/');
+        const ctData = await ctRes.json();
+        const cts = ctData.containers || [];
+
+        const guests = [
+            ...vms.map(v => ({...v, type: 'VM'})),
+            ...cts.map(c => ({...c, type: 'CT'}))
+        ];
+
+        const guestList = document.getElementById('guest-list');
+        if (guests.length === 0) {
+            guestList.innerHTML = '<tr><td colspan="6" class="nx-text-center" style="padding:32px;"><span class="nx-text-muted">No guests found.</span> <a href="/vms">Create a VM</a> or <a href="/containers">Container</a></td></tr>';
         } else {
-            vmList.innerHTML = vms.slice(0, 5).map(vm => `
-                <div class="flex items-center justify-between px-5 py-3 hover:bg-zinc-800/50 transition">
-                    <div>
-                        <span class="text-white font-medium">${vm.name}</span>
-                        <span class="text-zinc-500 text-xs ml-2">${vm.vcpu} vCPU · ${vm.memory_mb/1024}G RAM</span>
-                    </div>
-                    <span class="text-xs px-2 py-0.5 rounded-full ${vm.status === 'running' ? 'bg-green-900/50 text-green-400' : 'bg-zinc-800 text-zinc-500'}">
-                        ${vm.status}
-                    </span>
-                </div>
+            guestList.innerHTML = guests.map(g => `
+                <tr>
+                    <td style="font-weight:500;color:var(--text-primary);">${g.name}</td>
+                    <td><span class="nx-badge ${g.type === 'VM' ? 'nx-badge-accent' : 'nx-badge-info'}">${g.type}</span></td>
+                    <td><span class="nx-badge ${g.status === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${g.status}</span></td>
+                    <td>${g.vcpu || g.cores || '-'} cores</td>
+                    <td>${(g.memory_mb || g.memory || 0) / 1024} GB</td>
+                    <td style="color:var(--text-muted);">-</td>
+                </tr>
             `).join('');
         }
 
-        // Load Containers
-        const ctRes = await fetch('/api/containers/');
-        const ctData = await ctRes.json();
-        document.getElementById('dash-ct-count').textContent = (ctData.containers || []).length;
-
-        // Load Storage
-        const stRes = await fetch('/api/storage/overview');
-        const stData = await stRes.json();
-        const storageCount = (stData.zfs_pools || []).length + (stData.lvm_groups || []).length;
-        document.getElementById('dash-storage-count').textContent = storageCount;
-
-        // Load Network
-        const netRes = await fetch('/api/network/interfaces');
-        const netData = await netRes.json();
-        document.getElementById('dash-iface-count').textContent = (netData.interfaces || []).length;
-
-        // Load Activity
-        const actRes = await fetch('/api/activity/?limit=10');
-        const actData = await actRes.json();
-        const actEl = document.getElementById('dash-activity');
-        const logs = actData.logs || [];
-        if (logs.length === 0) {
-            actEl.innerHTML = '<p class="text-zinc-500 text-sm text-center py-8">No activity yet</p>';
-        } else {
-            actEl.innerHTML = logs.map(l => `
-                <div class="px-5 py-3 text-sm">
-                    <div class="text-white">${l.action}</div>
-                    <div class="text-zinc-500 text-xs mt-0.5">${l.username || 'system'} · ${l.target_type || ''} · ${l.created_at ? new Date(l.created_at).toLocaleString() : ''}</div>
+        // Load tasks
+        const taskRes = await fetch('/api/tasks?limit=5');
+        const taskData = await taskRes.json();
+        const taskList = document.getElementById('task-list');
+        const tasks = taskData.tasks || [];
+        if (tasks.length > 0) {
+            taskList.innerHTML = tasks.map(t => `
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span class="nx-badge ${t.status === 'completed' ? 'nx-badge-success' : t.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${t.status}</span>
+                    <span style="color:var(--text-muted);width:80px;">${t.username || 'system'}</span>
+                    <span style="flex:1;">${t.action}</span>
+                    <span style="color:var(--text-muted);font-size:var(--text-xs);">${t.started_at ? new Date(t.started_at).toLocaleTimeString() : ''}</span>
                 </div>
             `).join('');
         }
@@ -158,8 +157,7 @@ async function loadDashboard() {
         const nodeRes = await fetch('/api/nodes/');
         const nodeData = await nodeRes.json();
         if (nodeData.nodes && nodeData.nodes[0]) {
-            const bootTime = nodeData.nodes[0].uptime;
-            const uptimeSec = Math.floor(Date.now()/1000) - bootTime;
+            const uptimeSec = nodeData.nodes[0].uptime || 0;
             const days = Math.floor(uptimeSec / 86400);
             const hours = Math.floor((uptimeSec % 86400) / 3600);
             document.getElementById('uptime-info').textContent = `Uptime: ${days}d ${hours}h`;
@@ -168,6 +166,6 @@ async function loadDashboard() {
 }
 
 loadDashboard();
-setInterval(loadDashboard, 10000);
+setInterval(loadDashboard, 15000);
 </script>
 {% endblock %}

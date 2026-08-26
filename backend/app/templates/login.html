@@ -1,59 +1,39 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexVE — Login</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { darkMode: 'class' }</script>
-    <style>
-        body { background: #0a0a0a; font-family: 'Inter', system-ui, sans-serif; }
-    </style>
+    <link rel="stylesheet" href="/static/css/nexve.css">
 </head>
-<body class="min-h-screen flex items-center justify-center">
-    <div class="w-full max-w-md">
-        <!-- Logo -->
-        <div class="text-center mb-8">
-            <div class="text-5xl font-bold text-orange-500 mb-2">NexVE</div>
-            <p class="text-gray-500 text-sm">Hypervisor Dashboard</p>
+<body class="nx-login">
+    <div class="nx-login-card">
+        <div class="nx-login-logo">
+            <h1><span>Nex</span>VE</h1>
+            <p>Hypervisor Management Platform</p>
         </div>
 
-        <!-- Card -->
-        <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 shadow-2xl">
-            <h2 class="text-white text-xl font-semibold mb-6">Sign In</h2>
+        {% if error %}
+        <div style="background:var(--danger-dim);border:1px solid rgba(239,68,68,0.2);color:var(--danger);padding:10px 14px;border-radius:var(--radius-lg);font-size:var(--text-sm);margin-bottom:20px;">
+            {{ error }}
+        </div>
+        {% endif %}
 
-            {% if error %}
-            <div class="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg mb-6 text-sm">
-                {{ error }}
+        <form method="POST" action="/login" class="nx-flex nx-flex-col nx-gap-4">
+            <div class="nx-input-group">
+                <label class="nx-label">Username</label>
+                <input type="text" name="username" required autofocus class="nx-input" placeholder="Enter your username">
             </div>
-            {% endif %}
+            <div class="nx-input-group">
+                <label class="nx-label">Password</label>
+                <input type="password" name="password" required class="nx-input" placeholder="Enter your password">
+            </div>
+            <button type="submit" class="nx-btn nx-btn-primary nx-btn-lg nx-w-full" style="margin-top:8px;">
+                Sign In →
+            </button>
+        </form>
 
-            <form method="POST" action="/login" class="space-y-5">
-                <div>
-                    <label class="block text-gray-400 text-sm mb-2">Username</label>
-                    <input type="text" name="username" required autofocus
-                        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white
-                               focus:outline-none focus:border-orange-500 transition"
-                        placeholder="Enter your username">
-                </div>
-
-                <div>
-                    <label class="block text-gray-400 text-sm mb-2">Password</label>
-                    <input type="password" name="password" required
-                        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white
-                               focus:outline-none focus:border-orange-500 transition"
-                        placeholder="Enter your password">
-                </div>
-
-                <button type="submit"
-                    class="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold
-                           py-3 rounded-lg transition duration-200">
-                    Sign In
-                </button>
-            </form>
-        </div>
-
-        <p class="text-center text-gray-600 text-xs mt-6">NexVE Hypervisor v1.0</p>
+        <p class="nx-text-center nx-text-muted" style="margin-top:24px;font-size:var(--text-xs);">NexVE v2.0 — Your private hypervisor</p>
     </div>
 </body>
 </html>

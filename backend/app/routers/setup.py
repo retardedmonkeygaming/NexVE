@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.user import User
+import subprocess
+import os
 
 router = APIRouter()
 
@@ -11,53 +13,228 @@ SETUP_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexVE — Initial Setup</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>body { background: #0a0a0a; color: #e5e5e5; font-family: system-ui, sans-serif; }</style>
+    <link rel="stylesheet" href="/static/css/nexve.css">
 </head>
-<body class="min-h-screen flex items-center justify-center">
-    <div class="w-full max-w-md">
-        <div class="text-center mb-8">
-            <h1 class="text-4xl font-bold"><span class="text-orange-500">Nex</span>VE</h1>
-            <p class="text-gray-500 mt-2">Initial System Setup</p>
-        </div>
-        <div class="bg-[#111] border border-gray-800 rounded-xl p-8">
-            <h2 class="text-xl font-semibold mb-1">Create Admin Account</h2>
-            <p class="text-gray-500 text-sm mb-6">This will be the administrator for your NexVE system.</p>
-            <form hx-post="/setup/complete" hx-swap="innerHTML" class="space-y-4">
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Username</label>
-                    <input type="text" name="username" required
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition"
-                        placeholder="admin">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Email</label>
-                    <input type="email" name="email" required
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition"
-                        placeholder="you@example.com">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Password</label>
-                    <input type="password" name="password" required minlength="8"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition"
-                        placeholder="Min 8 characters">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Confirm Password</label>
-                    <input type="password" name="password_confirm" required minlength="8"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none transition"
-                        placeholder="Repeat password">
-                </div>
-                <div id="setup-error"></div>
-                <button type="submit"
-                    class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg transition mt-2">
-                    Complete Setup &rarr;
-                </button>
-            </form>
-        </div>
-        <p class="text-center text-gray-600 text-xs mt-6">NexVE v1.0 &mdash; Your private hypervisor</p>
+<body class="nx-login">
+<div class="nx-wizard" style="max-width:640px;">
+
+    <!-- Step indicators -->
+    <div class="nx-wizard-steps" id="wizard-steps">
+        <div class="nx-wizard-step active" data-step="1"><div class="nx-wizard-step-num">1</div><div class="nx-wizard-step-label">Admin</div></div>
+        <div class="nx-wizard-step" data-step="2"><div class="nx-wizard-step-num">2</div><div class="nx-wizard-step-label">Server</div></div>
+        <div class="nx-wizard-step" data-step="3"><div class="nx-wizard-step-num">3</div><div class="nx-wizard-step-label">Network</div></div>
+        <div class="nx-wizard-step" data-step="4"><div class="nx-wizard-step-num">4</div><div class="nx-wizard-step-label">Confirm</div></div>
     </div>
+
+    <div class="nx-wizard-body">
+        <!-- Step 1: Admin Account -->
+        <div class="wizard-page" id="page-1">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin-bottom:4px;">Create Admin Account</h2>
+            <p class="nx-text-muted" style="font-size:var(--text-sm);margin-bottom:24px;">This will be the administrator for your NexVE system.</p>
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group">
+                    <label class="nx-label">Username</label>
+                    <input type="text" name="username" class="nx-input" placeholder="admin" required value="admin">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Email</label>
+                    <input type="email" name="email" class="nx-input" placeholder="you@example.com" required>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Password</label>
+                    <input type="password" name="password" class="nx-input" placeholder="Min 8 characters" required minlength="8">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Confirm Password</label>
+                    <input type="password" name="password_confirm" class="nx-input" placeholder="Repeat password" required minlength="8">
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Server Settings -->
+        <div class="wizard-page nx-hidden" id="page-2">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin-bottom:4px;">Server Settings</h2>
+            <p class="nx-text-muted" style="font-size:var(--text-sm);margin-bottom:24px;">Configure your server identity and locale.</p>
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group">
+                    <label class="nx-label">Hostname</label>
+                    <input type="text" name="hostname" class="nx-input" placeholder="nexve" value="nexve">
+                    <span class="nx-hint">The server's network name. Visible in the sidebar and system info.</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Timezone</label>
+                    <select name="timezone" class="nx-select">
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">Eastern Time (US)</option>
+                        <option value="America/Chicago">Central Time (US)</option>
+                        <option value="America/Denver">Mountain Time (US)</option>
+                        <option value="America/Los_Angeles">Pacific Time (US)</option>
+                        <option value="Europe/London">London</option>
+                        <option value="Europe/Berlin">Berlin</option>
+                        <option value="Europe/Paris">Paris</option>
+                        <option value="Asia/Tokyo">Tokyo</option>
+                        <option value="Asia/Shanghai">Shanghai</option>
+                        <option value="Asia/Dubai">Dubai</option>
+                        <option value="Asia/Kolkata">Kolkata</option>
+                        <option value="Australia/Sydney">Sydney</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Language</label>
+                    <select name="language" class="nx-select">
+                        <option value="en">English</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Network -->
+        <div class="wizard-page nx-hidden" id="page-3">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin-bottom:4px;">Network Configuration</h2>
+            <p class="nx-text-muted" style="font-size:var(--text-sm);margin-bottom:24px;">Configure network settings for your server.</p>
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group">
+                    <label class="nx-label">IP Address</label>
+                    <input type="text" name="ip_address" class="nx-input" placeholder="e.g. 192.168.1.100" id="ip-input">
+                    <span class="nx-hint">Leave blank to use DHCP.</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Netmask</label>
+                    <input type="text" name="netmask" class="nx-input" placeholder="e.g. 255.255.255.0" value="255.255.255.0">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Gateway</label>
+                    <input type="text" name="gateway" class="nx-input" placeholder="e.g. 192.168.1.1" id="gw-input">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">DNS Servers</label>
+                    <input type="text" name="dns" class="nx-input" placeholder="e.g. 1.1.1.1, 8.8.8.8" value="1.1.1.1, 8.8.8.8">
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Confirm -->
+        <div class="wizard-page nx-hidden" id="page-4">
+            <h2 style="font-size:var(--text-xl);font-weight:700;margin-bottom:4px;">Confirm & Initialize</h2>
+            <p class="nx-text-muted" style="font-size:var(--text-sm);margin-bottom:24px;">Review your settings before initializing NexVE.</p>
+            <div id="summary" style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;"></div>
+            <div id="setup-error" style="margin-top:12px;"></div>
+            <div id="setup-success" style="margin-top:12px;" class="nx-hidden">
+                <div style="background:var(--success-dim);border:1px solid rgba(34,197,94,0.2);color:var(--success);padding:12px 16px;border-radius:var(--radius-lg);font-size:var(--text-sm);">
+                    ✓ NexVE has been initialized successfully! Redirecting to login...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nx-wizard-nav" id="wizard-nav">
+        <button class="nx-btn nx-btn-secondary" id="btn-back" onclick="prevStep()" style="visibility:hidden;">← Back</button>
+        <button class="nx-btn nx-btn-primary" id="btn-next" onclick="nextStep()">Next →</button>
+    </div>
+
+</div>
+
+<script>
+let currentStep = 1;
+const totalSteps = 4;
+
+function showStep(n) {
+    document.querySelectorAll('.wizard-page').forEach(p => p.classList.add('nx-hidden'));
+    document.getElementById('page-' + n).classList.remove('nx-hidden');
+
+    document.querySelectorAll('.nx-wizard-step').forEach(s => {
+        const sn = parseInt(s.dataset.step);
+        s.classList.remove('active', 'done');
+        if (sn === n) s.classList.add('active');
+        if (sn < n) s.classList.add('done');
+    });
+
+    document.getElementById('btn-back').style.visibility = n === 1 ? 'hidden' : 'visible';
+    document.getElementById('btn-next').textContent = n === totalSteps ? 'Initialize NexVE →' : 'Next →';
+
+    if (n === 4) buildSummary();
+}
+
+function buildSummary() {
+    const get = (name) => document.querySelector(`[name="${name}"]`)?.value || '-';
+    const html = `
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:var(--text-sm);">
+            <span class="nx-text-muted">Admin</span><span>${get('username')} (${get('email')})</span>
+            <span class="nx-text-muted">Hostname</span><span>${get('hostname') || 'nexve'}</span>
+            <span class="nx-text-muted">Timezone</span><span>${get('timezone')}</span>
+            <span class="nx-text-muted">IP</span><span>${get('ip_address') || 'DHCP'}</span>
+            <span class="nx-text-muted">Gateway</span><span>${get('gateway') || '-'}</span>
+            <span class="nx-text-muted">DNS</span><span>${get('dns') || '-'}</span>
+        </div>
+    `;
+    document.getElementById('summary').innerHTML = html;
+}
+
+function nextStep() {
+    if (currentStep === 1) {
+        const pw = document.querySelector('[name="password"]').value;
+        const pw2 = document.querySelector('[name="password_confirm"]').value;
+        if (pw !== pw2) {
+            showToast('Passwords do not match', 'error');
+            return;
+        }
+        if (pw.length < 8) {
+            showToast('Password must be at least 8 characters', 'error');
+            return;
+        }
+    }
+
+    if (currentStep < totalSteps) {
+        currentStep++;
+        showStep(currentStep);
+    } else {
+        submitSetup();
+    }
+}
+
+function prevStep() {
+    if (currentStep > 1) { currentStep--; showStep(currentStep); }
+}
+
+async function submitSetup() {
+    const btn = document.getElementById('btn-next');
+    btn.disabled = true;
+    btn.textContent = 'Initializing...';
+
+    const form = document.querySelector('.wizard-page:not(.nx-hidden)');
+    const formData = new FormData();
+    formData.append('username', document.querySelector('[name="username"]').value);
+    formData.append('email', document.querySelector('[name="email"]').value);
+    formData.append('password', document.querySelector('[name="password"]').value);
+    formData.append('password_confirm', document.querySelector('[name="password_confirm"]').value);
+    formData.append('hostname', document.querySelector('[name="hostname"]').value || 'nexve');
+    formData.append('timezone', document.querySelector('[name="timezone"]').value);
+    formData.append('ip_address', document.querySelector('[name="ip_address"]').value);
+    formData.append('gateway', document.querySelector('[name="gateway"]').value);
+    formData.append('dns', document.querySelector('[name="dns"]').value);
+
+    try {
+        const r = await fetch('/setup/complete', { method: 'POST', body: formData });
+        const text = await r.text();
+        if (text.includes('error') || text.includes('Error')) {
+            document.getElementById('setup-error').innerHTML = text;
+            btn.disabled = false;
+            btn.textContent = 'Initialize NexVE →';
+        } else {
+            document.getElementById('setup-success').classList.remove('nx-hidden');
+            document.getElementById('wizard-nav').classList.add('nx-hidden');
+            setTimeout(() => window.location.href = '/login', 2000);
+        }
+    } catch (e) {
+        document.getElementById('setup-error').innerHTML = '<div style="color:var(--danger);">Network error. Please try again.</div>';
+        btn.disabled = false;
+        btn.textContent = 'Initialize NexVE →';
+    }
+}
+
+showStep(1);
+</script>
 </body>
 </html>"""
 
@@ -80,16 +257,16 @@ async def complete_setup(
     email: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
+    hostname: str = Form("nexve"),
+    timezone: str = Form("UTC"),
+    ip_address: str = Form(""),
+    gateway: str = Form(""),
+    dns: str = Form("1.1.1.1, 8.8.8.8"),
 ):
     if password != password_confirm:
-        return HTMLResponse(
-            '<div class="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-2 rounded-lg mb-4">Passwords do not match.</div>'
-        )
-
+        return HTMLResponse('<div style="color:var(--danger);">Passwords do not match.</div>')
     if len(password) < 8:
-        return HTMLResponse(
-            '<div class="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-2 rounded-lg mb-4">Password must be at least 8 characters.</div>'
-        )
+        return HTMLResponse('<div style="color:var(--danger);">Password must be at least 8 characters.</div>')
 
     db = SessionLocal()
     try:
@@ -103,7 +280,38 @@ async def complete_setup(
     finally:
         db.close()
 
+    # Apply server settings
+    try:
+        # Set hostname
+        if hostname and hostname != "nexve":
+            subprocess.run(["hostnamectl", "set-hostname", hostname],
+                         capture_output=True, timeout=10)
+            # Update /etc/hosts
+            import re
+            hosts = "/etc/hosts"
+            with open(hosts) as f:
+                content = f.read()
+            content = re.sub(r"127\.0\.1\.1\s+.*", f"127.0.1.1\t{hostname}", content)
+            with open(hosts, "w") as f:
+                f.write(content)
+
+        # Set timezone
+        if timezone and timezone != "UTC":
+            subprocess.run(["timedatectl", "set-timezone", timezone],
+                         capture_output=True, timeout=10)
+
+        # Set DNS
+        if dns:
+            dns_servers = [s.strip() for s in dns.split(",") if s.strip()]
+            if dns_servers:
+                resolv = "# Generated by NexVE setup\n"
+                for server in dns_servers:
+                    resolv += f"nameserver {server}\n"
+                with open("/etc/resolv.conf", "w") as f:
+                    f.write(resolv)
+    except Exception:
+        pass  # Non-critical — don't fail setup if system config fails
+
     return HTMLResponse(
-        '<div class="bg-green-500/10 border border-green-500/30 text-green-400 text-sm px-4 py-2 rounded-lg mb-4">Account created! Redirecting...</div>'
-        '<script>setTimeout(function(){ window.location.href = "/login"; }, 1000);</script>'
+        '<div style="color:var(--success);">Account created! Redirecting...</div>'
     )

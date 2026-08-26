@@ -3,213 +3,52 @@
 {% block breadcrumb %}Backups{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="nx-page-header">
     <div>
-        <h1 class="text-2xl font-bold">Backups</h1>
-        <p class="text-gray-500 text-sm mt-1">Manage VM and container backups with scheduling and verification</p>
+        <div class="nx-page-title">Backups</div>
+        <div class="nx-page-subtitle">Backup schedules and history</div>
     </div>
-    <div class="flex gap-2">
-        <button onclick="openModal('schedule-modal')" class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">+ Add Schedule</button>
-        <button onclick="refreshAll()" class="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-4 py-2 rounded-lg transition">Refresh</button>
-    </div>
-</div>
-
-<!-- Tabs -->
-<div class="flex gap-1 bg-zinc-900 p-1 rounded-lg mb-6 w-fit">
-    <button onclick="showTab('backups')" id="tab-backups" class="px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">Backups</button>
-    <button onclick="showTab('schedules')" id="tab-schedules" class="px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Schedules</button>
-</div>
-
-<!-- Backups Panel -->
-<div id="panel-backups" class="tab-panel">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-zinc-800/50 text-zinc-400">
-                <tr>
-                    <th class="px-4 py-3 text-left">Name</th>
-                    <th class="px-4 py-3 text-left">Type</th>
-                    <th class="px-4 py-3 text-left">Size</th>
-                    <th class="px-4 py-3 text-left">Created</th>
-                    <th class="px-4 py-3 text-left">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-zinc-800" id="backups-tbody">
-                <tr><td colspan="5" class="text-zinc-500 text-center py-8">Loading backups...</td></tr>
-            </tbody>
-        </table>
+    <div class="nx-flex nx-gap-2">
+        <button class="nx-btn nx-btn-secondary" onclick="showBackupNow()">Backup Now</button>
+        <button class="nx-btn nx-btn-primary" onclick="showScheduleModal()">+ Add Schedule</button>
     </div>
 </div>
 
-<!-- Schedules Panel -->
-<div id="panel-schedules" class="tab-panel hidden">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-zinc-800/50 text-zinc-400">
-                <tr>
-                    <th class="px-4 py-3 text-left">Name</th>
-                    <th class="px-4 py-3 text-left">Target</th>
-                    <th class="px-4 py-3 text-left">Schedule</th>
-                    <th class="px-4 py-3 text-left">Retention</th>
-                    <th class="px-4 py-3 text-left">Enabled</th>
-                    <th class="px-4 py-3 text-left">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-zinc-800" id="schedules-tbody">
-                <tr><td colspan="6" class="text-zinc-500 text-center py-8">Loading schedules...</td></tr>
-            </tbody>
-        </table>
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab(this,'schedules')">Schedules</button>
+    <button class="nx-tab" onclick="showTab(this,'history')">History</button>
+</div>
+
+<div class="nx-tab-content active" id="tab-schedules">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Target</th><th>Type</th><th>Schedule</th><th>Retention</th><th>Last Run</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="schedule-list"><tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No backup schedules configured</td></tr></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
-<!-- Create Schedule Modal -->
-<div id="schedule-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">Create Backup Schedule</h3>
-        <form id="schedule-form" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Name</label>
-                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Target Type</label>
-                    <select name="target_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="vm">VM</option>
-                        <option value="container">Container</option>
-                    </select>
-                </div>
-            </div>
-            <div>
-                <label class="text-zinc-400 text-sm">Target ID</label>
-                <input name="target_id" type="number" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Cron Expression</label>
-                    <input name="cron_expr" value="0 2 * * *" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none" placeholder="0 2 * * *">
-                    <p class="text-zinc-600 text-xs mt-1">Default: daily at 2am</p>
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Max Backups to Keep</label>
-                    <input name="max_backups" type="number" value="7" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('schedule-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-            </div>
-        </form>
+<div class="nx-tab-content" id="tab-history">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Date</th><th>Target</th><th>Type</th><th>Size</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="history-list"><tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">No backup history</td></tr></tbody>
+            </table>
+        </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-function showTab(name) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-    document.querySelectorAll('[id^="tab-"]').forEach(b => { b.classList.remove('bg-zinc-700', 'text-white'); b.classList.add('text-zinc-400'); });
-    document.getElementById('panel-' + name).classList.remove('hidden');
-    document.getElementById('tab-' + name).classList.add('bg-zinc-700', 'text-white');
-    document.getElementById('tab-' + name).classList.remove('text-zinc-400');
+function showTab(btn, name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
 }
-
-async function loadBackups() {
-    try {
-        const res = await fetch('/api/backups/list');
-        const data = await res.json();
-        const backups = data.backups || [];
-        const tbody = document.getElementById('backups-tbody');
-        if (backups.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-zinc-500 text-center py-8">No backups found.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = backups.map(b => `
-            <tr class="hover:bg-zinc-800/50 transition">
-                <td class="px-4 py-3 font-mono text-xs">${b.filename}</td>
-                <td class="px-4 py-3">
-                    <span class="text-xs px-2 py-0.5 rounded-full ${b.type === 'vm' ? 'bg-blue-900/50 text-blue-400' : 'bg-green-900/50 text-green-400'}">${b.type}</span>
-                    ${b.incremental ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-400 ml-1">incr</span>' : ''}
-                </td>
-                <td class="px-4 py-3">${b.size_human}</td>
-                <td class="px-4 py-3 text-zinc-500 text-xs">${new Date(b.modified).toLocaleString()}</td>
-                <td class="px-4 py-3">
-                    <div class="flex gap-1">
-                        <button onclick="verifyBackup('${b.filename}')" class="text-cyan-400 hover:text-cyan-300 text-xs px-2 py-1 rounded bg-cyan-900/30 transition">Verify</button>
-                        <button onclick="deleteBackup('${b.filename}')" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-900/30 transition">Delete</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-    } catch(e) { console.error(e); }
-}
-
-async function loadSchedules() {
-    try {
-        const res = await fetch('/api/backups/schedules');
-        const data = await res.json();
-        const schedules = data.schedules || [];
-        const tbody = document.getElementById('schedules-tbody');
-        if (schedules.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-zinc-500 text-center py-8">No backup schedules.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = schedules.map(s => `
-            <tr class="hover:bg-zinc-800/50 transition">
-                <td class="px-4 py-3 font-medium">${s.name}</td>
-                <td class="px-4 py-3 text-zinc-400">${s.target_type} #${s.target_id}</td>
-                <td class="px-4 py-3 font-mono text-xs">${s.cron_expr}</td>
-                <td class="px-4 py-3">Keep ${s.max_backups}</td>
-                <td class="px-4 py-3"><span class="w-2 h-2 inline-block rounded-full ${s.enabled ? 'bg-green-500' : 'bg-red-500'}"></span></td>
-                <td class="px-4 py-3">
-                    <div class="flex gap-1">
-                        <button onclick="toggleSchedule(${s.id})" class="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded bg-zinc-800 transition">
-                            ${s.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                        <button onclick="deleteSchedule(${s.id})" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-900/30 transition">Delete</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-    } catch(e) { console.error(e); }
-}
-
-async function verifyBackup(filename) {
-    showToast('Verifying backup...', 'info');
-    // This would call a verify endpoint
-    showToast('Backup verified', 'success');
-}
-
-async function deleteBackup(filename) {
-    if (!confirm(`Delete backup "${filename}"?`)) return;
-    await fetch(`/api/backups/delete/${filename}`, {method: 'POST'});
-    loadBackups();
-}
-
-async function toggleSchedule(id) {
-    await fetch(`/api/backups/schedules/${id}/toggle`, {method: 'POST'});
-    loadSchedules();
-}
-
-async function deleteSchedule(id) {
-    if (!confirm('Delete this schedule?')) return;
-    await fetch(`/api/backups/schedules/${id}/delete`, {method: 'POST'});
-    loadSchedules();
-}
-
-document.getElementById('schedule-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-        const res = await fetch('/api/backups/schedules/create', {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? 'Schedule created' : 'Error', data.success ? 'success' : 'error');
-        closeModal('schedule-modal');
-        loadSchedules();
-    } catch(e) { showToast('Error', 'error'); }
-};
-
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-function refreshAll() { loadBackups(); loadSchedules(); }
-refreshAll();
 </script>
 {% endblock %}

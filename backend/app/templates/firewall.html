@@ -3,220 +3,89 @@
 {% block breadcrumb %}Firewall{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="nx-page-header">
     <div>
-        <h1 class="text-2xl font-bold">Firewall Rules</h1>
-        <p class="text-gray-500 text-sm mt-1">Manage host and VM firewall rules via nftables</p>
+        <div class="nx-page-title">Firewall</div>
+        <div class="nx-page-subtitle">Host and VM firewall rules (nftables)</div>
     </div>
-    <div class="flex gap-2">
-        <button onclick="openModal('create-rule-modal')" class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">+ Add Rule</button>
-        <button onclick="applyRules()" class="bg-green-700 hover:bg-green-600 text-white text-xs px-4 py-2 rounded-lg transition">Apply Rules</button>
+    <button class="nx-btn nx-btn-primary" onclick="showAddRule()">+ Add Rule</button>
+</div>
+
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab(this,'rules')">Rules</button>
+    <button class="nx-tab" onclick="showTab(this,'groups')">Groups</button>
+    <button class="nx-tab" onclick="showTab(this,'options')">Options</button>
+</div>
+
+<div class="nx-tab-content active" id="tab-rules">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead>
+                    <tr><th>#</th><th>Action</th><th>Direction</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Port</th><th>Comment</th><th>Enabled</th><th></th></tr>
+                </thead>
+                <tbody id="rule-list"><tr><td colspan="10" class="nx-text-center nx-text-muted" style="padding:32px;">Loading rules...</td></tr></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
-<!-- Rule Stats -->
-<div class="grid grid-cols-3 gap-4 mb-6">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <div class="text-zinc-400 text-sm">Total Rules</div>
-        <div class="text-2xl font-bold" id="stat-total">0</div>
-    </div>
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <div class="text-zinc-400 text-sm">Active Rules</div>
-        <div class="text-2xl font-bold text-green-500" id="stat-active">0</div>
-    </div>
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <div class="text-zinc-400 text-sm">Host Rules</div>
-        <div class="text-2xl font-bold text-blue-500" id="stat-host">0</div>
+<div class="nx-tab-content" id="tab-groups">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Firewall Groups</span><button class="nx-btn nx-btn-secondary nx-btn-sm">+ Add Group</button></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Group</th><th>Rules</th><th>Actions</th></tr></thead>
+                <tbody id="fw-group-list"><tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
-<!-- Rules Table -->
-<div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-    <table class="w-full text-sm">
-        <thead class="bg-zinc-800/50 text-zinc-400">
-            <tr>
-                <th class="px-4 py-3 text-left">#</th>
-                <th class="px-4 py-3 text-left">Direction</th>
-                <th class="px-4 py-3 text-left">Action</th>
-                <th class="px-4 py-3 text-left">Protocol</th>
-                <th class="px-4 py-3 text-left">Source</th>
-                <th class="px-4 py-3 text-left">Destination</th>
-                <th class="px-4 py-3 text-left">Ports</th>
-                <th class="px-4 py-3 text-left">Target</th>
-                <th class="px-4 py-3 text-left">Status</th>
-                <th class="px-4 py-3 text-left">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-zinc-800" id="rules-tbody">
-            <tr><td colspan="10" class="text-zinc-500 text-center py-8">Loading rules...</td></tr>
-        </tbody>
-    </table>
-</div>
-
-<!-- Create Rule Modal -->
-<div id="create-rule-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg" onclick="event.stopPropagation()">
-        <h3 class="text-xl font-semibold mb-4">Add Firewall Rule</h3>
-        <form id="create-rule-form" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Direction</label>
-                    <select name="direction" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="in">Inbound</option>
-                        <option value="out">Outbound</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Action</label>
-                    <select name="action" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="accept">Accept</option>
-                        <option value="drop">Drop</option>
-                        <option value="reject">Reject</option>
-                    </select>
-                </div>
+<div class="nx-tab-content" id="tab-options">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Firewall Options</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-flex-col nx-gap-4" style="max-width:400px;">
+                <div class="nx-checkbox-group"><input type="checkbox" class="nx-checkbox" id="fw-enable" checked><label for="fw-enable" class="nx-label" style="margin:0;">Enable Firewall</label></div>
+                <div class="nx-checkbox-group"><input type="checkbox" class="nx-checkbox" id="fw-logging"><label for="fw-logging" class="nx-label" style="margin:0;">Enable Logging</label></div>
+                <button class="nx-btn nx-btn-primary">Save Options</button>
             </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Protocol</label>
-                    <select name="protocol" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="tcp">TCP</option>
-                        <option value="udp">UDP</option>
-                        <option value="icmp">ICMP</option>
-                        <option value="all">All</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Position</label>
-                    <input name="position" type="number" value="0" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Source IP/CIDR</label>
-                    <input name="source" placeholder="e.g. 192.168.1.0/24" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Destination IP/CIDR</label>
-                    <input name="destination" placeholder="e.g. 10.0.0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Source Port(s)</label>
-                    <input name="sport" placeholder="e.g. 1024:65535" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Dest Port(s)</label>
-                    <input name="dport" placeholder="e.g. 80,443" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Target</label>
-                    <select name="target_type" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
-                        <option value="host">Host</option>
-                        <option value="vm">VM</option>
-                        <option value="container">Container</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-zinc-400 text-sm">Target ID (empty=all)</label>
-                    <input name="target_id" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-zinc-400 text-sm">Comment</label>
-                    <input name="comment" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
-                </div>
-                <div class="flex items-end gap-4">
-                    <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="enabled" checked class="rounded"> Enabled</label>
-                    <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="log" class="rounded"> Log</label>
-                </div>
-            </div>
-            <div class="flex justify-end gap-3 pt-2">
-                <button type="button" onclick="closeModal('create-rule-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
-                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
-            </div>
-        </form>
+        </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
+function showTab(btn, name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+}
+
 async function loadRules() {
     try {
-        const res = await fetch('/api/firewall/rules');
-        const data = await res.json();
+        const r = await fetch('/api/firewall/rules');
+        const data = await r.json();
         const rules = data.rules || [];
-        const tbody = document.getElementById('rules-tbody');
-        
-        document.getElementById('stat-total').textContent = rules.length;
-        document.getElementById('stat-active').textContent = rules.filter(r => r.enabled).length;
-        document.getElementById('stat-host').textContent = rules.filter(r => r.target_type === 'host').length;
-
-        if (rules.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" class="text-zinc-500 text-center py-8">No firewall rules configured.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = rules.map(r => `
-            <tr class="hover:bg-zinc-800/50 transition">
-                <td class="px-4 py-3 text-zinc-500">${r.position}</td>
-                <td class="px-4 py-3"><span class="text-xs uppercase">${r.direction}</span></td>
-                <td class="px-4 py-3">
-                    <span class="text-xs px-2 py-0.5 rounded-full ${r.action === 'accept' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">${r.action}</span>
-                </td>
-                <td class="px-4 py-3 text-zinc-400">${r.protocol}</td>
-                <td class="px-4 py-3 font-mono text-xs">${r.source || '*'}</td>
-                <td class="px-4 py-3 font-mono text-xs">${r.destination || '*'}</td>
-                <td class="px-4 py-3 font-mono text-xs">${r.sport || '*'}:${r.dport || '*'}</td>
-                <td class="px-4 py-3 text-xs text-zinc-400">${r.target_type}:${r.target_id || 'all'}</td>
-                <td class="px-4 py-3">
-                    <span class="w-2 h-2 inline-block rounded-full ${r.enabled ? 'bg-green-500' : 'bg-red-500'}"></span>
-                </td>
-                <td class="px-4 py-3">
-                    <div class="flex gap-1">
-                        <button onclick="toggleRule(${r.id})" class="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded bg-zinc-800 transition">
-                            ${r.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                        <button onclick="deleteRule(${r.id})" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-900/30 transition">Delete</button>
-                    </div>
-                </td>
+        document.getElementById('rule-list').innerHTML = rules.map((r, i) => `
+            <tr>
+                <td>${i + 1}</td>
+                <td><span class="nx-badge ${r.action === 'accept' ? 'nx-badge-success' : r.action === 'drop' ? 'nx-badge-danger' : 'nx-badge-warning'}">${r.action}</span></td>
+                <td>${r.direction || 'in'}</td>
+                <td>${r.protocol || 'tcp'}</td>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${r.source || 'any'}</td>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${r.destination || 'any'}</td>
+                <td style="font-family:var(--font-mono);">${r.dport || r.port || '-'}</td>
+                <td style="color:var(--text-muted);">${r.comment || ''}</td>
+                <td><span class="nx-badge ${r.enabled !== false ? 'nx-badge-success' : 'nx-badge-neutral'}">${r.enabled !== false ? 'Yes' : 'No'}</span></td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteRule(${r.id})">Delete</button></td>
             </tr>
-        `).join('');
+        `).join('') || '<tr><td colspan="10" class="nx-text-center nx-text-muted" style="padding:32px;">No firewall rules configured</td></tr>';
     } catch(e) { console.error(e); }
 }
-
-document.getElementById('create-rule-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    try {
-        const res = await fetch('/api/firewall/rules/create', {method: 'POST', body: form});
-        const data = await res.json();
-        showToast(data.success ? 'Rule created' : 'Error', data.success ? 'success' : 'error');
-        closeModal('create-rule-modal');
-        loadRules();
-    } catch(e) { showToast('Error', 'error'); }
-};
-
-async function toggleRule(id) {
-    await fetch(`/api/firewall/rules/${id}/toggle`, {method: 'POST'});
-    loadRules();
-}
-
-async function deleteRule(id) {
-    if (!confirm('Delete this rule?')) return;
-    await fetch(`/api/firewall/rules/${id}`, {method: 'DELETE'});
-    loadRules();
-}
-
-async function applyRules() {
-    await fetch('/api/firewall/apply', {method: 'POST'});
-    showToast('Rules applied to nftables', 'success');
-}
-
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
 loadRules();
 </script>

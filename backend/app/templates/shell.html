@@ -2,137 +2,66 @@
 {% block title %}NexVE — Shell{% endblock %}
 {% block breadcrumb %}Shell{% endblock %}
 
-{% block content %}
-<div class="flex items-center justify-between mb-4">
-    <div>
-        <h1 class="text-2xl font-bold">Shell</h1>
-        <p class="text-gray-500 text-sm mt-1">Web-based terminal for system administration</p>
-    </div>
-    <div class="flex gap-2">
-        <button onclick="clearTerminal()" class="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-3 py-2 rounded-lg transition">Clear</button>
-        <select id="shell-select" onchange="switchShell()" class="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm outline-none">
-            <option value="bash">Bash</option>
-            <option value="sh">Sh</option>
-            <option value="zsh">Zsh</option>
-        </select>
-    </div>
-</div>
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<style>
+    #terminal-container { height: calc(100vh - 180px); background: #0a0a0a; border-radius: var(--radius-lg); overflow: hidden; }
+    .xterm { padding: 8px; }
+</style>
+{% endblock %}
 
-<!-- Terminal -->
-<div id="terminal-container" class="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden" style="height: calc(100vh - 200px);">
-    <div id="terminal-output" class="p-4 font-mono text-sm text-green-400 h-full overflow-y-auto whitespace-pre-wrap" style="line-height: 1.5;">
-        <span class="text-zinc-500">NexVE Web Shell v1.0</span>
-        <span class="text-zinc-600"> | Type commands below</span>
-    </div>
-    <div class="flex items-center gap-2 px-4 py-2 border-t border-zinc-800 bg-zinc-900">
-        <span class="text-green-500 font-mono text-sm">$</span>
-        <input id="shell-input" type="text" 
-            class="flex-1 bg-transparent text-green-400 font-mono text-sm outline-none"
-            placeholder="Type a command..."
-            autocomplete="off" spellcheck="false"
-            onkeydown="handleKeydown(event)">
-        <button onclick="executeCommand()" class="bg-orange-600 hover:bg-orange-700 text-white text-xs px-3 py-1.5 rounded-lg transition font-semibold">Run</button>
-    </div>
-</div>
+{% block content %}
+<div id="terminal-container"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const output = document.getElementById('terminal-output');
-const input = document.getElementById('shell-input');
-let commandHistory = [];
-let historyIndex = -1;
+const term = new Terminal({
+    theme: {
+        background: '#0a0a0a',
+        foreground: '#e5e7eb',
+        cursor: '#f97316',
+        selectionBackground: '#f9731633',
+    },
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    fontSize: 14,
+    cursorBlink: true,
+});
 
-async function executeCommand() {
-    const cmd = input.value.trim();
-    if (!cmd) return;
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal-container'));
+fitAddon.fit();
 
-    // Add command to display
-    const cmdLine = document.createElement('div');
-    cmdLine.innerHTML = `<span class="text-blue-400">$</span> <span class="text-white">${escapeHtml(cmd)}</span>`;
-    output.appendChild(cmdLine);
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${protocol}//${location.host}/api/console/shell`);
+ws.binaryType = 'arraybuffer';
 
-    // Add to history
-    commandHistory.unshift(cmd);
-    historyIndex = -1;
-    input.value = '';
+ws.onopen = () => {
+    term.write('\\r\\x1b[33mConnected to NexVE shell\\x1b[0m\\r\\n');
+};
 
-    // Execute
-    const shell = document.getElementById('shell-select').value;
-    try {
-        const formData = new FormData();
-        formData.append('command', cmd);
-        formData.append('cwd', '/');
-        const res = await fetch('/api/shell/exec', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-
-        if (data.stdout) {
-            const stdout = document.createElement('div');
-            stdout.className = 'text-zinc-300';
-            stdout.textContent = data.stdout;
-            output.appendChild(stdout);
-        }
-        if (data.stderr) {
-            const stderr = document.createElement('div');
-            stderr.className = 'text-red-400';
-            stderr.textContent = data.stderr;
-            output.appendChild(stderr);
-        }
-    } catch(e) {
-        const err = document.createElement('div');
-        err.className = 'text-red-400';
-        err.textContent = `Error: ${e.message}`;
-        output.appendChild(err);
+ws.onmessage = (evt) => {
+    if (typeof evt.data === 'string') {
+        term.write(evt.data);
+    } else {
+        const decoder = new TextDecoder();
+        term.write(decoder.decode(evt.data));
     }
+};
 
-    // Scroll to bottom
-    output.scrollTop = output.scrollHeight;
-}
+ws.onclose = () => {
+    term.write('\\r\\x1b[31mConnection closed. Refresh to reconnect.\\x1b[0m\\r\\n');
+};
 
-function handleKeydown(e) {
-    if (e.key === 'Enter') {
-        executeCommand();
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (historyIndex < commandHistory.length - 1) {
-            historyIndex++;
-            input.value = commandHistory[historyIndex];
-        }
-    } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (historyIndex > 0) {
-            historyIndex--;
-            input.value = commandHistory[historyIndex];
-        } else {
-            historyIndex = -1;
-            input.value = '';
-        }
+term.onData(data => {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
     }
-}
+});
 
-function clearTerminal() {
-    output.innerHTML = '<span class="text-zinc-500">Terminal cleared.</span>\n';
-}
-
-function switchShell() {
-    const shell = document.getElementById('shell-select').value;
-    const notice = document.createElement('div');
-    notice.className = 'text-zinc-500';
-    notice.textContent = `Switched to ${shell}`;
-    output.appendChild(notice);
-}
-
-function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// Focus input on page load
-input.focus();
-
-// Focus input when clicking terminal
-document.getElementById('terminal-container').addEventListener('click', () => input.focus());
+window.addEventListener('resize', () => fitAddon.fit());
 </script>
 {% endblock %}
