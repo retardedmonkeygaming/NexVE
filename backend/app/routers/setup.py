@@ -24,7 +24,7 @@ SETUP_HTML = """<!DOCTYPE html>
         <div class="bg-[#111] border border-gray-800 rounded-xl p-8">
             <h2 class="text-xl font-semibold mb-1">Create Admin Account</h2>
             <p class="text-gray-500 text-sm mb-6">This will be the administrator for your NexVE system.</p>
-            <form hx-post="/api/setup/complete" hx-swap="innerHTML" class="space-y-4">
+            <form hx-post="/setup/complete" hx-swap="innerHTML" class="space-y-4">
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Username</label>
                     <input type="text" name="username" required
