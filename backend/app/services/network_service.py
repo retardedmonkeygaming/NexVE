@@ -5,9 +5,9 @@ from typing import List
 
 
 class NetworkService:
-    def run_cmd(self, cmd: str) -> dict:
+    def run_cmd(self, cmd: str, timeout: int = 30) -> dict:
         try:
-            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
             return {"success": r.returncode == 0, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
         except subprocess.TimeoutExpired:
             return {"success": False, "stdout": "", "stderr": "Timeout"}
@@ -16,7 +16,6 @@ class NetworkService:
 
     def list_bridges(self) -> List[dict]:
         bridges = []
-        # Parse from ip command
         r = self.run_cmd("ip -j link show type bridge")
         if r["success"]:
             try:
@@ -25,17 +24,14 @@ class NetworkService:
                     ifname = br.get("ifname", "")
                     operstate = br.get("operstate", "unknown")
                     mac = br.get("address", "")
-                    # Get IPs on this bridge
                     ip_r = self.run_cmd(f"ip -4 addr show dev {ifname}")
                     ips = []
                     for line in ip_r["stdout"].splitlines():
                         line = line.strip()
                         if line.startswith("inet "):
                             ips.append(line.split()[1])
-                    # Get STP status
                     stp_r = self.run_cmd(f"cat /sys/class/net/{ifname}/bridge/stp_state 2>/dev/null")
                     stp = "enabled" if stp_r["stdout"].strip() == "1" else "disabled"
-                    # Get member interfaces
                     mbr_r = self.run_cmd(f"bridge link show master {ifname}")
                     members = []
                     for line in mbr_r["stdout"].splitlines():
@@ -123,13 +119,10 @@ class NetworkService:
                 data = json.loads(r["stdout"])
                 for b in data:
                     name = b.get("ifname", "")
-                    # Get bond mode
                     mode_r = self.run_cmd(f"cat /sys/class/net/{name}/bonding/mode 2>/dev/null")
                     mode = mode_r["stdout"].split()[0] if mode_r["success"] else "unknown"
-                    # Get slave interfaces
                     sl_r = self.run_cmd(f"cat /sys/class/net/{name}/bonding/slaves 2>/dev/null")
                     slaves = sl_r["stdout"].split() if sl_r["success"] else []
-                    # Get IPs
                     ip_r = self.run_cmd(f"ip -4 addr show dev {name}")
                     ips = []
                     for line in ip_r["stdout"].splitlines():
@@ -179,6 +172,154 @@ class NetworkService:
 
     def firewall_set_policy(self, chain: str, policy: str) -> dict:
         return self.run_cmd(f"nft add chain inet nexve {chain} {{ policy {policy}; }}")
+
+    # ── Firewall Aliases (nftables sets) ──
+
+    def create_alias_set(self, name: str, entries: List[str], family: str = "inet") -> dict:
+        """Create an nftables set (alias) with the given entries."""
+        # Create the set
+        r = self.run_cmd(f"nft add set {family} nexve {name} {{ type ipv4_addr; }}")
+        if not r["success"] and "already" not in r.get("stderr", "").lower():
+            return r
+
+        # Add elements
+        for entry in entries:
+            self.run_cmd(f"nft add element {family} nexve {name} {{ {entry} }}")
+        return {"success": True}
+
+    def delete_alias_set(self, name: str, family: str = "inet") -> dict:
+        return self.run_cmd(f"nft delete set {family} nexve {name}")
+
+    def list_alias_sets(self, family: str = "inet") -> List[dict]:
+        r = self.run_cmd(f"nft list table {family} nexve 2>/dev/null")
+        sets = []
+        if r["success"]:
+            in_set = False
+            current_set = None
+            for line in r["stdout"].splitlines():
+                if "set" in line and "{" in line and "type" in line:
+                    parts = line.strip().split()
+                    for i, p in enumerate(parts):
+                        if p == "set" and i + 1 < len(parts):
+                            current_set = parts[i + 1].rstrip(" {")
+                            sets.append({"name": current_set, "entries": []})
+                            in_set = True
+                            break
+                elif in_set and "}" in line:
+                    in_set = False
+                    current_set = None
+                elif in_set and current_set and sets:
+                    entry = line.strip().rstrip(",").rstrip(";")
+                    if entry:
+                        sets[-1]["entries"].append(entry)
+        return sets
+
+    # ── Security Groups (via nftables) ──
+
+    def apply_security_group(self, group_name: str, rules: List[dict], target_interface: str = "") -> dict:
+        """Apply security group rules to nftables."""
+        chain = f"nexve-sg-{group_name}"
+        self.run_cmd("nft add table inet nexve 2>/dev/null || true")
+        self.run_cmd(f"nft add chain inet nexve {chain} 2>/dev/null || true")
+        self.run_cmd(f"nft flush chain inet nexve {chain}")
+
+        for rule in rules:
+            if not rule.get("enabled", True):
+                continue
+            parts = []
+            direction = rule.get("direction", "in")
+            if direction == "in":
+                parts.append("iifname \"*\"")
+            else:
+                parts.append("oifname \"*\"")
+            if target_interface:
+                parts = [f"iifname \"{target_interface}\""] if direction == "in" else [f"oifname \"{target_interface}\""]
+
+            protocol = rule.get("protocol", "tcp")
+            if protocol and protocol != "all":
+                parts.append(f"ip protocol {protocol}")
+            source = rule.get("source", "")
+            if source:
+                parts.append(f"ip saddr {source}")
+            destination = rule.get("destination", "")
+            if destination:
+                parts.append(f"ip daddr {destination}")
+            sport = rule.get("sport", "")
+            if sport:
+                parts.append(f"th sport {sport}")
+            dport = rule.get("dport", "")
+            if dport:
+                parts.append(f"th dport {dport}")
+
+            match = " ".join(parts)
+            action = rule.get("action", "accept")
+            if rule.get("log"):
+                action = f'log prefix "[{group_name}]" {action}'
+            nft_rule = f"{match} {action}" if match else action
+            self.run_cmd(f"nft add rule inet nexve {chain} {nft_rule}")
+
+        return {"success": True, "rules_applied": len(rules)}
+
+    def link_security_group_to_interface(self, group_name: str, iface: str, direction: str = "in") -> dict:
+        """Jump to the security group chain from the forward/hook chain."""
+        hook_chain = "forward" if direction == "in" else "output"
+        jump_rule = f'jump nexve-sg-{group_name}'
+        return self.run_cmd(f"nft add rule inet nexve {hook_chain} iifname \"{iface}\" {jump_rule}")
+
+    # ── Rate Limiting (tc) ──
+
+    def set_interface_rate_limit(
+        self,
+        iface: str,
+        rx_bytes: int = None,
+        tx_bytes: int = None,
+        rx_burst: int = None,
+        tx_burst: int = None,
+    ) -> dict:
+        """Set rate limits on a network interface using tc (traffic control)."""
+        # Remove existing qdisc
+        self.run_cmd(f"tc qdisc del dev {iface} root 2>/dev/null || true")
+
+        # If no limits, we're done (cleared)
+        if not rx_bytes and not tx_bytes:
+            return {"success": True, "message": "Rate limits cleared"}
+
+        # Root qdisc
+        self.run_cmd(f"tc qdisc add dev {iface} root handle 1: prio")
+
+        # Ingress (rx)
+        if rx_bytes:
+            burst = rx_burst or (rx_bytes // 10)  # default burst = 10% of rate
+            self.run_cmd(f"tc qdisc add dev {iface} handle ffff: ingress")
+            self.run_cmd(
+                f"tc filter add dev {iface} parent ffff: protocol ip "
+                f"u32 match u32 0 0 police rate {rx_bytes} burst {burst} drop flowid :1"
+            )
+
+        # Egress (tx)
+        if tx_bytes:
+            burst = tx_burst or (tx_bytes // 10)
+            self.run_cmd(
+                f"tc qdisc add dev {iface} parent 1:1 handle 10: netem rate {tx_bytes} burst {burst}"
+            )
+
+        return {"success": True}
+
+    def get_interface_rate_limit(self, iface: str) -> dict:
+        """Get current rate limit settings."""
+        r = self.run_cmd(f"tc qdisc show dev {iface}")
+        limits = {"iface": iface, "has_limit": False}
+        if r["success"]:
+            for line in r["stdout"].splitlines():
+                if "rate" in line.lower() or "police" in line.lower():
+                    limits["has_limit"] = True
+                    limits["details"] = line.strip()
+        return limits
+
+    def clear_interface_rate_limit(self, iface: str) -> dict:
+        self.run_cmd(f"tc qdisc del dev {iface} root 2>/dev/null || true")
+        self.run_cmd(f"tc qdisc del dev {iface} ingress 2>/dev/null || true")
+        return {"success": True}
 
     # ── Interfaces overview ──
 

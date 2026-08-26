@@ -1,6 +1,6 @@
 from datetime import datetime
 from ..database import SessionLocal
-from ..models.vm import AuditLog, TaskLog, Notification
+from ..models.user import AuditLog, TaskLog, Notification
 
 
 class LogService:
@@ -54,17 +54,18 @@ class LogService:
     def get_tasks(self, limit: int = 50) -> list:
         db = SessionLocal()
         try:
-            tasks = db.query(TaskLog).order_by(TaskLog.started_at.desc()).limit(limit).all()
+            from ..models.user import Task
+            tasks = db.query(Task).order_by(Task.started_at.desc()).limit(limit).all()
             return [
                 {
                     "id": t.id,
-                    "type": t.type,
-                    "status": t.status,
+                    "username": t.username,
+                    "action": t.action,
                     "target_type": t.target_type,
                     "target_name": t.target_name,
-                    "message": t.message,
+                    "status": t.status,
                     "started_at": t.started_at.isoformat() if t.started_at else None,
-                    "ended_at": t.ended_at.isoformat() if t.ended_at else None,
+                    "finished_at": t.finished_at.isoformat() if t.finished_at else None,
                 }
                 for t in tasks
             ]
@@ -91,10 +92,10 @@ class LogService:
         finally:
             db.close()
 
-    def notify(self, ntype: str, title: str, message: str):
+    def notify(self, level: str, title: str, message: str):
         db = SessionLocal()
         try:
-            notif = Notification(type=ntype, title=title, message=message)
+            notif = Notification(level=level, title=title, message=message)
             db.add(notif)
             db.commit()
         finally:
@@ -105,15 +106,15 @@ class LogService:
         try:
             q = db.query(Notification)
             if unread_only:
-                q = q.filter(Notification.read == False)
+                q = q.filter(Notification.is_read == False)
             notifs = q.order_by(Notification.created_at.desc()).limit(50).all()
             return [
                 {
                     "id": n.id,
-                    "type": n.type,
+                    "level": n.level,
                     "title": n.title,
                     "message": n.message,
-                    "read": n.read,
+                    "is_read": n.is_read,
                     "created_at": n.created_at.isoformat() if n.created_at else None,
                 }
                 for n in notifs
@@ -126,7 +127,7 @@ class LogService:
         try:
             n = db.query(Notification).filter(Notification.id == notif_id).first()
             if n:
-                n.read = True
+                n.is_read = True
                 db.commit()
         finally:
             db.close()
@@ -134,7 +135,7 @@ class LogService:
     def mark_all_read(self):
         db = SessionLocal()
         try:
-            db.query(Notification).filter(Notification.read == False).update({"read": True})
+            db.query(Notification).filter(Notification.is_read == False).update({"is_read": True})
             db.commit()
         finally:
             db.close()

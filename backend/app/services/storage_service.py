@@ -2,15 +2,16 @@ import subprocess
 import os
 import json
 from typing import List, Optional, Dict
+from datetime import datetime
 
 
 class StorageService:
     """Manages local and remote storage backends via CLI commands."""
 
-    def run_cmd(self, cmd: str) -> dict:
+    def run_cmd(self, cmd: str, timeout: int = 30) -> dict:
         try:
             result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=30
+                cmd, shell=True, capture_output=True, text=True, timeout=timeout
             )
             return {
                 "success": result.returncode == 0,
@@ -78,7 +79,8 @@ class StorageService:
         if not r["success"]:
             return []
         try:
-            return json.loads(r["stdout"]) if isinstance(json.loads(r["stdout"]), list) else []
+            data = json.loads(r["stdout"])
+            return data if isinstance(data, list) else []
         except json.JSONDecodeError:
             return []
 
@@ -88,39 +90,142 @@ class StorageService:
     def zfs_scrub(self, pool: str) -> dict:
         return self.run_cmd(f"zpool scrub {pool}")
 
-# ──────────────────────────────────────────────
-# iSCSI
-# ──────────────────────────────────────────────
+    def zfs_rename(self, volume: str, new_name: str) -> dict:
+        return self.run_cmd(f"zfs rename {volume} {new_name}")
 
-def iscsi_discover(self, target: str, port: int = 3260) -> List[dict]:
-    r = self.run_cmd(f"iscsiadm -m discovery -t sendtargets -p {target}:{port}")
-    if not r["success"]:
-        return []
-    targets = []
-    for line in r["stdout"].splitlines():
-        parts = line.strip().split(",")
-        if len(parts) >= 2:
-            targets.append({"address": parts[0].strip(), "target": parts[1].strip()})
-    return targets
+    # ── ZFS Replication ──
 
-def iscsi_login(self, target: str, portal: str, port: int = 3260) -> dict:
-    self.run_cmd(f"iscsiadm -m node -T {target} -p {portal}:{port} --login")
-    return self.run_cmd(f"iscsiadm -m session")
+    def zfs_replicate(self, source: str, target: str, snapshot: str = "") -> dict:
+        """Replicate a ZFS dataset to a target. If no snapshot given, create a fresh one."""
+        if not snapshot:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            snapshot = f"{source}@repl_{timestamp}"
+            r = self.run_cmd(f"zfs snapshot {snapshot}")
+            if not r["success"]:
+                return r
 
-def iscsi_logout(self, target: str) -> dict:
-    return self.run_cmd(f"iscsiadm -m node -T {target} --logout")
+        r = self.run_cmd(
+            f"zfs send {snapshot} | zfs receive -F {target}",
+            timeout=300,
+        )
+        return {
+            "success": r["success"],
+            "snapshot": snapshot,
+            "stdout": r["stdout"],
+            "stderr": r["stderr"],
+        }
 
-def iscsi_list_sessions(self) -> List[dict]:
-    r = self.run_cmd("iscsiadm -m session -P 1")
-    sessions = []
-    for line in r["stdout"].splitlines():
-        if "Non-leading" in line or "iSCSI" in line:
-            sessions.append({"info": line.strip()})
-    return sessions
+    def zfs_replication_status(self) -> List[dict]:
+        """List recent ZFS send/receive operations from history."""
+        r = self.run_cmd("zfs history -l 2>/dev/null | tail -50")
+        jobs = []
+        if r["success"]:
+            for line in r["stdout"].splitlines():
+                if "send" in line or "receive" in line:
+                    jobs.append({"info": line.strip()})
+        return jobs
 
-def iscsi_delete_node(self, target: str, portal: str) -> dict:
-    return self.run_cmd(f"iscsiadm -m node -T {target} -p {portal} -o delete")
+    # ── ZFS Quotas ──
 
+    def zfs_set_quota(self, volume: str, size_gb: int) -> dict:
+        return self.run_cmd(f"zfs set quota={size_gb}G {volume}")
+
+    def zfs_get_quota(self, volume: str) -> dict:
+        r = self.run_cmd(f"zfs get quota -H -o value {volume}")
+        return {"quota": r["stdout"] if r["success"] else "none"}
+
+    # ──────────────────────────────────────────────
+    # BTRFS
+    # ──────────────────────────────────────────────
+
+    def btrfs_list_pools(self) -> List[dict]:
+        r = self.run_cmd("btrfs filesystem show --raw -J 2>/dev/null")
+        if not r["success"]:
+            # Fallback: parse text output
+            r2 = self.run_cmd("mount -t btrfs | awk '{print $3}'")
+            pools = []
+            if r2["success"]:
+                for line in r2["stdout"].splitlines():
+                    if line.strip():
+                        pools.append({"path": line.strip(), "type": "btrfs"})
+            return pools
+        try:
+            data = json.loads(r["stdout"])
+            return data.get("filesystems", [])
+        except json.JSONDecodeError:
+            return []
+
+    def btrfs_list_subvolumes(self, pool: str) -> List[dict]:
+        r = self.run_cmd(f"btrfs subvolume list -p {pool}")
+        subvols = []
+        if r["success"]:
+            for line in r["stdout"].splitlines():
+                parts = line.split()
+                if len(parts) >= 9:
+                    subvols.append({
+                        "id": parts[1],
+                        "path": parts[-1] if "path" not in parts[8] else " ".join(parts[8:]),
+                        "parent": parts[3].rstrip(","),
+                    })
+        return subvols
+
+    def btrfs_create_subvolume(self, pool: str, name: str) -> dict:
+        return self.run_cmd(f"btrfs subvolume create {pool}/{name}")
+
+    def btrfs_delete_subvolume(self, path: str) -> dict:
+        return self.run_cmd(f"btrfs subvolume delete {path}")
+
+    def btrfs_snapshot(self, source: str, dest: str) -> dict:
+        return self.run_cmd(f"btrfs subvolume snapshot {source} {dest}")
+
+    def btrfs_balance(self, pool: str) -> dict:
+        return self.run_cmd(f"btrfs balance start {pool}", timeout=120)
+
+    def btrfs_usage(self, pool: str) -> dict:
+        r = self.run_cmd(f"btrfs filesystem usage -b {pool}")
+        if not r["success"]:
+            return {}
+        # Parse basic usage
+        result = {}
+        for line in r["stdout"].splitlines():
+            line = line.strip()
+            if ":" in line:
+                k, v = line.split(":", 1)
+                result[k.strip()] = v.strip()
+        return result
+
+    # ──────────────────────────────────────────────
+    # iSCSI
+    # ──────────────────────────────────────────────
+
+    def iscsi_discover(self, target: str, port: int = 3260) -> List[dict]:
+        r = self.run_cmd(f"iscsiadm -m discovery -t sendtargets -p {target}:{port}")
+        if not r["success"]:
+            return []
+        targets = []
+        for line in r["stdout"].splitlines():
+            parts = line.strip().split(",")
+            if len(parts) >= 2:
+                targets.append({"address": parts[0].strip(), "target": parts[1].strip()})
+        return targets
+
+    def iscsi_login(self, target: str, portal: str, port: int = 3260) -> dict:
+        self.run_cmd(f"iscsiadm -m node -T {target} -p {portal}:{port} --login")
+        return self.run_cmd(f"iscsiadm -m session")
+
+    def iscsi_logout(self, target: str) -> dict:
+        return self.run_cmd(f"iscsiadm -m node -T {target} --logout")
+
+    def iscsi_list_sessions(self) -> List[dict]:
+        r = self.run_cmd("iscsiadm -m session -P 1")
+        sessions = []
+        for line in r["stdout"].splitlines():
+            if "Non-leading" in line or "iSCSI" in line:
+                sessions.append({"info": line.strip()})
+        return sessions
+
+    def iscsi_delete_node(self, target: str, portal: str) -> dict:
+        return self.run_cmd(f"iscsiadm -m node -T {target} -p {portal} -o delete")
 
     # ──────────────────────────────────────────────
     # LVM
@@ -181,6 +286,13 @@ def iscsi_delete_node(self, target: str, portal: str) -> dict:
 
     def lvm_remove_lv(self, lv_path: str) -> dict:
         return self.run_cmd(f"lvremove -f {lv_path}")
+
+    def lvm_resize_lv(self, lv_path: str, size_gb: int) -> dict:
+        """Resize a logical volume (LV) to the specified size in GB."""
+        if not lv_path.startswith("/"):
+            # Might be just "vg/lv" format
+            pass
+        return self.run_cmd(f"lvresize -L {size_gb}G -r {lv_path}")
 
     # ──────────────────────────────────────────────
     # Directory-based storage
@@ -295,6 +407,18 @@ def iscsi_delete_node(self, target: str, portal: str) -> dict:
         except json.JSONDecodeError:
             return {"device": device, "smart_available": False}
 
+    def disk_info(self, device: str) -> dict:
+        """Get detailed disk info via lsblk."""
+        r = self.run_cmd(f"lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL,SERIAL,REV /dev/{device}")
+        if not r["success"]:
+            return {}
+        try:
+            data = json.loads(r["stdout"])
+            devs = data.get("blockdevices", [])
+            return devs[0] if devs else {}
+        except json.JSONDecodeError:
+            return {}
+
     # ──────────────────────────────────────────────
     # Overview
     # ──────────────────────────────────────────────
@@ -304,27 +428,135 @@ def iscsi_delete_node(self, target: str, portal: str) -> dict:
         zfs_pools = self.zfs_list_pools()
         vgs = self.lvm_list_vgs()
         nfs = self.nfs_list_mounts()
+        btrfs = self.btrfs_list_pools()
         return {
             "disks": disks,
             "zfs_pools": zfs_pools,
             "lvm_groups": vgs,
             "nfs_mounts": nfs,
+            "btrfs_pools": btrfs,
         }
 
-def list_disks(self) -> List[dict]:
-    r = self.run_cmd("lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL")
-    if not r["success"]:
-        return []
-    try:
-        data = json.loads(r["stdout"])
-        return data.get("blockdevices", [])
-    except json.JSONDecodeError:
-        return []
+    # ──────────────────────────────────────────────
+    # Disk operations
+    # ──────────────────────────────────────────────
 
-def wipe_disk(self, device: str) -> dict:
-    return self.run_cmd(f"wipefs -a {device}")
+    def wipe_disk(self, device: str) -> dict:
+        return self.run_cmd(f"wipefs -a {device}")
 
-def move_disk(self, vm_name: str, source: str, target: str) -> dict:
-    src_path = f"/var/lib/libvirt/images/{vm_name}.qcow2"
-    # This is simplified — real implementation needs libvirt XML update
-    return {"success": False, "error": "Disk move requires VM to be stopped. Use the API to update storage path."}
+    def move_disk(self, vm_name: str, source: str, target: str) -> dict:
+        """Move a VM disk between storage backends."""
+        # In a real setup this would use virsh or qemu-img to copy the disk.
+        return {
+            "success": False,
+            "error": "Disk move requires VM to be stopped. Use the migration API endpoint for proper disk migration.",
+        }
+
+    def migrate_disk(self, vm_name: str, disk_index: int, target_storage: str) -> dict:
+        """Migrate a VM disk to a different storage backend."""
+        try:
+            import shutil
+            import libvirt
+
+            conn = libvirt.open("qemu:///system")
+            if not conn:
+                return {"success": False, "error": "Cannot connect to libvirt"}
+
+            dom = conn.lookupByName(vm_name)
+            if not dom:
+                return {"success": False, "error": "VM not found in libvirt"}
+
+            # Get disk info from XML
+            import xml.etree.ElementTree as ET
+            xml = dom.XMLDesc(0)
+            root = ET.fromstring(xml)
+            disks = root.findall(".//disk")
+            if disk_index >= len(disks):
+                return {"success": False, "error": f"No disk at index {disk_index}"}
+
+            disk = disks[disk_index]
+            source = disk.find("source")
+            if source is None:
+                return {"success": False, "error": "No disk source found"}
+
+            src_file = source.get("file", "")
+            if not src_file or not os.path.exists(src_file):
+                return {"success": False, "error": f"Source file not found: {src_file}"}
+
+            # Determine target path
+            target_dir = self._get_storage_path(target_storage)
+            if not target_dir:
+                return {"success": False, "error": f"Unknown target storage: {target_storage}"}
+
+            dst_file = os.path.join(target_dir, os.path.basename(src_file))
+
+            # Copy the disk
+            shutil.copy2(src_file, dst_file)
+
+            # Update libvirt XML
+            source.set("file", dst_file)
+            new_xml = ET.tostring(root, encoding="unicode")
+            dom.undefine()
+            conn.defineXML(new_xml)
+
+            # Remove old file
+            os.remove(src_file)
+
+            conn.close()
+            return {"success": True, "new_path": dst_file}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _get_storage_path(self, storage_name: str) -> str:
+        """Get filesystem path for a named storage backend."""
+        storage_paths = {
+            "local": "/var/lib/libvirt/images",
+            "local-lvm": "/dev",
+            "backups": "/opt/nexve/data/backups",
+        }
+        if storage_name in storage_paths:
+            return storage_paths[storage_name]
+        # Check database
+        try:
+            from ..database import SessionLocal
+            from ..models.storage import Storage
+            db = SessionLocal()
+            try:
+                s = db.query(Storage).filter(Storage.name == storage_name).first()
+                if s and s.path:
+                    return s.path
+            finally:
+                db.close()
+        except Exception:
+            pass
+        return "/var/lib/libvirt/images"
+
+    # ──────────────────────────────────────────────
+    # Storage Quotas
+    # ──────────────────────────────────────────────
+
+    def list_quotas(self) -> List[dict]:
+        """List filesystem quotas using quota or xfs quota tools."""
+        r = self.run_cmd("repquota -a 2>/dev/null || echo ''")
+        quotas = []
+        if r["success"] and r["stdout"]:
+            for line in r["stdout"].splitlines():
+                # Basic parsing of repquota output
+                if line.startswith("/") and "blocks" not in line.lower():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        quotas.append({
+                            "path": parts[0],
+                            "user": parts[1] if len(parts) > 1 else "",
+                        })
+        return quotas
+
+    def set_quota(self, path: str, size_gb: int) -> dict:
+        """Set a quota on a filesystem using xfs_quota or edquota."""
+        # For ext4: use quota
+        # For XFS: use xfs_quota
+        r = self.run_cmd(f"xfs_quota -x -c 'limit bsoft={size_gb}g bhard={size_gb}g' {path}")
+        if not r["success"]:
+            # Fallback: try edquota-style
+            r = self.run_cmd(f"setquota -g 0 {size_gb}G 0 0 {path}")
+        return {"success": r["success"], "stderr": r["stderr"]}

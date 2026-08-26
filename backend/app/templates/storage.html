@@ -13,7 +13,10 @@
         <button onclick="showTab('overview')" id="tab-overview" class="tab-btn px-4 py-2 rounded-md text-sm font-medium bg-zinc-700 text-white">Overview</button>
         <button onclick="showTab('zfs')" id="tab-zfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">ZFS</button>
         <button onclick="showTab('lvm')" id="tab-lvm" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">LVM</button>
-        <button onclick="showTab('nfs')" id="tab-nfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">NFS</button>
+        <button onclick="showTab('nfs')" id="tab-nfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">NFS/CIFS</button>
+        <button onclick="showTab('btrfs')" id="tab-btrfs" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">BTRFS</button>
+        <button onclick="showTab('iscsi')" id="tab-iscsi" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">iSCSI</button>
+        <button onclick="showTab('replication')" id="tab-replication" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Replication</button>
         <button onclick="showTab('disks')" id="tab-disks" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-zinc-400 hover:text-white">Disks</button>
     </div>
 
@@ -61,6 +64,31 @@
     <div id="panel-nfs" class="tab-panel hidden">
         <button onclick="showNfsMountModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition mb-4">+ Mount NFS</button>
         <div id="nfs-list" class="space-y-3"></div>
+    </div>
+
+    <!-- BTRFS Tab -->
+    <div id="panel-btrfs" class="tab-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="showBtrfsCreateVolModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ Create Subvolume</button>
+            <button onclick="btrfsBalance()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">Balance</button>
+        </div>
+        <div id="btrfs-pools" class="space-y-3"></div>
+    </div>
+
+    <!-- iSCSI Tab -->
+    <div id="panel-iscsi" class="tab-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="showIscsiDiscoverModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">Discover Targets</button>
+        </div>
+        <div id="iscsi-sessions" class="space-y-3"></div>
+    </div>
+
+    <!-- Replication Tab -->
+    <div id="panel-replication" class="tab-panel hidden">
+        <div class="flex gap-2 mb-4">
+            <button onclick="showReplicateModal()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">+ New Replication</button>
+        </div>
+        <div id="replication-jobs" class="space-y-3"></div>
     </div>
 
     <!-- Disks Tab -->
@@ -433,6 +461,81 @@ function loadLvmVgsForSelect() {
     (window._lvmVgs || []).forEach(v => {
         sel.innerHTML += `<option value="${v.name}">${v.name} (${v.free} free)</option>`;
     });
+}
+
+// ── BTRFS ──
+async function loadBtrfs() {
+    try {
+        const res = await fetch('/api/storage/btrfs/pools');
+        const data = await res.json();
+        const pools = data.pools || [];
+        let h = '';
+        pools.forEach(p => {
+            h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                    <div><div class="text-white font-semibold">${p.path || p.name || 'unknown'}</div>
+                    <div class="text-sm text-zinc-400">BTRFS filesystem</div></div>
+                </div>
+            </div>`;
+        });
+        document.getElementById('btrfs-pools').innerHTML = h || '<p class="text-zinc-500">No BTRFS pools detected.</p>';
+    } catch(e) { console.error(e); }
+}
+
+// ── iSCSI ──
+async function loadIscsi() {
+    try {
+        const res = await fetch('/api/storage/iscsi/sessions');
+        const data = await res.json();
+        const sessions = data.sessions || [];
+        let h = '';
+        sessions.forEach(s => {
+            h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="text-white text-sm">${s.info}</div>
+            </div>`;
+        });
+        document.getElementById('iscsi-sessions').innerHTML = h || '<p class="text-zinc-500">No iSCSI sessions.</p>';
+    } catch(e) { console.error(e); }
+}
+
+function showIscsiDiscoverModal() {
+    const target = prompt('Enter iSCSI target IP:');
+    if (target) {
+        const form = new FormData();
+        form.append('target', target);
+        fetch('/api/storage/iscsi/discover', {method: 'POST', body: form})
+            .then(r => r.json())
+            .then(d => { alert(JSON.stringify(d)); loadIscsi(); });
+    }
+}
+
+// ── Replication ──
+async function loadReplication() {
+    try {
+        const res = await fetch('/api/storage/zfs/replication/status');
+        const data = await res.json();
+        const jobs = data.jobs || [];
+        let h = '';
+        jobs.forEach(j => {
+            h += `<div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div class="text-zinc-300 text-sm font-mono">${j.info}</div>
+            </div>`;
+        });
+        document.getElementById('replication-jobs').innerHTML = h || '<p class="text-zinc-500">No replication jobs.</p>';
+    } catch(e) { console.error(e); }
+}
+
+function showReplicateModal() {
+    const source = prompt('Source ZFS dataset (e.g. tank/vm-100-disk-0):');
+    if (!source) return;
+    const target = prompt('Target ZFS dataset (e.g. backup/vm-100-disk-0):');
+    if (!target) return;
+    const form = new FormData();
+    form.append('source', source);
+    form.append('target', target);
+    fetch('/api/storage/zfs/replicate', {method: 'POST', body: form})
+        .then(r => r.json())
+        .then(d => { showToast(d.success ? 'Replication started' : d.stderr, d.success ? 'success' : 'error'); loadReplication(); });
 }
 
 // Initial load

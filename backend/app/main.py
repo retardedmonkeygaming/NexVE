@@ -4,13 +4,31 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import os
+import psutil
 
 from .database import engine, Base, SessionLocal
 from .auth import get_current_user, create_session, verify_totp
 from .models.user import User, Session, AuditLog, Notification, Task
+from .models.vm import VM, Container, BackupSchedule, ApiToken
+from .models.firewall import FirewallRule, FirewallGroup
+from .models.storage import Storage
+from .models.template import ISOImage
+from .models.activity import ActivityLog
+from .models.feature_models import (
+    VMTag, VMTagAssignment, ResourcePool, ResourcePoolMember,
+    LDAPConfig, ClientCertConfig, NetworkSecurityGroup, SecurityGroupRule,
+    SecurityGroupAssignment, NetworkFirewallAlias, FirewallAliasEntry,
+    NetworkRateLimit,
+)
 from .security import generate_csrf_token
 
-from .routers import nodes, vms, containers, storage, network, users, setup, shell, settings
+# Import all routers
+from .routers import (
+    nodes, vms, containers, storage, network, users, setup,
+    shell, settings, login, two_factor, console, backups,
+    monitor, firewall, logs, activity, api_tokens, templates_route,
+    tags, resource_pools, ldap,
+)
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -19,7 +37,7 @@ app = FastAPI(title="NexVE", version="1.0.0")
 
 # Mount static files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "../../static")
-os.makedirs(os.path.dirname(STATIC_DIR), exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Templates
@@ -27,23 +45,49 @@ TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "../templates")
 os.makedirs(TEMPLATE_DIR, exist_ok=True)
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
-# Include routers
+# ─── Include routers ───
+# Login (no prefix — defines /login routes)
+app.include_router(login.router, tags=["Login"])
+# Setup
+app.include_router(setup.router, prefix="/setup", tags=["Setup"])
+# 2FA settings (no prefix — defines /settings/2fa routes)
+app.include_router(two_factor.router, tags=["2FA"])
+
+# API routers
 app.include_router(nodes.router, prefix="/api/nodes", tags=["Nodes"])
 app.include_router(vms.router, prefix="/api/vms", tags=["VMs"])
 app.include_router(containers.router, prefix="/api/containers", tags=["Containers"])
 app.include_router(storage.router, prefix="/api/storage", tags=["Storage"])
 app.include_router(network.router, prefix="/api/network", tags=["Network"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
-app.include_router(setup.router, prefix="/setup", tags=["Setup"])
-app.include_router(shell.router, tags=["Shell"])
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(console.router, prefix="/api/console", tags=["Console"])
+app.include_router(backups.router, prefix="/api/backups", tags=["Backups"])
+app.include_router(monitor.router, prefix="/api/monitor", tags=["Monitor"])
+app.include_router(firewall.router, prefix="/api/firewall", tags=["Firewall"])
+app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
+app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
+app.include_router(api_tokens.router, prefix="/api/tokens", tags=["API Tokens"])
+app.include_router(templates_route.router, prefix="/templates", tags=["Templates"])
+app.include_router(shell.router, tags=["Shell"])
+# New routers
+app.include_router(tags.router, prefix="/api/tags", tags=["Tags"])
+app.include_router(resource_pools.router, prefix="/api/resource-pools", tags=["Resource Pools"])
+app.include_router(ldap.router, prefix="/api/ldap", tags=["LDAP"])
+
+
+# ─── Start background monitor collector ───
+@app.on_event("startup")
+async def startup_event():
+    from .services.monitor_service import MonitorService
+    monitor = MonitorService()
+    monitor.start_collector()
 
 
 # ─── Middleware: Force setup if no admin exists ───
 @app.middleware("http")
 async def setup_middleware(request: Request, call_next):
     path = request.url.path
-    # Allow these paths before setup
     allowed = ["/setup", "/login", "/login/2fa", "/static", "/favicon.ico", "/api/setup"]
     if any(path.startswith(a) for a in allowed):
         return await call_next(request)
@@ -88,9 +132,15 @@ async def dashboard(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+
+    cpu = psutil.cpu_percent(interval=0.1)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
     return templates.TemplateResponse(request=request, name="dashboard.html", context={
         "user": user, "csrf_token": csrf, "page": "dashboard",
-        "hostname": os.uname().nodename
+        "hostname": os.uname().nodename,
+        "cpu": cpu, "memory": memory, "disk": disk,
     })
 
 
@@ -166,7 +216,7 @@ async def monitoring_page(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
-    return templates.TemplateResponse(request=request, name="monitoring.html", context={
+    return templates.TemplateResponse(request=request, name="monitor.html", context={
         "user": user, "csrf_token": csrf, "page": "monitoring"
     })
 
@@ -214,47 +264,6 @@ async def logs_page(request: Request):
     })
 
 
-# ─── Login ───
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    user = get_current_user(request)
-    if user:
-        return RedirectResponse(url="/", status_code=302)
-    return templates.TemplateResponse(request=request, name="login.html", context={"error": None})
-
-
-@app.post("/login", response_class=HTMLResponse)
-async def login_submit(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-):
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.username == username).first()
-        if not user or not user.verify_password(password):
-            return templates.TemplateResponse(request=request, name="login.html", context={
-                "error": "Invalid username or password"
-            })
-
-        if user.totp_enabled and user.totp_secret:
-            # Store user_id in a temporary cookie for 2FA step
-            response = RedirectResponse(url="/login/2fa", status_code=302)
-            temp_token = create_session(user.id)
-            response.set_cookie("nexve_temp_session", temp_token, httponly=True, max_age=300)
-            return response
-
-        # No 2FA — create full session
-        token = create_session(user.id)
-        log_task(user.id, user.username, "login", "auth")
-        response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie("nexve_session", token, httponly=True, max_age=86400)
-        return response
-    finally:
-        db.close()
-
-
 # ─── 2FA Login ───
 
 @app.get("/login/2fa", response_class=HTMLResponse)
@@ -291,7 +300,6 @@ async def login_2fa_submit(
                 "error": "Invalid 2FA code. Try again."
             })
 
-        # Success — create full session, clear temp
         from .auth import destroy_session
         destroy_session(temp_token)
 
@@ -424,40 +432,26 @@ async def api_search(request: Request, q: str = ""):
     db = SessionLocal()
     try:
         results = []
-        from .models.vm import VM, Container
-        from .models.storage import Storage
 
-        # Search VMs
         vms = db.query(VM).filter(VM.name.contains(q)).limit(10).all()
         for vm in vms:
             results.append({
-                "type": "vm",
-                "name": vm.name,
-                "status": vm.status,
-                "url": "/vms",
-                "icon": "💻"
+                "type": "vm", "name": vm.name, "status": vm.status,
+                "url": "/vms", "icon": "💻"
             })
 
-        # Search Containers
         containers = db.query(Container).filter(Container.name.contains(q)).limit(10).all()
         for c in containers:
             results.append({
-                "type": "container",
-                "name": c.name,
-                "status": c.status,
-                "url": "/containers",
-                "icon": "📦"
+                "type": "container", "name": c.name, "status": c.status,
+                "url": "/containers", "icon": "📦"
             })
 
-        # Search Storage
         storages = db.query(Storage).filter(Storage.name.contains(q)).limit(10).all()
         for s in storages:
             results.append({
-                "type": "storage",
-                "name": s.name,
-                "status": s.type,
-                "url": "/storage",
-                "icon": "💾"
+                "type": "storage", "name": s.name, "status": s.type,
+                "url": "/storage", "icon": "💾"
             })
 
         return JSONResponse({"results": results})

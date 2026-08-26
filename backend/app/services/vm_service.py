@@ -3,6 +3,7 @@ import libvirt
 import os
 import json
 import uuid
+import re
 from typing import List, Optional
 from datetime import datetime
 from ..models.vm import VM
@@ -112,7 +113,6 @@ class VMService:
         db.commit()
         db.refresh(vm)
 
-        # Create actual libvirt VM
         result = self._create_libvirt_vm(vm, config)
 
         return {
@@ -143,7 +143,6 @@ class VMService:
         db.commit()
         db.refresh(vm)
 
-        # Update libvirt config if running
         live_status = self._get_vm_status(vm.name)
         if live_status == "running":
             self._update_libvirt_config(vm)
@@ -155,15 +154,12 @@ class VMService:
         if not vm:
             return {"success": False, "error": "VM not found"}
 
-        # Stop if running
         live_status = self._get_vm_status(vm.name)
         if live_status == "running":
             self._stop_libvirt_vm(vm.name)
 
-        # Undefine from libvirt
         self._undefine_libvirt_vm(vm.name)
 
-        # Delete disk file
         disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
         if os.path.exists(disk_path):
             os.remove(disk_path)
@@ -176,6 +172,8 @@ class VMService:
         vm = db.query(VM).filter(VM.id == vm_id).first()
         if not vm:
             return {"success": False, "error": "VM not found"}
+        if vm.is_template:
+            return {"success": False, "error": "Cannot start a template. Clone it first."}
         result = self._start_libvirt_vm(vm.name)
         if result["success"]:
             vm.last_started = datetime.utcnow()
@@ -207,7 +205,6 @@ class VMService:
             return {"success": False, "error": f"VM '{new_name}' already exists"}
 
         if linked:
-            # Linked clone — backing file reference
             new_vm = VM(
                 name=new_name,
                 vcpu=vm.vcpu,
@@ -227,7 +224,6 @@ class VMService:
                 linked_from=vm.id,
             )
         else:
-            # Full clone
             new_vm = VM(
                 name=new_name,
                 vcpu=vm.vcpu,
@@ -250,18 +246,15 @@ class VMService:
         db.commit()
         db.refresh(new_vm)
 
-        # Clone disk
         src_disk = f"/var/lib/libvirt/images/{vm.name}.qcow2"
         dst_disk = f"/var/lib/libvirt/images/{new_name}.qcow2"
         if os.path.exists(src_disk):
             if linked:
                 cmd = f"qemu-img create -f qcow2 -b {src_disk} -F qcow2 {dst_disk}"
             else:
-                cmd = f"qemu-img create -f qcow2 -b {src_disk} -F qcow2 -F qcow2 {dst_disk}"
                 cmd = f"cp {src_disk} {dst_disk}"
             subprocess.run(cmd, shell=True, capture_output=True)
 
-        # Create libvirt domain
         self._create_libvirt_vm(new_vm, {"vcpu": new_vm.vcpu, "memory_mb": new_vm.memory_mb})
 
         return {"success": True, "vm": {"id": new_vm.id, "name": new_vm.name}}
@@ -288,7 +281,6 @@ class VMService:
         return {"success": True}
 
     def get_vm_config(self, vm_name: str) -> dict:
-        """Read actual libvirt XML config."""
         if not self.conn:
             return {"error": "No libvirt connection"}
         try:
@@ -370,6 +362,300 @@ class VMService:
         except libvirt.libvirtError as e:
             return {"success": False, "error": str(e)}
 
+    # ── Hot-add CPU ──
+
+    def hotplug_cpu(self, db, vm_id: int, vcpus: int) -> dict:
+        """Hot-add CPU cores to a running VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        if not vm.hotplug_cpu:
+            return {"success": False, "error": "CPU hotplug not enabled for this VM. Enable it in VM settings first."}
+
+        live_status = self._get_vm_status(vm.name)
+        if live_status != "running":
+            return {"success": False, "error": "VM must be running for hot-add"}
+
+        if not self.conn:
+            return {"success": False, "error": "No libvirt connection"}
+
+        try:
+            dom = self.conn.lookupByName(vm.name)
+            dom.setVcpus(vcpus)
+            vm.vcpu = vcpus
+            db.commit()
+            return {"success": True, "vcpu": vcpus}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Hot-add RAM ──
+
+    def hotplug_ram(self, db, vm_id: int, memory_mb: int) -> dict:
+        """Hot-add memory to a running VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        if not vm.hotplug_ram:
+            return {"success": False, "error": "Memory hotplug not enabled. Enable it in VM settings first."}
+
+        live_status = self._get_vm_status(vm.name)
+        if live_status != "running":
+            return {"success": False, "error": "VM must be running for hot-add"}
+
+        if not self.conn:
+            return {"success": False, "error": "No libvirt connection"}
+
+        try:
+            dom = self.conn.lookupByName(vm.name)
+            dom.setMemory(memory_mb * 1024)  # Convert to KiB
+            vm.memory_mb = memory_mb
+            db.commit()
+            return {"success": True, "memory_mb": memory_mb}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Import OVF/OVA ──
+
+    def import_ovf(self, filepath: str) -> dict:
+        """Import a VM from OVF or OVA file."""
+        try:
+            import xml.etree.ElementTree as ET
+
+            if filepath.endswith(".ova"):
+                # Extract OVA (it's a tar)
+                import tarfile
+                ova_dir = filepath + "_extracted"
+                os.makedirs(ova_dir, exist_ok=True)
+                with tarfile.open(filepath, "r") as tar:
+                    tar.extractall(ova_dir)
+
+                # Find OVF file
+                ovf_path = None
+                vmdk_path = None
+                for root, dirs, files in os.walk(ova_dir):
+                    for f in files:
+                        if f.endswith(".ovf"):
+                            ovf_path = os.path.join(root, f)
+                        elif f.endswith(".vmdk"):
+                            vmdk_path = os.path.join(root, f)
+
+                if not ovf_path:
+                    return {"success": False, "error": "No OVF file found in OVA"}
+
+                filepath = ovf_path
+            else:
+                vmdk_path = None
+
+            # Parse OVF
+            tree = ET.parse(filepath)
+            root = tree.getroot()
+
+            # Extract VM info
+            ns = {"ovf": "http://schemas.dmtf.org/ovf/envelope/1"}
+
+            name = "imported-vm"
+            vcpu = 2
+            memory_mb = 2048
+            disk_gb = 50
+
+            # Get name
+            name_el = root.find(".//ovf:Name", ns) or root.find(".//{http://schemas.dmtf.org/ovf/envelope/1}Name")
+            if name_el is not None:
+                name = name_el.text or name
+
+            # Get CPU
+            for section in root.findall(".//ovf:VirtualHardwareSection", ns):
+                for item in section.findall(".//ovf:Item", ns):
+                    res_type = item.get("{" + ns["ovf"] + "}resourceType", "")
+                    if res_type == "3":  # CPU
+                        count = item.find("ovf:VirtualQuantity", ns)
+                        if count is not None:
+                            vcpu = int(count.text or 2)
+                    elif res_type == "4":  # Memory
+                        size = item.find("ovf:VirtualQuantity", ns)
+                        if size is not None:
+                            memory_mb = int(int(size.text or 2048) // 1024)
+
+            # Sanitize name
+            name = re.sub(r'[^a-zA-Z0-9_-]', '-', name)[:55]
+
+            return {
+                "success": True,
+                "vm": {
+                    "name": name,
+                    "vcpu": vcpu,
+                    "memory_mb": memory_mb,
+                    "disk_gb": disk_gb,
+                    "source": filepath,
+                },
+                "message": "OVF parsed. Review and create VM with these settings.",
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ── PCI/e GPU Passthrough ──
+
+    def list_pci_devices(self, device_class: str = "0300") -> List[dict]:
+        """List PCI devices of a given class (e.g., 0300 for VGA)."""
+        result = subprocess.run(
+            "lspci -nn -D",
+            shell=True, capture_output=True, text=True
+        )
+        devices = []
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 2:
+                    addr = parts[0]
+                    cls = parts[1]
+                    # Match class
+                    if device_class and not cls.startswith(device_class):
+                        continue
+                    name = " ".join(parts[2:])
+                    # Extract IDs
+                    ids_match = re.search(r'\[([0-9a-f]{4}:[0-9a-f]{4})\]', line)
+                    vendor_product = ids_match.group(1) if ids_match else ""
+                    devices.append({
+                        "address": addr,
+                        "class": cls,
+                        "name": name,
+                        "vendor_product": vendor_product,
+                    })
+        return devices
+
+    def list_usb_devices(self) -> List[dict]:
+        """List USB devices."""
+        result = subprocess.run(
+            "lsusb",
+            shell=True, capture_output=True, text=True
+        )
+        devices = []
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4:
+                    bus = parts[1]
+                    dev = parts[3].rstrip(":")
+                    # Extract vendor:product IDs
+                    ids_match = re.search(r'ID\s+([0-9a-f]{4}:[0-9a-f]{4})', line)
+                    ids = ids_match.group(1) if ids_match else ""
+                    name = " ".join(parts[6:]) if len(parts) > 6 else ""
+                    devices.append({
+                        "bus": bus,
+                        "device": dev,
+                        "ids": ids,
+                        "name": name,
+                    })
+        return devices
+
+    def attach_pci_device(self, db, vm_id: int, pci_addr: str) -> dict:
+        """Attach a PCI device to a VM via libvirt passthrough."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        live_status = self._get_vm_status(vm.name)
+        if live_status == "running":
+            return {"success": False, "error": "VM must be stopped to attach PCI devices"}
+
+        if not self.conn:
+            return {"success": False, "error": "No libvirt connection"}
+
+        try:
+            dom = self.conn.lookupByName(vm.name)
+            xml = dom.XMLDesc(0)
+
+            # Add hostdev element
+            hostdev_xml = f"""
+            <hostdev mode='subsystem' type='pci' managed='yes'>
+                <source>
+                    <address domain='0x0000' bus='0x{pci_addr.split(':')[0]}' 
+                             slot='0x{pci_addr.split(':')[1]}' function='0x0'/>
+                </source>
+            </hostdev>
+            """
+
+            # Insert before </devices>
+            xml = xml.replace("</devices>", hostdev_xml + "</devices>")
+            self.conn.defineXML(xml)
+
+            return {"success": True, "pci_addr": pci_addr}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def attach_usb_device(self, db, vm_id: int, vendor_id: str, product_id: str) -> dict:
+        """Attach a USB device to a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        if not self.conn:
+            return {"success": False, "error": "No libvirt connection"}
+
+        try:
+            dom = self.conn.lookupByName(vm.name)
+            xml = dom.XMLDesc(0)
+
+            hostdev_xml = f"""
+            <hostdev mode='subsystem' type='usb' managed='yes'>
+                <source>
+                    <vendor id='0x{vendor_id}'/>
+                    <product id='0x{product_id}'/>
+                </source>
+            </hostdev>
+            """
+
+            xml = xml.replace("</devices>", hostdev_xml + "</devices>")
+            self.conn.defineXML(xml)
+
+            return {"success": True, "vendor_id": vendor_id, "product_id": product_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def detach_pci_device(self, db, vm_id: int, device_addr: str) -> dict:
+        """Detach a passthrough device from a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        if not self.conn:
+            return {"success": False, "error": "No libvirt connection"}
+
+        try:
+            dom = self.conn.lookupByName(vm.name)
+            xml = dom.XMLDesc(0)
+
+            # Remove hostdev element matching the address
+            xml = re.sub(
+                r'<hostdev[^>]*>.*?</hostdev>',
+                '',
+                xml,
+                flags=re.DOTALL
+            )
+
+            self.conn.defineXML(xml)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Convert to Template ──
+
+    def convert_to_template(self, db, vm_id: int) -> dict:
+        """Convert a stopped VM to a template."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+
+        live_status = self._get_vm_status(vm.name)
+        if live_status == "running":
+            return {"success": False, "error": "VM must be stopped before converting to template"}
+
+        vm.is_template = True
+        db.commit()
+        return {"success": True}
+
     # ── Internal helpers ──
 
     def _get_vm_status(self, name: str) -> str:
@@ -403,14 +689,12 @@ class VMService:
         mem_kb = vm.memory_mb * 1024
         disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
 
-        # Create disk if it doesn't exist
         if not os.path.exists(disk_path):
             size = f"{vm.disk_gb}G"
             disk_fmt = "qcow2"
             cmd = f"qemu-img create -f {disk_fmt} {disk_path} {size}"
             subprocess.run(cmd, shell=True, capture_output=True)
 
-        # Build XML
         bios_xml = ""
         if vm.bios_type == "ovmf":
             bios_xml = """
@@ -518,7 +802,6 @@ class VMService:
             pass
 
     def _update_libvirt_config(self, vm):
-        """Update live VM config (CPU/RAM hotplug)."""
         if not self.conn:
             return
         try:

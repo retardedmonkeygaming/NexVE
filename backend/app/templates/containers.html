@@ -1,36 +1,58 @@
 {% extends "base.html" %}
+{% block title %}NexVE — Containers{% endblock %}
+{% block breadcrumb %}Containers{% endblock %}
+
 {% block content %}
 <div class="flex items-center justify-between mb-6">
     <div>
         <h1 class="text-2xl font-bold">Containers</h1>
         <p class="text-gray-500 text-sm mt-1">Manage LXC containers</p>
     </div>
-    <button onclick="document.getElementById('create-container-modal').classList.remove('hidden')"
-        class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
-        + Create Container
-    </button>
+    <div class="flex gap-2">
+        <button onclick="openModal('create-container-modal')" class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">+ Create Container</button>
+    </div>
 </div>
 
-<div id="container-list" hx-get="/api/containers/list" hx-trigger="load, every 5s" hx-swap="innerHTML" class="space-y-2">
-    <div class="text-gray-500 py-8 text-center bg-[#111] border border-gray-800 rounded-xl">Loading...</div>
+<!-- Container Table -->
+<div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-zinc-800/50 text-zinc-400">
+            <tr>
+                <th class="px-4 py-3 text-left">ID</th>
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-left">CPU</th>
+                <th class="px-4 py-3 text-left">Memory</th>
+                <th class="px-4 py-3 text-left">Disk</th>
+                <th class="px-4 py-3 text-left">Template</th>
+                <th class="px-4 py-3 text-left">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800" id="ct-tbody">
+            <tr><td colspan="8" class="text-zinc-500 text-center py-8">Loading containers...</td></tr>
+        </tbody>
+    </table>
 </div>
 
-<!-- Create Modal -->
-<div id="create-container-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50" onclick="document.getElementById('create-container-modal').classList.add('hidden')">
-    <div class="bg-[#111] border border-gray-800 rounded-xl p-6 w-full max-w-lg" onclick="event.stopPropagation()">
+<!-- Create Container Modal -->
+<div id="create-container-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         <h3 class="text-xl font-semibold mb-4">Create Container</h3>
-        <form hx-post="/api/containers/create" hx-swap="innerHTML" hx-target="#container-list"
-              hx-after-request="document.getElementById('create-container-modal').classList.add('hidden')">
-            <div class="grid grid-cols-2 gap-4 mb-4">
+        <form id="create-ct-form" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Name</label>
-                    <input type="text" name="name" required
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
+                    <label class="text-zinc-400 text-sm">Name</label>
+                    <input name="name" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
                 </div>
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">Template</label>
-                    <select name="template"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
+                    <label class="text-zinc-400 text-sm">CT ID</label>
+                    <input name="ct_id" type="number" value="1000" min="100" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-zinc-400 text-sm">Template</label>
+                    <select name="template" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white">
                         <option value="debian-12-standard">Debian 12</option>
                         <option value="ubuntu-24.04-standard">Ubuntu 24.04</option>
                         <option value="alpine-3.19-standard">Alpine 3.19</option>
@@ -38,35 +60,112 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm text-gray-400 mb-1">CPU Cores</label>
-                    <input type="number" name="vcpu" value="1" min="1" max="32"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Memory (MB)</label>
-                    <input type="number" name="memory_mb" value="512" min="64"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Disk (GB)</label>
-                    <input type="number" name="disk_gb" value="8" min="1"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm text-gray-400 mb-1">Bridge</label>
-                    <select name="bridge"
-                        class="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none">
-                        <option value="vmbr0">vmbr0</option>
-                    </select>
+                    <label class="text-zinc-400 text-sm">Hostname</label>
+                    <input name="hostname" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none" placeholder="auto">
                 </div>
             </div>
-            <div class="flex justify-end gap-3">
-                <button type="button" onclick="document.getElementById('create-container-modal').classList.add('hidden')"
-                    class="px-4 py-2 text-gray-400 hover:text-white transition">Cancel</button>
-                <button type="submit"
-                    class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="text-zinc-400 text-sm">CPU Cores</label>
+                    <input name="vcpu" type="number" value="1" min="1" max="32" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Memory (MB)</label>
+                    <input name="memory_mb" type="number" value="512" min="64" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">Disk (GB)</label>
+                    <input name="disk_gb" type="number" value="8" min="1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-zinc-400 text-sm">Swap (MB)</label>
+                    <input name="swap_mb" type="number" value="512" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-zinc-400 text-sm">IP Address</label>
+                    <input name="ip_address" placeholder="dhcp" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 mt-1 text-white outline-none">
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="unprivileged" checked class="rounded"> Unprivileged</label>
+                <label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" name="nesting" class="rounded"> Nesting</label>
+            </div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" onclick="closeModal('create-container-modal')" class="px-4 py-2 text-zinc-400 hover:text-white transition">Cancel</button>
+                <button type="submit" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition">Create</button>
             </div>
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadContainers() {
+    try {
+        const res = await fetch('/api/containers/');
+        const data = await res.json();
+        const containers = data.containers || [];
+        const tbody = document.getElementById('ct-tbody');
+
+        if (containers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-zinc-500 text-center py-8">No containers. Click "Create Container" to get started.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = containers.map(ct => `
+            <tr class="hover:bg-zinc-800/50 transition">
+                <td class="px-4 py-3 text-zinc-500">${ct.id}</td>
+                <td class="px-4 py-3 font-medium">${ct.name}</td>
+                <td class="px-4 py-3">
+                    <span class="text-xs px-2 py-0.5 rounded-full ${ct.status === 'running' ? 'bg-green-900/50 text-green-400' : 'bg-zinc-800 text-zinc-500'}">
+                        ${ct.status}
+                    </span>
+                </td>
+                <td class="px-4 py-3">${ct.vcpu}</td>
+                <td class="px-4 py-3">${ct.memory_mb >= 1024 ? (ct.memory_mb/1024) + 'G' : ct.memory_mb + 'M'}</td>
+                <td class="px-4 py-3">${ct.disk_gb}G</td>
+                <td class="px-4 py-3 text-zinc-400 text-xs">${ct.template}</td>
+                <td class="px-4 py-3">
+                    <div class="flex gap-1">
+                        ${ct.status !== 'running' ? `<button onclick="ctAction(${ct.id},'start')" class="text-green-400 hover:text-green-300 text-xs px-2 py-1 rounded bg-green-900/30 transition">▶</button>` : ''}
+                        ${ct.status === 'running' ? `<button onclick="ctAction(${ct.id},'stop')" class="text-yellow-400 hover:text-yellow-300 text-xs px-2 py-1 rounded bg-yellow-900/30 transition">⏸</button>` : ''}
+                        ${ct.status === 'running' ? `<button onclick="ctAction(${ct.id},'restart')" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded bg-blue-900/30 transition">🔄</button>` : ''}
+                        <button onclick="ctAction(${ct.id},'delete')" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-900/30 transition">🗑</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function ctAction(id, action) {
+    if (action === 'delete' && !confirm('Delete this container?')) return;
+    try {
+        await fetch(`/api/containers/${id}/${action}`, {method: 'POST'});
+        showToast(`${action} succeeded`, 'success');
+        setTimeout(loadContainers, 500);
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+document.getElementById('create-ct-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    try {
+        const res = await fetch('/api/containers/create', {method: 'POST', body: form});
+        const data = await res.json();
+        showToast(data.success ? 'Container created' : (data.error || 'Error'), data.success ? 'success' : 'error');
+        closeModal('create-container-modal');
+        loadContainers();
+    } catch(e) { showToast('Error creating container', 'error'); }
+};
+
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+loadContainers();
+setInterval(loadContainers, 10000);
+</script>
 {% endblock %}

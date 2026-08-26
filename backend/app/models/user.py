@@ -25,6 +25,17 @@ class User(Base):
     def verify_password(self, password: str) -> bool:
         return bcrypt.checkpw(password.encode(), self.password_hash.encode())
 
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role": self.role,
+            "is_active": self.is_active,
+            "totp_enabled": self.totp_enabled,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
 
 class Session(Base):
     __tablename__ = "sessions"
@@ -36,6 +47,7 @@ class Session(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
@@ -43,8 +55,10 @@ class AuditLog(Base):
     user_id = Column(Integer, nullable=True)
     username = Column(String, nullable=True)
     action = Column(String)
-    target = Column(String, nullable=True)
+    target_type = Column(String, nullable=True)
+    target_name = Column(String, nullable=True)
     details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -72,3 +86,18 @@ class Task(Base):
     status = Column(String, default="running")  # running, completed, failed
     started_at = Column(DateTime, server_default=func.now())
     finished_at = Column(DateTime, nullable=True)
+
+
+class TaskLog(Base):
+    __tablename__ = "task_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String)  # vm.create, backup.start, etc.
+    status = Column(String, default="running")  # running, ok, error
+    target_type = Column(String, nullable=True)
+    target_id = Column(Integer, nullable=True)
+    target_name = Column(String, nullable=True)
+    message = Column(Text, nullable=True)
+    started_at = Column(DateTime, server_default=func.now())
+    ended_at = Column(DateTime, nullable=True)
+

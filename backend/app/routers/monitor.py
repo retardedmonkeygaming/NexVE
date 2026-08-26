@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from ..services.monitor_service import monitor_svc
+from ..services.monitor_service import MonitorService
 from ..auth import get_current_user
 
 router = APIRouter()
+monitor_svc = MonitorService()
 
 
 @router.get("/current")
@@ -24,8 +25,10 @@ async def history(request: Request):
 
 @router.get("/collect")
 async def collect(request: Request):
-    """Manual trigger for collecting metrics. Also called by background task."""
+    """Manual trigger for collecting metrics."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    return JSONResponse(monitor_svc.collect())
+    metric = monitor_svc._snapshot()
+    monitor_svc._append_metric(metric)
+    return JSONResponse(metric)

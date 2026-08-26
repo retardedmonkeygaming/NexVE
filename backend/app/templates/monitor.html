@@ -1,49 +1,62 @@
 {% extends "base.html" %}
+{% block title %}NexVE — Monitoring{% endblock %}
+{% block breadcrumb %}Monitoring{% endblock %}
+
 {% block content %}
-<div class="p-6">
-    <h1 class="text-2xl font-bold mb-6">Monitoring</h1>
-
-    <!-- Live Stats Row -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <div class="text-zinc-400 text-sm">CPU</div>
-            <div id="live-cpu" class="text-2xl font-bold text-white">-</div>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <div class="text-zinc-400 text-sm">Memory</div>
-            <div id="live-mem" class="text-2xl font-bold text-white">-</div>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <div class="text-zinc-400 text-sm">Disk</div>
-            <div id="live-disk" class="text-2xl font-bold text-white">-</div>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <div class="text-zinc-400 text-sm">Temperature</div>
-            <div id="live-temp" class="text-2xl font-bold text-white">-</div>
-        </div>
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold">Monitoring</h1>
+        <p class="text-gray-500 text-sm mt-1">Live and historical system metrics</p>
     </div>
+    <button onclick="loadAll()" class="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-4 py-2 rounded-lg transition">Refresh</button>
+</div>
 
-    <!-- Graphs -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h3 class="text-zinc-400 text-sm mb-3">CPU Usage (%)</h3>
-            <canvas id="cpu-chart" height="200"></canvas>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h3 class="text-zinc-400 text-sm mb-3">Memory Usage (%)</h3>
-            <canvas id="mem-chart" height="200"></canvas>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h3 class="text-zinc-400 text-sm mb-3">Disk I/O (MB/s)</h3>
-            <canvas id="disk-chart" height="200"></canvas>
-        </div>
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h3 class="text-zinc-400 text-sm mb-3">Network I/O (MB/s)</h3>
-            <canvas id="net-chart" height="200"></canvas>
-        </div>
+<!-- Live Stats Row -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div class="text-zinc-400 text-sm">CPU Usage</div>
+        <div id="live-cpu" class="text-2xl font-bold text-orange-500">-</div>
+        <div class="w-full bg-zinc-800 rounded-full h-1.5 mt-2"><div id="bar-cpu" class="bg-orange-500 h-1.5 rounded-full" style="width:0%"></div></div>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div class="text-zinc-400 text-sm">Memory</div>
+        <div id="live-mem" class="text-2xl font-bold text-blue-500">-</div>
+        <div class="w-full bg-zinc-800 rounded-full h-1.5 mt-2"><div id="bar-mem" class="bg-blue-500 h-1.5 rounded-full" style="width:0%"></div></div>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div class="text-zinc-400 text-sm">Disk</div>
+        <div id="live-disk" class="text-2xl font-bold text-green-500">-</div>
+        <div class="w-full bg-zinc-800 rounded-full h-1.5 mt-2"><div id="bar-disk" class="bg-green-500 h-1.5 rounded-full" style="width:0%"></div></div>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div class="text-zinc-400 text-sm">Load Average</div>
+        <div id="live-load" class="text-2xl font-bold text-purple-500">-</div>
+        <div class="text-zinc-500 text-xs mt-1">1m / 5m / 15m</div>
     </div>
 </div>
 
+<!-- Graphs -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <h3 class="text-zinc-400 text-sm mb-3">CPU Usage (%)</h3>
+        <canvas id="cpu-chart" height="180"></canvas>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <h3 class="text-zinc-400 text-sm mb-3">Memory Usage (%)</h3>
+        <canvas id="mem-chart" height="180"></canvas>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <h3 class="text-zinc-400 text-sm mb-3">Disk Usage (%)</h3>
+        <canvas id="disk-chart" height="180"></canvas>
+    </div>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <h3 class="text-zinc-400 text-sm mb-3">Network I/O (bytes)</h3>
+        <canvas id="net-chart" height="180"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const CHART_OPTS = {
@@ -57,48 +70,102 @@ const CHART_OPTS = {
     elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } }
 };
 
-function makeChart(id, color, label) {
+function makeChart(id, color, max) {
+    const opts = { ...CHART_OPTS };
+    if (max) opts.scales = { ...CHART_OPTS.scales, y: { ...CHART_OPTS.scales.y, max } };
     return new Chart(document.getElementById(id), {
         type: 'line',
-        data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color + '20', fill: true, label }] },
-        options: { ...CHART_OPTS, scales: { ...CHART_OPTS.scales, y: { ...CHART_OPTS.scales.y, max: label.includes('%') ? 100 : undefined } } }
+        data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color + '20', fill: true }] },
+        options: opts
     });
 }
 
-const cpuChart = makeChart('cpu-chart', '#f97316', 'CPU');
-const memChart = makeChart('mem-chart', '#3b82f6', 'Memory');
-const diskChart = makeChart('disk-chart', '#22c55e', 'Disk I/O');
-const netChart = makeChart('net-chart', '#a855f7', 'Network I/O');
+const cpuChart = makeChart('cpu-chart', '#f97316', 100);
+const memChart = makeChart('mem-chart', '#3b82f6', 100);
+const diskChart = makeChart('disk-chart', '#22c55e', 100);
+const netChart = makeChart('net-chart', '#a855f7', null);
 
-function fmtTime(ts) {
-    return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// Data buffers (keep last 60 points)
+const MAX_POINTS = 60;
+let cpuData = [], memData = [], diskData = [], netSentData = [], netRecvData = [];
+let labels = [];
+let prevNetSent = null, prevNetRecv = null;
+
+function pushData(arr, val) {
+    arr.push(val);
+    if (arr.length > MAX_POINTS) arr.shift();
 }
 
-function updateChart(chart, points) {
-    chart.data.labels = points.map(p => fmtTime(p.t));
-    chart.data.datasets[0].data = points.map(p => p.v);
-    chart.update('none');
+function fmtTime(isoStr) {
+    return new Date(isoStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 async function loadAll() {
-    const [histRes, curRes] = await Promise.all([
-        fetch('/api/monitor/history'),
-        fetch('/api/monitor/current')
-    ]);
-    const hist = await histRes.json();
-    const cur = await curRes.json();
+    try {
+        const [histRes, curRes] = await Promise.all([
+            fetch('/api/monitor/history?hours=1'),
+            fetch('/api/monitor/current')
+        ]);
+        const history = await histRes.json();
+        const cur = await curRes.json();
 
-    // Update live stats
-    document.getElementById('live-cpu').textContent = cur.cpu_percent + '%';
-    document.getElementById('live-mem').textContent = cur.memory_percent + '%';
-    document.getElementById('live-disk').textContent = cur.disk_percent + '%';
-    document.getElementById('live-temp').textContent = cur.temperature ? cur.temperature + '°C' : 'N/A';
+        // Update live stats
+        document.getElementById('live-cpu').textContent = cur.cpu_percent + '%';
+        document.getElementById('live-mem').textContent = cur.memory_percent + '%';
+        document.getElementById('live-disk').textContent = cur.disk_percent + '%';
+        document.getElementById('live-load').textContent = `${cur.load_1} / ${cur.load_5} / ${cur.load_15}`;
 
-    // Update charts
-    updateChart(cpuChart, hist.cpu || []);
-    updateChart(memChart, hist.memory || []);
-    updateChart(diskChart, hist.disk_io || []);
-    updateChart(netChart, hist.net_io || []);
+        document.getElementById('bar-cpu').style.width = cur.cpu_percent + '%';
+        document.getElementById('bar-mem').style.width = cur.memory_percent + '%';
+        document.getElementById('bar-disk').style.width = cur.disk_percent + '%';
+
+        // Build chart data from history (array of metric objects)
+        cpuData = []; memData = []; diskData = []; netSentData = []; netRecvData = []; labels = [];
+        prevNetSent = null; prevNetRecv = null;
+
+        // Use only last MAX_POINTS entries
+        const metrics = Array.isArray(history) ? history.slice(-MAX_POINTS) : [];
+
+        metrics.forEach(m => {
+            labels.push(fmtTime(m.timestamp));
+            cpuData.push(m.cpu_percent || 0);
+            memData.push(m.memory_percent || 0);
+            diskData.push(m.disk_percent || 0);
+
+            // Compute network delta
+            const sent = m.net_sent_bytes || 0;
+            const recv = m.net_recv_bytes || 0;
+            if (prevNetSent !== null) {
+                netSentData.push(Math.max(0, sent - prevNetSent));
+                netRecvData.push(Math.max(0, recv - prevNetRecv));
+            }
+            prevNetSent = sent;
+            prevNetRecv = recv;
+        });
+
+        // Update charts
+        cpuChart.data.labels = labels;
+        cpuChart.data.datasets[0].data = cpuData;
+        cpuChart.update('none');
+
+        memChart.data.labels = labels;
+        memChart.data.datasets[0].data = memData;
+        memChart.update('none');
+
+        diskChart.data.labels = labels;
+        diskChart.data.datasets[0].data = diskData;
+        diskChart.update('none');
+
+        // Network: show sent and recv as two datasets
+        netChart.data.labels = labels;
+        netChart.data.datasets = [
+            { data: netSentData, borderColor: '#22c55e', backgroundColor: '#22c55e20', fill: true, label: 'Sent' },
+            { data: netRecvData, borderColor: '#a855f7', backgroundColor: '#a855f720', fill: true, label: 'Recv' },
+        ];
+        netChart.update('none');
+    } catch(e) {
+        console.error('Monitor load error:', e);
+    }
 }
 
 loadAll();

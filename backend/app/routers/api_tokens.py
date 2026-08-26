@@ -2,7 +2,8 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from datetime import datetime, timedelta
 from ..database import SessionLocal
-from ..models.user import User, ApiToken
+from ..models.user import User
+from ..models.vm import ApiToken
 from ..auth import get_current_user
 import secrets
 import hashlib
