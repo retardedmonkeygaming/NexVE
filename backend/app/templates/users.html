@@ -1,23 +1,24 @@
 {% extends "base.html" %}
-{% block title %}NexVE — Users & Groups{% endblock %}
-{% block breadcrumb %}Users & Groups{% endblock %}
+{% block title %}NexVE — Users{% endblock %}
+{% block breadcrumb %}Users{% endblock %}
 
 {% block content %}
 <div class="nx-page-header">
     <div>
         <div class="nx-page-title">Users & Groups</div>
-        <div class="nx-page-subtitle">Manage user accounts and role-based access</div>
+        <div class="nx-page-subtitle">Manage users, groups, and roles</div>
     </div>
-    <div class="nx-flex nx-gap-2">
-        <button class="nx-btn nx-btn-secondary" onclick="showGroupModal()">+ New Group</button>
-        <button class="nx-btn nx-btn-primary" onclick="showUserModal()">+ New User</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadUsers()">↻ Refresh</button>
+        <button class="nx-btn nx-btn-primary" onclick="showCreateUser()">+ Add User</button>
     </div>
 </div>
 
 <div class="nx-tabs">
-    <button class="nx-tab active" onclick="showTab('users')">Users</button>
-    <button class="nx-tab" onclick="showTab('groups')">Groups</button>
-    <button class="nx-tab" onclick="showTab('roles')">Roles</button>
+    <button class="nx-tab active" onclick="showTab(this,'users')">Users</button>
+    <button class="nx-tab" onclick="showTab(this,'groups')">Groups</button>
+    <button class="nx-tab" onclick="showTab(this,'roles')">Roles</button>
+    <button class="nx-tab" onclick="showTab(this,'tokens')">API Tokens</button>
 </div>
 
 <!-- Users -->
@@ -26,10 +27,18 @@
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
                 <thead>
-                    <tr><th>Username</th><th>Email</th><th>Role</th><th>2FA</th><th>Status</th><th>Actions</th></tr>
+                    <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Groups</th>
+                        <th>2FA</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody id="user-list">
-                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                    <tr class="nx-skeleton-row"><td colspan="7"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -39,13 +48,22 @@
 <!-- Groups -->
 <div class="nx-tab-content" id="tab-groups">
     <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">User Groups</span>
+            <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="showCreateGroup()">+ Add Group</button>
+        </div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
                 <thead>
-                    <tr><th>Group Name</th><th>Description</th><th>Members</th><th>Actions</th></tr>
+                    <tr>
+                        <th>Group Name</th>
+                        <th>Members</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody id="group-list">
-                    <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups defined</td></tr>
+                    <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr>
                 </tbody>
             </table>
         </div>
@@ -55,57 +73,137 @@
 <!-- Roles -->
 <div class="nx-tab-content" id="tab-roles">
     <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Roles & Permissions</span>
+        </div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Role</th><th>Description</th><th>Permissions</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>Description</th>
+                        <th>Permissions</th>
+                    </tr>
+                </thead>
                 <tbody id="role-list">
-                    <tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">Loading roles...</td></tr>
+                    <tr>
+                        <td style="font-weight:500;">admin</td>
+                        <td>Full system administrator</td>
+                        <td><span class="nx-badge nx-badge-danger">Full Access</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:500;">auditor</td>
+                        <td>Read-only access to all resources</td>
+                        <td><span class="nx-badge nx-badge-info">Read Only</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:500;">user</td>
+                        <td>Standard user with limited access</td>
+                        <td><span class="nx-badge nx-badge-warning">Limited</span></td>
+                    </tr>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
-<!-- User Modal -->
-<div class="nx-modal-overlay" id="user-modal">
-    <div class="nx-modal">
-        <div class="nx-modal-header">
-            <span class="nx-modal-title">Create User</span>
-            <button class="nx-modal-close" onclick="closeModal('user-modal')">✕</button>
+<!-- API Tokens -->
+<div class="nx-tab-content" id="tab-tokens">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">API Tokens</span>
+            <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="showCreateToken()">+ Add Token</button>
         </div>
-        <div class="nx-modal-body">
-            <form id="user-form" class="nx-flex nx-flex-col nx-gap-4">
-                <div class="nx-input-group"><label class="nx-label">Username *</label><input type="text" name="username" class="nx-input" required></div>
-                <div class="nx-input-group"><label class="nx-label">Email *</label><input type="email" name="email" class="nx-input" required></div>
-                <div class="nx-input-group"><label class="nx-label">Password *</label><input type="password" name="password" class="nx-input" required minlength="8"></div>
-                <div class="nx-input-group"><label class="nx-label">Role</label>
-                    <select name="role" class="nx-select"><option value="user">User</option><option value="auditor">Auditor</option><option value="admin">Admin</option></select>
-                </div>
-            </form>
-        </div>
-        <div class="nx-modal-footer">
-            <button class="nx-btn nx-btn-secondary" onclick="closeModal('user-modal')">Cancel</button>
-            <button class="nx-btn nx-btn-primary" onclick="createUser()">Create</button>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead>
+                    <tr>
+                        <th>Token Name</th>
+                        <th>User</th>
+                        <th>Created</th>
+                        <th>Last Used</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="token-list">
+                    <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No API tokens</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- Group Modal -->
-<div class="nx-modal-overlay" id="group-modal">
-    <div class="nx-modal">
+<!-- Create User Modal -->
+<div class="nx-modal-overlay" id="create-user-modal">
+    <div class="nx-modal" style="max-width:480px;">
         <div class="nx-modal-header">
-            <span class="nx-modal-title">Create Group</span>
-            <button class="nx-modal-close" onclick="closeModal('group-modal')">✕</button>
+            <h3>Create User</h3>
+            <button class="nx-modal-close" onclick="hideCreateUser()">✕</button>
         </div>
         <div class="nx-modal-body">
-            <form id="group-form" class="nx-flex nx-flex-col nx-gap-4">
-                <div class="nx-input-group"><label class="nx-label">Group Name *</label><input type="text" name="name" class="nx-input" required></div>
-                <div class="nx-input-group"><label class="nx-label">Description</label><input type="text" name="description" class="nx-input" placeholder="Optional description"></div>
+            <form id="user-form" onsubmit="submitUser(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group">
+                        <label class="nx-label">Username *</label>
+                        <input type="text" name="username" class="nx-input" placeholder="john" required>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Email</label>
+                        <input type="email" name="email" class="nx-input" placeholder="john@example.com">
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Password *</label>
+                        <input type="password" name="password" class="nx-input" placeholder="••••••••" required minlength="8">
+                        <span class="nx-hint">Minimum 8 characters</span>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Role</label>
+                        <select name="role" class="nx-select">
+                            <option value="user">User</option>
+                            <option value="auditor">Auditor (read-only)</option>
+                            <option value="admin">Admin (full access)</option>
+                        </select>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Group</label>
+                        <select name="group" class="nx-select" id="user-group-select">
+                            <option value="">— None —</option>
+                        </select>
+                    </div>
+                </div>
             </form>
         </div>
         <div class="nx-modal-footer">
-            <button class="nx-btn nx-btn-secondary" onclick="closeModal('group-modal')">Cancel</button>
-            <button class="nx-btn nx-btn-primary" onclick="createGroup()">Create</button>
+            <button class="nx-btn nx-btn-secondary" onclick="hideCreateUser()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('user-form').requestSubmit()">Create User</button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Group Modal -->
+<div class="nx-modal-overlay" id="create-group-modal">
+    <div class="nx-modal" style="max-width:400px;">
+        <div class="nx-modal-header">
+            <h3>Create Group</h3>
+            <button class="nx-modal-close" onclick="hideCreateGroup()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="group-form" onsubmit="submitGroup(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group">
+                        <label class="nx-label">Group Name *</label>
+                        <input type="text" name="name" class="nx-input" placeholder="developers" required>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label">Description</label>
+                        <input type="text" name="description" class="nx-input" placeholder="Optional description">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideCreateGroup()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('group-form').requestSubmit()">Create Group</button>
         </div>
     </div>
 </div>
@@ -113,109 +211,157 @@
 
 {% block scripts %}
 <script>
-function showTab(name) {
+function showTab(btn, name) {
     document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'groups') loadGroups();
+    if (name === 'tokens') loadTokens();
 }
 
-function showUserModal() { document.getElementById('user-modal').classList.add('open'); }
-function showGroupModal() { document.getElementById('group-modal').classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
+// ── Load Users ──
 async function loadUsers() {
     try {
         const r = await fetch('/api/users/');
         const data = await r.json();
-        const list = document.getElementById('user-list');
         const users = data.users || [];
-        list.innerHTML = users.map(u => `
+        document.getElementById('user-list').innerHTML = users.map(u => `
             <tr>
-                <td style="font-weight:500;color:var(--text-primary);">${u.username}</td>
-                <td>${u.email || '-'}</td>
+                <td style="font-weight:500;">${u.username}</td>
+                <td style="color:var(--text-muted);">${u.email || '-'}</td>
                 <td><span class="nx-badge ${u.role === 'admin' ? 'nx-badge-danger' : u.role === 'auditor' ? 'nx-badge-info' : 'nx-badge-neutral'}">${u.role}</span></td>
-                <td>${u.totp_enabled ? '<span class="nx-badge nx-badge-success"><span class="dot"></span>Enabled</span>' : '<span class="nx-text-muted">Disabled</span>'}</td>
-                <td><span class="nx-badge ${u.is_active ? 'nx-badge-success' : 'nx-badge-danger'}">${u.is_active ? 'Active' : 'Disabled'}</span></td>
-                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteUser(${u.id})">Delete</button></td>
+                <td>${u.groups ? u.groups.join(', ') : '-'}</td>
+                <td>${u.totp_enabled ? '<span class="nx-badge nx-badge-success"><span class="dot"></span>Enabled</span>' : '<span class="nx-badge nx-badge-neutral">Disabled</span>'}</td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${u.last_login || 'Never'}</td>
+                <td>
+                    <div class="nx-flex nx-gap-1">
+                        ${u.username !== 'root' ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="deleteUser('${u.username}')">Delete</button>` : ''}
+                    </div>
+                </td>
             </tr>
-        `).join('') || '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">No users</td></tr>';
+        `).join('') || '<tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No users</td></tr>';
     } catch(e) { console.error(e); }
 }
 
-async function createUser() {
-    const form = document.getElementById('user-form');
-    const data = new FormData(form);
-    try {
-        const r = await fetch('/api/users/create', {method:'POST', body: data});
-        if (r.ok) { closeModal('user-modal'); loadUsers(); showToast('User created', 'success'); }
-        else { showToast('Failed to create user', 'error'); }
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function deleteUser(id) {
-    if (!confirm('Delete this user?')) return;
-    try {
-        await fetch(`/api/users/${id}`, {method:'DELETE'});
-        loadUsers(); showToast('User deleted', 'success');
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-loadUsers();
-loadGroups();
-loadRoles();
-
-// ── Groups ──
+// ── Load Groups ──
 async function loadGroups() {
     try {
         const r = await fetch('/api/users/groups');
         const data = await r.json();
-        const list = document.getElementById('group-list');
         const groups = data.groups || [];
-        list.innerHTML = groups.map(g => `
+        document.getElementById('group-list').innerHTML = groups.map(g => `
             <tr>
                 <td style="font-weight:500;">${g.name}</td>
+                <td>${g.members ? g.members.length : 0} members</td>
                 <td style="color:var(--text-muted);">${g.description || '-'}</td>
-                <td>-</td>
-                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteGroup(${g.id})">Delete</button></td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteGroup('${g.name}')">Delete</button></td>
             </tr>
-        `).join('') || '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups defined</td></tr>';
+        `).join('') || '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr>';
     } catch(e) { console.error(e); }
 }
 
-async function createGroup() {
-    const form = document.getElementById('group-form');
-    const data = new FormData(form);
+// ── Load Tokens ──
+async function loadTokens() {
     try {
-        const r = await fetch('/api/users/groups/create', {method:'POST', body: data});
-        if (r.ok) { closeModal('group-modal'); loadGroups(); showToast('Group created', 'success'); }
-        else { showToast('Failed to create group', 'error'); }
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-async function deleteGroup(id) {
-    if (!confirm('Delete this group?')) return;
-    try {
-        await fetch(`/api/users/groups/${id}`, {method:'DELETE'});
-        loadGroups(); showToast('Group deleted', 'success');
-    } catch(e) { showToast('Error', 'error'); }
-}
-
-// ── Roles ──
-async function loadRoles() {
-    try {
-        const r = await fetch('/api/users/roles');
+        const r = await fetch('/api/tokens/');
         const data = await r.json();
-        const list = document.getElementById('role-list');
-        const roles = data.roles || [];
-        list.innerHTML = roles.map(r => `
+        const tokens = data.tokens || [];
+        document.getElementById('token-list').innerHTML = tokens.map(t => `
             <tr>
-                <td><span class="nx-badge ${r.name === 'admin' ? 'nx-badge-danger' : r.name === 'auditor' ? 'nx-badge-info' : 'nx-badge-neutral'}">${r.name}</span></td>
-                <td style="color:var(--text-muted);">${r.description || '-'}</td>
-                <td style="font-family:monospace;font-size:var(--text-xs);">${r.permissions}</td>
+                <td style="font-weight:500;">${t.name}</td>
+                <td>${t.username || '-'}</td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${t.created_at || '-'}</td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${t.last_used || 'Never'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteToken(${t.id})">Revoke</button></td>
             </tr>
-        `).join('') || '<tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No roles defined</td></tr>';
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No API tokens</td></tr>';
     } catch(e) { console.error(e); }
 }
+
+// ── Create User ──
+function showCreateUser() { document.getElementById('create-user-modal').classList.add('open'); loadGroupsForSelect(); }
+function hideCreateUser() { document.getElementById('create-user-modal').classList.remove('open'); }
+
+async function loadGroupsForSelect() {
+    try {
+        const r = await fetch('/api/users/groups');
+        const data = await r.json();
+        const sel = document.getElementById('user-group-select');
+        sel.innerHTML = '<option value="">— None —</option>';
+        (data.groups || []).forEach(g => {
+            sel.innerHTML += `<option value="${g.name}">${g.name}</option>`;
+        });
+    } catch(e) {}
+}
+
+async function submitUser(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/users/create', {method:'POST', body:fd});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast('User created', 'success');
+            hideCreateUser();
+            e.target.reset();
+            loadUsers();
+        } else {
+            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+        }
+    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function deleteUser(username) {
+    if (!confirm(`Delete user "${username}"?`)) return;
+    try {
+        await fetch(`/api/users/${username}`, {method:'DELETE'});
+        showToast('User deleted', 'success');
+        loadUsers();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Create Group ──
+function showCreateGroup() { document.getElementById('create-group-modal').classList.add('open'); }
+function hideCreateGroup() { document.getElementById('create-group-modal').classList.remove('open'); }
+
+async function submitGroup(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/users/groups/create', {method:'POST', body:fd});
+        const data = await r.json();
+        if (data.success !== false) {
+            showToast('Group created', 'success');
+            hideCreateGroup();
+            e.target.reset();
+            loadGroups();
+        } else {
+            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+        }
+    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
+async function deleteGroup(name) {
+    if (!confirm(`Delete group "${name}"?`)) return;
+    try {
+        await fetch(`/api/users/groups/${name}`, {method:'DELETE'});
+        showToast('Group deleted', 'success');
+        loadGroups();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Tokens ──
+function showCreateToken() { showToast('Token creation coming soon', 'info'); }
+async function deleteToken(id) {
+    if (!confirm('Revoke this API token?')) return;
+    try {
+        await fetch(`/api/tokens/${id}`, {method:'DELETE'});
+        showToast('Token revoked', 'success');
+        loadTokens();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+loadUsers();
 </script>
 {% endblock %}

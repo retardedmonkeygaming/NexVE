@@ -1,8 +1,10 @@
-# NexVE — Open Source Hypervisor Management
+# NexVE v3.0 — Open Source Hypervisor Management
 
 <p align="center">
+  <img src="static/img/logo.svg" alt="NexVE" width="120">
+  <br><br>
   <strong>Your private cloud. Your rules.</strong><br>
-  A modern, open-source alternative to Proxmox VE for managing virtual machines, containers, storage, and networking — with a beautiful web UI.
+  A modern, open-source alternative to Proxmox VE for managing virtual machines, containers, storage, and networking — with a sleek dark-themed web UI.
 </p>
 
 ---
@@ -13,12 +15,14 @@ Proxmox VE is powerful but its web interface feels dated, its setup process is o
 
 | Feature | Proxmox VE | NexVE |
 |---------|-----------|-------|
-| Web UI | Dated, complex modals | Modern, wizard-based |
-| Monitoring | Basic graphs | Built-in live charts |
+| Web UI | ExtJS-based, dated | Modern dark theme, responsive |
+| Theme | Light/Dark (added recently) | Black modern (default) |
+| Monitoring | Basic graphs | Real-time Chart.js charts |
 | Backup | Requires PBS (separate) | Integrated scheduling |
-| Installation | ISO only | ISO + interactive installer |
+| Installation | ISO only | ISO + interactive TUI installer |
 | Mobile | Separate apps | Responsive web UI |
 | Setup | CLI-heavy | Multi-step web wizard |
+| Branding | Proxmox branding | Custom logo & design system |
 
 ## Features
 

@@ -8,14 +8,14 @@
         <div class="nx-page-title">Backups</div>
         <div class="nx-page-subtitle">Scheduled and on-demand backups</div>
     </div>
-    <div class="nx-flex nx-gap-2">
+    <div class="nx-page-actions">
         <button class="nx-btn nx-btn-secondary" onclick="backupNow()">Backup Now</button>
         <button class="nx-btn nx-btn-primary" onclick="showScheduleModal()">+ Add Schedule</button>
     </div>
 </div>
 
 <!-- Tabs -->
-<div class="nx-flex nx-gap-0 nx-mb-4">
+<div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'schedules')">Schedules</button>
     <button class="nx-tab" onclick="showTab(this,'history')">History</button>
 </div>
@@ -37,7 +37,7 @@
                     </tr>
                 </thead>
                 <tbody id="schedule-list">
-                    <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:48px;">Loading schedules...</td></tr>
+                    <tr class="nx-skeleton-row"><td colspan="7"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -60,7 +60,7 @@
                     </tr>
                 </thead>
                 <tbody id="history-list">
-                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:48px;">Loading history...</td></tr>
+                    <tr class="nx-skeleton-row"><td colspan="6"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -68,12 +68,11 @@
 </div>
 
 <!-- Schedule Modal -->
-<div class="nx-modal" id="schedule-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideScheduleModal()"></div>
-    <div class="nx-modal-content" style="max-width:480px;">
+<div class="nx-modal-overlay" id="schedule-modal">
+    <div class="nx-modal" style="max-width:520px;">
         <div class="nx-modal-header">
             <h3>Add Backup Schedule</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideScheduleModal()">✕</button>
+            <button class="nx-modal-close" onclick="hideScheduleModal()">✕</button>
         </div>
         <div class="nx-modal-body">
             <form id="schedule-form" onsubmit="submitSchedule(event)">
@@ -125,12 +124,11 @@
 </div>
 
 <!-- Backup Now Modal -->
-<div class="nx-modal" id="backup-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideBackupModal()"></div>
-    <div class="nx-modal-content" style="max-width:400px;">
+<div class="nx-modal-overlay" id="backup-modal">
+    <div class="nx-modal" style="max-width:400px;">
         <div class="nx-modal-header">
             <h3>Backup Now</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideBackupModal()">✕</button>
+            <button class="nx-modal-close" onclick="hideBackupModal()">✕</button>
         </div>
         <div class="nx-modal-body">
             <form id="backup-form" onsubmit="submitBackup(event)">
@@ -167,6 +165,7 @@ function showTab(btn, name) {
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'history') loadHistory();
 }
 
 // ── Load Schedules ──
@@ -214,8 +213,8 @@ async function loadHistory() {
                     <td style="font-size:var(--text-xs);">${b.created_at || '-'}</td>
                     <td><span class="nx-badge ${b.type === 'vm' ? 'nx-badge-accent' : 'nx-badge-info'}">${b.type || '-'}</span></td>
                     <td>${b.target_name || b.target_id || '-'}</td>
-                    <td><span class="nx-badge ${b.status === 'completed' ? 'nx-badge-success' : b.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${b.status}</span></td>
-                    <td style="color:var(--text-muted);">${b.size || '-'}</td>
+                    <td><span class="nx-badge ${b.status === 'success' ? 'nx-badge-success' : b.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${b.status || 'pending'}</span></td>
+                    <td>${b.size || '-'}</td>
                     <td style="color:var(--text-muted);font-size:var(--text-xs);">${b.duration || '-'}</td>
                 </tr>
             `).join('');
@@ -223,66 +222,55 @@ async function loadHistory() {
     } catch (e) { console.error('loadHistory:', e); }
 }
 
-// ── Schedule Actions ──
-async function toggleSchedule(id) {
-    try {
-        await fetch(`/api/backups/schedules/${id}/toggle`, {method: 'POST'});
-        loadSchedules();
-    } catch (e) { showToast('Error', 'error'); }
-}
+// ── Modal Controls ──
+function showScheduleModal() { document.getElementById('schedule-modal').classList.add('open'); }
+function hideScheduleModal() { document.getElementById('schedule-modal').classList.remove('open'); }
+function backupNow() { document.getElementById('backup-modal').classList.add('open'); }
+function hideBackupModal() { document.getElementById('backup-modal').classList.remove('open'); }
 
-async function deleteSchedule(id) {
-    if (!confirm('Delete this backup schedule?')) return;
-    try {
-        await fetch(`/api/backups/schedules/${id}/delete`, {method: 'POST'});
-        showToast('Schedule deleted', 'success');
-        loadSchedules();
-    } catch (e) { showToast('Error', 'error'); }
-}
-
-// ── Modals ──
-function showScheduleModal() { document.getElementById('schedule-modal').style.display = 'flex'; }
-function hideScheduleModal() { document.getElementById('schedule-modal').style.display = 'none'; }
-function backupNow() { document.getElementById('backup-modal').style.display = 'flex'; }
-function hideBackupModal() { document.getElementById('backup-modal').style.display = 'none'; }
-
+// ── Submit Schedule ──
 async function submitSchedule(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
-        const r = await fetch('/api/backups/schedules/create', {method: 'POST', body: fd});
+        const r = await fetch('/api/backups/schedules', {method:'POST', body:fd});
         const data = await r.json();
         if (data.success !== false) {
             showToast('Schedule created', 'success');
             hideScheduleModal();
+            e.target.reset();
             loadSchedules();
         } else {
-            showToast(`Error: ${data.error || 'failed'}`, 'error');
+            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
         }
-    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
 }
 
+// ── Submit Backup ──
 async function submitBackup(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const type = fd.get('target_type');
-    const id = fd.get('target_id');
     try {
-        const endpoint = type === 'vm' ? `/api/backups/vm/${id}/backup` : `/api/backups/container/${id}/backup`;
-        const r = await fetch(endpoint, {method: 'POST'});
+        const r = await fetch('/api/backups/create', {method:'POST', body:fd});
         const data = await r.json();
         if (data.success !== false) {
-            showToast('Backup started!', 'success');
+            showToast('Backup started', 'success');
             hideBackupModal();
-            setTimeout(loadHistory, 2000);
         } else {
-            showToast(`Backup failed: ${data.error || 'unknown'}`, 'error');
+            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
         }
-    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
 }
 
-// ── Init ──
+// ── Toggle/Delete Schedule ──
+async function toggleSchedule(id) {
+    try { await fetch(`/api/backups/schedules/${id}/toggle`, {method:'POST'}); loadSchedules(); } catch(e) {}
+}
+async function deleteSchedule(id) {
+    if (!confirm('Delete this backup schedule?')) return;
+    try { await fetch(`/api/backups/schedules/${id}`, {method:'DELETE'}); showToast('Schedule deleted','success'); loadSchedules(); } catch(e) {}
+}
+
 loadSchedules();
-loadHistory();
 </script>
 {% endblock %}

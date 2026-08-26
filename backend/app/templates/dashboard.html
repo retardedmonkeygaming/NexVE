@@ -9,7 +9,7 @@
         <div class="nx-page-title">{{ hostname }}</div>
         <div class="nx-page-subtitle">System Overview</div>
     </div>
-    <div class="nx-flex nx-gap-2">
+    <div class="nx-page-actions">
         <a href="/vms" class="nx-btn nx-btn-primary">+ Create VM</a>
         <a href="/containers" class="nx-btn nx-btn-secondary">+ Create CT</a>
     </div>
@@ -20,7 +20,8 @@
     <div class="nx-stat">
         <div class="nx-stat-label">CPU Usage</div>
         <div class="nx-stat-value" style="color:var(--accent);" id="stat-cpu">{{ cpu }}%</div>
-        <div class="nx-progress nx-mt-4">
+        <div class="nx-stat-detail" id="cpu-detail">{{ cpu }}% used</div>
+        <div class="nx-progress nx-mt-2">
             <div class="nx-progress-bar accent" style="width:{{ cpu }}%" id="bar-cpu"></div>
         </div>
     </div>
@@ -28,7 +29,7 @@
         <div class="nx-stat-label">Memory</div>
         <div class="nx-stat-value" style="color:var(--info);">{{ "%.1f"|format(memory.percent) }}%</div>
         <div class="nx-stat-detail">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</div>
-        <div class="nx-progress nx-mt-4">
+        <div class="nx-progress nx-mt-2">
             <div class="nx-progress-bar info" style="width:{{ memory.percent }}%"></div>
         </div>
     </div>
@@ -36,14 +37,14 @@
         <div class="nx-stat-label">Disk</div>
         <div class="nx-stat-value" style="color:var(--success);">{{ "%.1f"|format(disk.percent) }}%</div>
         <div class="nx-stat-detail">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</div>
-        <div class="nx-progress nx-mt-4">
+        <div class="nx-progress nx-mt-2">
             <div class="nx-progress-bar success" style="width:{{ disk.percent }}%"></div>
         </div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Status</div>
         <div class="nx-flex nx-items-center nx-gap-2" style="margin-top:8px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:var(--success);"></span>
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 8px rgba(34,197,94,0.5);"></span>
             <span style="font-weight:600;color:var(--success);">Online</span>
         </div>
         <div class="nx-stat-detail" id="uptime-info" style="margin-top:12px;">Loading...</div>

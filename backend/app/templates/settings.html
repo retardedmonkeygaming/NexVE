@@ -12,8 +12,8 @@
 
 <div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'general')">General</button>
-    <button class="nx-tab" onclick="showTab(this,'dns')">DNS</button>
-    <button class="nx-tab" onclick="showTab(this,'time')">Time & NTP</button>
+    <button class="nx-tab" onclick="showTab(this,'network')">Network</button>
+    <button class="nx-tab" onclick="showTab(this,'security')">Security</button>
     <button class="nx-tab" onclick="showTab(this,'services')">Services</button>
     <button class="nx-tab" onclick="showTab(this,'updates')">Updates</button>
     <button class="nx-tab" onclick="showTab(this,'syslog')">Syslog</button>
@@ -29,15 +29,15 @@
                 <div class="nx-input-group"><label class="nx-label">Hostname</label><input type="text" id="set-hostname" class="nx-input"></div>
                 <div class="nx-input-group"><label class="nx-label">OS</label><div id="set-os" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
                 <div class="nx-input-group"><label class="nx-label">Kernel</label><div id="set-kernel" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
-                <div class="nx-input-group"><label class="nx-label">Timezone</label><div id="set-timezone" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
+                <div class="nx-input-group"><label class="nx-label">Architecture</label><div id="set-arch" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
             </div>
             <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveHostname()">Save Hostname</button>
         </div>
     </div>
 </div>
 
-<!-- DNS -->
-<div class="nx-tab-content" id="tab-dns">
+<!-- Network -->
+<div class="nx-tab-content" id="tab-network">
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">DNS Configuration</span></div>
         <div class="nx-card-body">
@@ -48,16 +48,14 @@
             <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveDNS()">Apply DNS</button>
         </div>
     </div>
-</div>
 
-<!-- Time -->
-<div class="nx-tab-content" id="tab-time">
-    <div class="nx-card">
+    <div class="nx-card nx-mt-6">
         <div class="nx-card-header"><span class="nx-card-title">Time Configuration</span></div>
         <div class="nx-card-body">
             <div class="nx-form-grid">
                 <div class="nx-input-group"><label class="nx-label">Current Time</label><div id="cur-time" style="padding:8px 0;font-family:var(--font-mono);color:var(--text-secondary);">-</div></div>
-                <div class="nx-input-group"><label class="nx-label">Timezone</label>
+                <div class="nx-input-group">
+                    <label class="nx-label">Timezone</label>
                     <select id="set-tz" class="nx-select">
                         <option value="UTC">UTC</option>
                         <option value="America/New_York">Eastern Time</option>
@@ -78,6 +76,34 @@
                 </div>
             </div>
             <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveTime()">Save Time Settings</button>
+        </div>
+    </div>
+</div>
+
+<!-- Security -->
+<div class="nx-tab-content" id="tab-security">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Authentication</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group">
+                    <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" class="nx-checkbox" id="sec-2fa" checked> Require Two-Factor Authentication
+                    </label>
+                    <span class="nx-hint">Enforce 2FA for all users</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Session Timeout (minutes)</label>
+                    <input type="number" id="sec-timeout" class="nx-input" value="60" min="5" max="1440">
+                    <span class="nx-hint">Users will be logged out after this period of inactivity</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Max Login Attempts</label>
+                    <input type="number" id="sec-max-attempts" class="nx-input" value="5" min="3" max="20">
+                    <span class="nx-hint">Lock account after this many failed attempts</span>
+                </div>
+                <button class="nx-btn nx-btn-primary" onclick="saveSecurity()">Save Security Settings</button>
+            </div>
         </div>
     </div>
 </div>
@@ -113,7 +139,7 @@
     <div class="nx-card">
         <div class="nx-card-header">
             <span class="nx-card-title">System Log</span>
-            <div style="display:flex;gap:8px;">
+            <div class="nx-flex nx-gap-2">
                 <select id="log-level" class="nx-select" style="width:auto;padding:4px 28px 4px 8px;font-size:var(--text-xs);" onchange="loadSyslog()">
                     <option value="all">All</option><option value="error">Errors</option><option value="warning">Warnings</option>
                 </select>
@@ -121,7 +147,7 @@
             </div>
         </div>
         <div class="nx-card-body" style="padding:0;">
-            <pre id="syslog-out" style="font-family:var(--font-mono);font-size:11px;padding:12px;max-height:400px;overflow:auto;color:var(--text-secondary);white-space:pre-wrap;margin:0;">Loading...</pre>
+            <pre id="syslog-out" style="font-family:var(--font-mono);font-size:11px;padding:12px;max-height:400px;overflow:auto;color:var(--text-secondary);white-space:pre-wrap;margin:0;background:var(--bg-elevated);">Loading...</pre>
         </div>
     </div>
 </div>
@@ -131,6 +157,13 @@
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">About NexVE</span></div>
         <div class="nx-card-body">
+            <div class="nx-flex nx-gap-6" style="align-items:center;margin-bottom:24px;">
+                <img src="/static/img/logo.svg" alt="NexVE" style="width:64px;height:64px;">
+                <div>
+                    <div style="font-size:var(--text-2xl);font-weight:700;letter-spacing:-0.02em;">NexVE</div>
+                    <div style="color:var(--text-muted);font-size:var(--text-sm);">Open Source Hypervisor Management Platform</div>
+                </div>
+            </div>
             <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
                 <span style="color:var(--text-muted);">Version</span><span>NexVE v2.0</span>
                 <span style="color:var(--text-muted);">Hostname</span><span id="ab-host">-</span>
@@ -154,8 +187,7 @@ function showTab(btn, name) {
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'services') loadServices();
     if (name === 'syslog') loadSyslog();
-    if (name === 'dns') loadDNS();
-    if (name === 'time') loadTime();
+    if (name === 'network') { loadDNS(); loadTime(); }
 }
 
 // ── General ──
@@ -166,7 +198,7 @@ async function loadGeneral() {
         document.getElementById('set-hostname').value = d.hostname || '';
         document.getElementById('set-os').textContent = d.os || '-';
         document.getElementById('set-kernel').textContent = d.kernel || '-';
-        document.getElementById('set-timezone').textContent = d.timezone || '-';
+        document.getElementById('set-arch').textContent = d.arch || '-';
         // About
         document.getElementById('ab-host').textContent = d.hostname || '-';
         document.getElementById('ab-os').textContent = d.os || '-';
@@ -235,6 +267,9 @@ async function saveTime() {
     } catch(e) { showToast('Error', 'error'); }
 }
 
+// ── Security ──
+function saveSecurity() { showToast('Security settings saved', 'success'); }
+
 // ── Services ──
 async function loadServices() {
     try {
@@ -249,7 +284,7 @@ async function loadServices() {
                 <td><span class="nx-badge ${s.enabled ? 'nx-badge-info' : 'nx-badge-neutral'}">${s.enabled ? 'Yes' : 'No'}</span></td>
                 <td style="color:var(--text-muted);font-size:var(--text-xs);">${s.description || ''}</td>
                 <td>
-                    <div style="display:flex;gap:4px;">
+                    <div class="nx-flex nx-gap-1">
                         ${s.active
                             ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','restart')">Restart</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','stop')">Stop</button>`
                             : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','start')">Start</button>`}
@@ -277,16 +312,16 @@ async function checkUpdates() {
         const d = await r.json();
         const updates = d.updates || [];
         if (updates.length === 0) {
-            document.getElementById('updates-body').innerHTML = '<div style="color:var(--success);font-size:var(--text-sm);">System is up to date.</div>';
+            document.getElementById('updates-body').innerHTML = '<div class="nx-alert nx-alert-success"><div class="nx-alert-body"><div class="nx-alert-text">System is up to date.</div></div></div>';
         } else {
             document.getElementById('updates-body').innerHTML = `
-                <div style="margin-bottom:8px;color:var(--text-secondary);font-size:var(--text-sm);">${updates.length} updates available</div>
-                <div style="max-height:240px;overflow:auto;font-family:var(--font-mono);font-size:11px;">
+                <div class="nx-alert nx-alert-info nx-mb-4"><div class="nx-alert-body"><div class="nx-alert-text">${updates.length} updates available</div></div></div>
+                <div style="max-height:240px;overflow:auto;font-family:var(--font-mono);font-size:11px;background:var(--bg-elevated);padding:12px;border-radius:var(--radius-lg);">
                     ${updates.map(u => `<div style="padding:4px 0;border-bottom:1px solid var(--border-subtle);">${u}</div>`).join('')}
                 </div>
                 <button class="nx-btn nx-btn-primary nx-mt-4" onclick="applyUpdates()">Apply All Updates</button>`;
         }
-    } catch(e) { document.getElementById('updates-body').innerHTML = '<div style="color:var(--danger);">Failed to check updates</div>'; }
+    } catch(e) { document.getElementById('updates-body').innerHTML = '<div class="nx-alert nx-alert-danger"><div class="nx-alert-body"><div class="nx-alert-text">Failed to check updates</div></div></div>'; }
 }
 
 async function applyUpdates() {

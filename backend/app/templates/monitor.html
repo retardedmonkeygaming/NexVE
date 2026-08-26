@@ -1,106 +1,97 @@
 {% extends "base.html" %}
 {% block title %}NexVE — Monitoring{% endblock %}
-{% block breadcrumb %}Monitoring{% endblock %}
-
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<style>
-    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    @media (max-width: 1200px) { .chart-grid { grid-template-columns: 1fr; } }
-    .chart-card { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 16px; }
-    .chart-card .chart-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-    .chart-card .chart-value { font-size: var(--text-2xl); font-weight: 700; color: var(--text-primary); }
-    .chart-card canvas { max-height: 200px; }
-</style>
-{% endblock %}
+{% block breadcrumb %}Resources{% endblock %}
 
 {% block content %}
 <div class="nx-page-header">
     <div>
-        <div class="nx-page-title">System Monitoring</div>
-        <div class="nx-page-subtitle">Real-time resource usage</div>
+        <div class="nx-page-title">System Resources</div>
+        <div class="nx-page-subtitle">Real-time CPU, Memory, Disk, and Network monitoring</div>
     </div>
-    <div class="nx-flex nx-gap-2">
-        <span class="nx-badge nx-badge-success" id="live-indicator"><span class="dot"></span> Live</span>
-        <button class="nx-btn nx-btn-secondary" onclick="loadMetrics()">Refresh</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshMonitor()">↻ Refresh</button>
     </div>
 </div>
 
-<!-- Summary Stats -->
+<!-- Resource Stats -->
 <div class="nx-grid nx-grid-4 nx-mb-6">
     <div class="nx-stat">
-        <div class="nx-stat-label">CPU</div>
-        <div class="nx-stat-value" id="stat-cpu" style="color:var(--accent);">--%</div>
-        <div class="nx-progress nx-mt-4"><div class="nx-progress-bar accent" id="bar-cpu" style="width:0%"></div></div>
+        <div class="nx-stat-label">CPU Usage</div>
+        <div class="nx-stat-value" style="color:var(--accent);" id="cpu-value">-</div>
+        <div class="nx-stat-detail" id="cpu-cores">-</div>
+        <div class="nx-progress nx-mt-2"><div class="nx-progress-bar accent" id="cpu-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Memory</div>
-        <div class="nx-stat-value" id="stat-mem" style="color:var(--info);">--%</div>
-        <div class="nx-progress nx-mt-4"><div class="nx-progress-bar info" id="bar-mem" style="width:0%"></div></div>
+        <div class="nx-stat-value" style="color:var(--info);" id="mem-value">-</div>
+        <div class="nx-stat-detail" id="mem-detail">-</div>
+        <div class="nx-progress nx-mt-2"><div class="nx-progress-bar info" id="mem-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
-        <div class="nx-stat-label">Disk</div>
-        <div class="nx-stat-value" id="stat-disk" style="color:var(--success);">--%</div>
-        <div class="nx-progress nx-mt-4"><div class="nx-progress-bar success" id="bar-disk" style="width:0%"></div></div>
+        <div class="nx-stat-label">Disk I/O</div>
+        <div class="nx-stat-value" style="color:var(--success);" id="disk-value">-</div>
+        <div class="nx-stat-detail" id="disk-detail">-</div>
+        <div class="nx-progress nx-mt-2"><div class="nx-progress-bar success" id="disk-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
-        <div class="nx-stat-label">Load Average</div>
-        <div class="nx-stat-value" id="stat-load" style="color:var(--warning);">--</div>
-        <div class="nx-stat-detail" id="stat-load-detail" style="margin-top:8px;">1m / 5m / 15m</div>
+        <div class="nx-stat-label">Network</div>
+        <div class="nx-stat-value" style="color:var(--warning);" id="net-value">-</div>
+        <div class="nx-stat-detail" id="net-detail">-</div>
+        <div class="nx-progress nx-mt-2"><div class="nx-progress-bar warning" id="net-bar" style="width:0%"></div></div>
     </div>
 </div>
 
 <!-- Charts -->
-<div class="chart-grid nx-mb-6">
-    <!-- CPU Chart -->
-    <div class="chart-card">
-        <div class="chart-title">
-            <span>CPU Usage</span>
-            <span class="chart-value" id="cpu-value">--%</span>
+<div class="nx-grid nx-grid-2 nx-mb-6">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">CPU Usage (24h)</span></div>
+        <div class="nx-card-body" style="height:200px;">
+            <canvas id="cpu-chart"></canvas>
         </div>
-        <canvas id="cpu-chart"></canvas>
     </div>
-
-    <!-- Memory Chart -->
-    <div class="chart-card">
-        <div class="chart-title">
-            <span>Memory Usage</span>
-            <span class="chart-value" id="mem-value">--%</span>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Memory Usage (24h)</span></div>
+        <div class="nx-card-body" style="height:200px;">
+            <canvas id="mem-chart"></canvas>
         </div>
-        <canvas id="mem-chart"></canvas>
-    </div>
-
-    <!-- Disk I/O Chart -->
-    <div class="chart-card">
-        <div class="chart-title">
-            <span>Disk Usage</span>
-            <span class="chart-value" id="disk-value">--%</span>
-        </div>
-        <canvas id="disk-chart"></canvas>
-    </div>
-
-    <!-- Network Chart -->
-    <div class="chart-card">
-        <div class="chart-title">
-            <span>Network I/O</span>
-            <span class="chart-value" id="net-value">--</span>
-        </div>
-        <canvas id="net-chart"></canvas>
     </div>
 </div>
 
-<!-- Process Table -->
+<div class="nx-grid nx-grid-2 nx-mb-6">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Disk I/O (24h)</span></div>
+        <div class="nx-card-body" style="height:200px;">
+            <canvas id="disk-chart"></canvas>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Network (24h)</span></div>
+        <div class="nx-card-body" style="height:200px;">
+            <canvas id="net-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Top Processes -->
 <div class="nx-card">
     <div class="nx-card-header">
-        <span class="nx-card-title">Top Processes by CPU</span>
+        <span class="nx-card-title">Top Processes</span>
+        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadProcesses()">↻</button>
     </div>
     <div class="nx-card-body" style="padding:0;">
         <table class="nx-table">
             <thead>
-                <tr><th>PID</th><th>Name</th><th>CPU %</th><th>Memory %</th><th>Status</th></tr>
+                <tr>
+                    <th>PID</th>
+                    <th>Name</th>
+                    <th>CPU %</th>
+                    <th>Memory %</th>
+                    <th>Status</th>
+                    <th>User</th>
+                </tr>
             </thead>
-            <tbody id="process-list">
-                <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:24px;">Loading...</td></tr>
+            <tbody id="proc-list">
+                <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -109,125 +100,121 @@
 
 {% block scripts %}
 <script>
-// ── Chart Setup ──
-const MAX_POINTS = 30;
-const chartOptions = {
+let cpuChart, memChart, diskChart, netChart;
+const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: { duration: 300 },
     plugins: { legend: { display: false } },
     scales: {
         x: { display: false },
-        y: { min: 0, max: 100, ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        y: { 
+            beginAtZero: true, 
+            max: 100,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: '#606070', font: { size: 10 } }
+        }
     },
-    elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } }
+    elements: { point: { radius: 0 }, line: { tension: 0.4, borderWidth: 2 } }
 };
 
-function makeChart(canvasId, color) {
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, color + '40');
-    gradient.addColorStop(1, color + '05');
-    return new Chart(ctx, {
+function createCharts() {
+    const labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+    
+    cpuChart = new Chart(document.getElementById('cpu-chart'), {
         type: 'line',
         data: {
-            labels: Array(MAX_POINTS).fill(''),
-            datasets: [{
-                data: Array(MAX_POINTS).fill(null),
-                borderColor: color,
-                backgroundColor: gradient,
-                fill: true,
-            }]
+            labels,
+            datasets: [{ data: new Array(24).fill(0), borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)', fill: true }]
         },
-        options: { ...chartOptions }
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
+    });
+
+    memChart = new Chart(document.getElementById('mem-chart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{ data: new Array(24).fill(0), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true }]
+        },
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
+    });
+
+    diskChart = new Chart(document.getElementById('disk-chart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{ data: new Array(24).fill(0), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true }]
+        },
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: undefined } } }
+    });
+
+    netChart = new Chart(document.getElementById('net-chart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { data: new Array(24).fill(0), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, label: 'RX' },
+                { data: new Array(24).fill(0), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, label: 'TX' }
+            ]
+        },
+        options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#a0a0b0', font: { size: 10 } } } } }
     });
 }
 
-const cpuChart = makeChart('cpu-chart', '#f97316');
-const memChart = makeChart('mem-chart', '#3b82f6');
-const diskChart = makeChart('disk-chart', '#22c55e');
-const netChart = makeChart('net-chart', '#a855f7');
-netChart.options.scales.y.max = undefined; // Auto-scale for network
-
-// ── Data Arrays ──
-let prevNetSent = 0, prevNetRecv = 0, prevTime = 0;
-
-// ── Load Metrics ──
 async function loadMetrics() {
     try {
         const r = await fetch('/api/monitor/current');
-        const data = await r.json();
-
-        // Update stat cards
-        document.getElementById('stat-cpu').textContent = data.cpu_percent + '%';
-        document.getElementById('bar-cpu').style.width = data.cpu_percent + '%';
-        document.getElementById('stat-mem').textContent = data.memory_percent + '%';
-        document.getElementById('bar-mem').style.width = data.memory_percent + '%';
-        document.getElementById('stat-disk').textContent = data.disk_percent + '%';
-        document.getElementById('bar-disk').style.width = data.disk_percent + '%';
-        document.getElementById('stat-load').textContent = data.load_1;
-        document.getElementById('stat-load-detail').textContent = `${data.load_1} / ${data.load_5} / ${data.load_15}`;
-
-        document.getElementById('cpu-value').textContent = data.cpu_percent + '%';
-        document.getElementById('mem-value').textContent = data.memory_percent + '%';
-        document.getElementById('disk-value').textContent = data.disk_percent + '%';
-
-        // Update charts
-        pushData(cpuChart, data.cpu_percent);
-        pushData(memChart, data.memory_percent);
-        pushData(diskChart, data.disk_percent);
-
-        // Network throughput (bytes/s → Mbps)
-        const now = Date.now() / 1000;
-        if (prevTime > 0) {
-            const dt = now - prevTime;
-            const sentMbps = ((data.net_sent_bytes - prevNetSent) * 8 / dt / 1000000).toFixed(1);
-            const recvMbps = ((data.net_recv_bytes - prevNetRecv) * 8 / dt / 1000000).toFixed(1);
-            document.getElementById('net-value').textContent = `↑${sentMbps} ↓${recvMbps} Mbps`;
-            pushData(netChart, parseFloat(recvMbps));
+        const d = await r.json();
+        
+        // Update stats
+        document.getElementById('cpu-value').textContent = (d.cpu || 0).toFixed(1) + '%';
+        document.getElementById('cpu-bar').style.width = (d.cpu || 0) + '%';
+        document.getElementById('cpu-cores').textContent = (d.cpu_cores || 0) + ' cores';
+        
+        document.getElementById('mem-value').textContent = (d.memory_percent || 0).toFixed(1) + '%';
+        document.getElementById('mem-bar').style.width = (d.memory_percent || 0) + '%';
+        document.getElementById('mem-detail').textContent = `${(d.memory_used || 0)} / ${(d.memory_total || 0)}`;
+        
+        document.getElementById('disk-value').textContent = (d.disk_usage || 0).toFixed(1) + '%';
+        document.getElementById('disk-bar').style.width = (d.disk_usage || 0) + '%';
+        document.getElementById('disk-detail').textContent = `${d.disk_read || '0 B/s'} read`;
+        
+        document.getElementById('net-value').textContent = d.net_rx || '0 B/s';
+        document.getElementById('net-detail').textContent = `↑ ${d.net_tx || '0 B/s'}`;
+        
+        // Update charts with new data point
+        if (cpuChart && d.cpu_history) {
+            cpuChart.data.datasets[0].data = d.cpu_history;
+            cpuChart.update('none');
         }
-        prevNetSent = data.net_sent_bytes;
-        prevNetRecv = data.net_recv_bytes;
-        prevTime = now;
-
-    } catch (e) { console.error('loadMetrics:', e); }
+        if (memChart && d.memory_history) {
+            memChart.data.datasets[0].data = d.memory_history;
+            memChart.update('none');
+        }
+    } catch(e) { console.error('loadMetrics:', e); }
 }
 
-function pushData(chart, value) {
-    chart.data.datasets[0].data.push(value);
-    if (chart.data.datasets[0].data.length > MAX_POINTS) {
-        chart.data.datasets[0].data.shift();
-    }
-    chart.data.labels.push('');
-    if (chart.data.labels.length > MAX_POINTS) {
-        chart.data.labels.shift();
-    }
-    chart.update('none');
-}
-
-// ── Load Processes ──
 async function loadProcesses() {
     try {
         const r = await fetch('/api/monitor/processes');
-        if (!r.ok) return;
-        const data = await r.json();
-        const list = document.getElementById('process-list');
-        const procs = data.processes || [];
-        if (procs.length > 0) {
-            list.innerHTML = procs.map(p => `
-                <tr>
-                    <td style="font-family:monospace;font-size:var(--text-xs);">${p.pid}</td>
-                    <td style="font-weight:500;">${p.name}</td>
-                    <td style="color:${p.cpu > 50 ? 'var(--danger)' : p.cpu > 20 ? 'var(--warning)' : 'var(--text-muted)'};">${p.cpu}%</td>
-                    <td style="color:var(--text-muted);">${p.memory}%</td>
-                    <td><span class="nx-badge nx-badge-success"><span class="dot"></span>${p.status}</span></td>
-                </tr>
-            `).join('');
-        }
-    } catch (e) { console.error('loadProcesses:', e); }
+        const d = await r.json();
+        const procs = d.processes || [];
+        document.getElementById('proc-list').innerHTML = procs.map(p => `
+            <tr>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${p.pid}</td>
+                <td style="font-weight:500;">${p.name}</td>
+                <td><span class="nx-badge ${p.cpu > 50 ? 'nx-badge-danger' : p.cpu > 20 ? 'nx-badge-warning' : 'nx-badge-success'}">${p.cpu.toFixed(1)}%</span></td>
+                <td><span class="nx-badge ${p.memory > 50 ? 'nx-badge-danger' : p.memory > 20 ? 'nx-badge-warning' : 'nx-badge-info'}">${p.memory.toFixed(1)}%</span></td>
+                <td><span class="nx-badge nx-badge-neutral">${p.status}</span></td>
+                <td style="color:var(--text-muted);">${p.user}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">No processes</td></tr>';
+    } catch(e) { console.error(e); }
 }
 
-// ── Init ──
+function refreshMonitor() { loadMetrics(); loadProcesses(); }
+
+// Init
+createCharts();
 loadMetrics();
 loadProcesses();
 setInterval(loadMetrics, 5000);

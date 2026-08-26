@@ -8,7 +8,22 @@
         <div class="nx-page-title">Containers</div>
         <div class="nx-page-subtitle">LXC system containers</div>
     </div>
-    <button class="nx-btn nx-btn-primary" onclick="showCreateModal()">+ Create CT</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshCTs()">↻ Refresh</button>
+        <button class="nx-btn nx-btn-primary" onclick="showCreateModal()">+ Create CT</button>
+    </div>
+</div>
+
+<!-- LXC warning banner -->
+<div id="lxc-warning" class="nx-alert nx-alert-warning nx-hidden" style="margin-bottom:16px;">
+    <svg class="nx-alert-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+    <div class="nx-alert-body">
+        <div class="nx-alert-title">LXC tools are not installed</div>
+        <div class="nx-alert-text">Container management requires lxc-utils. Install it to enable full functionality.</div>
+        <div class="nx-alert-actions">
+            <button class="nx-btn nx-btn-sm nx-btn-warning" onclick="installLXC()">Install lxc-utils</button>
+        </div>
+    </div>
 </div>
 
 <!-- Container list -->
@@ -28,7 +43,8 @@
                 </tr>
             </thead>
             <tbody id="ct-list">
-                <tr><td colspan="8" class="nx-text-center nx-text-muted" style="padding:48px;">Loading...</td></tr>
+                <tr class="nx-skeleton-row"><td colspan="8"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
+                <tr class="nx-skeleton-row"><td colspan="8"><div class="nx-skeleton nx-skeleton-text w-75"></div></td></tr>
             </tbody>
         </table>
     </div>
@@ -56,12 +72,11 @@
 </div>
 
 <!-- Create Container Modal -->
-<div class="nx-modal" id="create-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideCreateModal()"></div>
-    <div class="nx-modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto;">
+<div class="nx-modal-overlay" id="create-modal">
+    <div class="nx-modal" style="max-width:560px;">
         <div class="nx-modal-header">
             <h3>Create Container</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideCreateModal()">✕</button>
+            <button class="nx-modal-close" onclick="hideCreateModal()">✕</button>
         </div>
         <div class="nx-modal-body">
             <form id="ct-form" onsubmit="submitCT(event)">
@@ -174,7 +189,10 @@ async function loadContainers() {
                 </tr>
             `).join('');
         }
-    } catch (e) { console.error('loadContainers:', e); }
+    } catch (e) {
+        console.error('loadContainers:', e);
+        document.getElementById('ct-list').innerHTML = '<tr><td colspan="8" class="nx-text-center nx-text-danger" style="padding:32px;">Failed to load containers</td></tr>';
+    }
 }
 
 // ── Load Templates ──
@@ -224,17 +242,16 @@ async function actionCT(id, action) {
 
 // ── Create Container ──
 function showCreateModal() {
-    document.getElementById('create-modal').style.display = 'flex';
+    document.getElementById('create-modal').classList.add('open');
 }
 function hideCreateModal() {
-    document.getElementById('create-modal').style.display = 'none';
+    document.getElementById('create-modal').classList.remove('open');
 }
 
 async function submitCT(e) {
     e.preventDefault();
     const form = document.getElementById('ct-form');
     const fd = new FormData(form);
-    // Convert checkboxes
     fd.set('unprivileged', form.querySelector('[name="unprivileged"]').checked ? 'true' : 'false');
     fd.set('nesting', form.querySelector('[name="nesting"]').checked ? 'true' : 'false');
     if (!fd.get('hostname')) fd.set('hostname', fd.get('name'));
@@ -253,15 +270,33 @@ async function submitCT(e) {
     } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
 }
 
-// ── Container Detail ──
-async function showCTDetail(id) {
-    document.getElementById('create-modal').style.display = 'flex';
-    // Could expand to show container details in the modal
+// ── Check LXC tools ──
+async function checkLXC() {
+    try {
+        const r = await fetch('/api/containers/status');
+        const d = await r.json();
+        if (d.available === false) {
+            document.getElementById('lxc-warning').classList.remove('nx-hidden');
+        }
+    } catch(e) {}
 }
+
+async function installLXC() {
+    showToast('Installing lxc-utils... this may take a moment', 'info');
+    try {
+        const r = await fetch('/api/settings/install/lxc', {method:'POST'});
+        const d = await r.json();
+        if (d.success) { showToast('lxc-utils installed successfully', 'success'); document.getElementById('lxc-warning').classList.add('nx-hidden'); }
+        else showToast('Installation failed: ' + (d.error || 'unknown'), 'error');
+    } catch(e) { showToast('Error installing lxc-utils', 'error'); }
+}
+
+function refreshCTs() { loadContainers(); loadTemplates(); }
 
 // ── Init ──
 loadContainers();
 loadTemplates();
+checkLXC();
 setInterval(loadContainers, 10000);
 </script>
 {% endblock %}

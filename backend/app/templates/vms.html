@@ -8,9 +8,21 @@
         <div class="nx-page-title">Virtual Machines</div>
         <div class="nx-page-subtitle">KVM/QEMU virtual machines</div>
     </div>
-    <div class="nx-flex nx-gap-2">
-        <button class="nx-btn nx-btn-secondary" onclick="showBulkActions()">Bulk Actions</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshVMs()">↻ Refresh</button>
         <button class="nx-btn nx-btn-primary" onclick="showCreateVM()">+ Create VM</button>
+    </div>
+</div>
+
+<!-- Libvirt warning banner -->
+<div id="libvirt-warning" class="nx-alert nx-alert-warning nx-hidden" style="margin-bottom:16px;">
+    <svg class="nx-alert-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+    <div class="nx-alert-body">
+        <div class="nx-alert-title">libvirt is not installed</div>
+        <div class="nx-alert-text">VM creation and management requires libvirt. Install it to enable full functionality.</div>
+        <div class="nx-alert-actions">
+            <button class="nx-btn nx-btn-sm nx-btn-warning" onclick="installLibvirt()">Install libvirt</button>
+        </div>
     </div>
 </div>
 
@@ -31,31 +43,32 @@
                 </tr>
             </thead>
             <tbody id="vm-list">
-                <tr><td colspan="8" class="nx-text-center nx-text-muted" style="padding:48px;">Loading virtual machines...</td></tr>
+                <!-- Skeleton loading -->
+                <tr class="nx-skeleton-row"><td colspan="8"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
+                <tr class="nx-skeleton-row"><td colspan="8"><div class="nx-skeleton nx-skeleton-text w-75"></div></td></tr>
+                <tr class="nx-skeleton-row"><td colspan="8"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
             </tbody>
         </table>
     </div>
 </div>
 
 <!-- VM Detail Modal -->
-<div class="nx-modal" id="vm-detail-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideDetail()"></div>
-    <div class="nx-modal-content" style="max-width:720px;max-height:90vh;overflow-y:auto;">
+<div class="nx-modal-overlay" id="vm-detail-modal">
+    <div class="nx-modal modal-full" style="max-width:720px;">
         <div class="nx-modal-header">
             <h3 id="detail-title">VM Details</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideDetail()">✕</button>
+            <button class="nx-modal-close" onclick="hideDetail()">✕</button>
         </div>
         <div class="nx-modal-body"><div id="detail-content">Loading...</div></div>
     </div>
 </div>
 
 <!-- Create VM Wizard (full page modal) -->
-<div class="nx-modal" id="create-vm-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideCreateVM()"></div>
-    <div class="nx-modal-content" style="max-width:680px;max-height:92vh;overflow-y:auto;">
+<div class="nx-modal-overlay" id="create-vm-modal">
+    <div class="nx-modal modal-full">
         <div class="nx-modal-header">
             <h3>Create Virtual Machine</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideCreateVM()">✕</button>
+            <button class="nx-modal-close" onclick="hideCreateVM()">✕</button>
         </div>
         <div class="nx-modal-body">
             <!-- Wizard Steps -->
@@ -221,12 +234,11 @@
 </div>
 
 <!-- GPU/USB Passthrough Modal -->
-<div class="nx-modal" id="passthrough-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hidePassthrough()"></div>
-    <div class="nx-modal-content" style="max-width:640px;max-height:90vh;overflow-y:auto;">
+<div class="nx-modal-overlay" id="passthrough-modal">
+    <div class="nx-modal" style="max-width:640px;">
         <div class="nx-modal-header">
             <h3 id="passthrough-title">Hardware Passthrough</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hidePassthrough()">✕</button>
+            <button class="nx-modal-close" onclick="hidePassthrough()">✕</button>
         </div>
         <div class="nx-modal-body" id="passthrough-content">Loading...</div>
     </div>
@@ -246,7 +258,10 @@ async function loadVMs() {
         const data = await r.json();
         allVMs = data.vms || [];
         renderVMs();
-    } catch (e) { console.error('loadVMs:', e); }
+    } catch (e) {
+        console.error('loadVMs:', e);
+        document.getElementById('vm-list').innerHTML = '<tr><td colspan="8" class="nx-text-center nx-text-danger" style="padding:32px;">Failed to load VMs</td></tr>';
+    }
 }
 
 function renderVMs() {
@@ -290,7 +305,7 @@ async function vmAction(id, action) {
 
 // ── VM Detail ──
 async function showDetail(id) {
-    document.getElementById('vm-detail-modal').style.display = 'flex';
+    document.getElementById('vm-detail-modal').classList.add('open');
     document.getElementById('detail-content').innerHTML = '<div class="nx-text-center" style="padding:32px;">Loading...</div>';
     try {
         const r = await fetch(`/api/vms/${id}`);
@@ -318,18 +333,18 @@ async function showDetail(id) {
                 </div></div>
                 ${vm.notes ? `<div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Notes</span></div><div class="nx-card-body" style="font-size:var(--text-sm);">${vm.notes}</div></div>` : ''}
             </div>`;
-    } catch (e) { document.getElementById('detail-content').innerHTML = `<div style="color:var(--danger);">${e.message}</div>`; }
+    } catch (e) { document.getElementById('detail-content').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-body">${e.message}</div></div>`; }
 }
-function hideDetail() { document.getElementById('vm-detail-modal').style.display = 'none'; }
+function hideDetail() { document.getElementById('vm-detail-modal').classList.remove('open'); }
 
 // ── Create VM Wizard ──
 function showCreateVM() {
     vmWizardStep = 1;
     showVMStep(1);
-    document.getElementById('create-vm-modal').style.display = 'flex';
+    document.getElementById('create-vm-modal').classList.add('open');
     loadISOs();
 }
-function hideCreateVM() { document.getElementById('create-vm-modal').style.display = 'none'; }
+function hideCreateVM() { document.getElementById('create-vm-modal').classList.remove('open'); }
 
 function showVMStep(n) {
     document.querySelectorAll('.vm-wizard-page').forEach(p => p.style.display = 'none');
@@ -395,7 +410,7 @@ async function submitCreateVM(e) {
         const r = await fetch('/api/vms/create', {method: 'POST', body: fd});
         const data = await r.json();
         if (data.success !== false || data.vm) { showToast('VM created!', 'success'); hideCreateVM(); loadVMs(); }
-        else { document.getElementById('vm-create-error').innerHTML = `<div style="color:var(--danger);margin-top:8px;">${data.error || 'Failed to create VM'}</div>`; showToast('Create failed', 'error'); }
+        else { document.getElementById('vm-create-error').innerHTML = `<div class="nx-alert nx-alert-danger" style="margin-top:8px;"><div class="nx-alert-body">${data.error || 'Failed to create VM'}</div></div>`; showToast('Create failed', 'error'); }
     } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
 }
 
@@ -421,7 +436,7 @@ async function hotplugRAM(id) {
 
 // ── Passthrough ──
 async function showPassthroughModal(id) {
-    document.getElementById('passthrough-modal').style.display = 'flex';
+    document.getElementById('passthrough-modal').classList.add('open');
     document.getElementById('passthrough-content').innerHTML = '<div style="padding:32px;text-align:center;">Loading devices...</div>';
     try {
         const [g, u] = await Promise.all([fetch('/api/vms/passthrough/gpu').then(r=>r.json()), fetch('/api/vms/passthrough/usb').then(r=>r.json())]);
@@ -435,9 +450,9 @@ async function showPassthroughModal(id) {
                 ${usbs.length ? usbs.map(d => `<tr><td style="font-family:monospace;font-size:var(--text-xs);">${d.vendor_id}:${d.product_id}</td><td>${d.name||'-'}</td><td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachUSB(${id},'${d.vendor_id}','${d.product_id}')">Attach</button></td></tr>`).join('') : '<tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-muted);">No USB devices found</td></tr>'}
                 </tbody></table></div></div>
             </div>`;
-    } catch (e) { document.getElementById('passthrough-content').innerHTML = `<div style="color:var(--danger);">${e.message}</div>`; }
+    } catch (e) { document.getElementById('passthrough-content').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-body">${e.message}</div></div>`; }
 }
-function hidePassthrough() { document.getElementById('passthrough-modal').style.display = 'none'; }
+function hidePassthrough() { document.getElementById('passthrough-modal').classList.remove('open'); }
 async function attachPCI(vmId, addr) { const fd=new FormData(); fd.append('pci_addr',addr); const r=await fetch(`/api/vms/${vmId}/passthrough/pci`,{method:'POST',body:fd}); const d=await r.json(); if(d.success!==false){showToast('Attached','success');hidePassthrough();loadVMs();}else showToast(d.error||'failed','error'); }
 async function attachUSB(vmId,v,p) { const fd=new FormData(); fd.append('vendor_id',v);fd.append('product_id',p); const r=await fetch(`/api/vms/${vmId}/passthrough/usb`,{method:'POST',body:fd}); const d=await r.json(); if(d.success!==false){showToast('Attached','success');hidePassthrough();loadVMs();}else showToast(d.error||'failed','error'); }
 
@@ -455,17 +470,33 @@ async function deleteSnapshot(id,n) { if(!confirm(`Delete "${n}"?`))return; awai
 
 // ── Bulk ──
 function toggleSelectAll(cb) { document.querySelectorAll('.vm-select').forEach(c => c.checked = cb.checked); }
-function showBulkActions() {
-    const sel = [...document.querySelectorAll('.vm-select:checked')].map(c => parseInt(c.value));
-    if (!sel.length) { showToast('Select VMs first', 'error'); return; }
-    const a = prompt(`Bulk action (${sel.length} VMs):\n1=Start 2=Stop 3=Delete`);
-    const act = a==='1'?'start':a==='2'?'stop':a==='3'?'delete':null;
-    if (!act) return;
-    if (act==='delete' && !confirm(`Delete ${sel.length} VMs?`)) return;
-    sel.forEach(id => vmAction(id, act));
+
+// ── Check libvirt ──
+async function checkLibvirt() {
+    try {
+        const r = await fetch('/api/vms/status');
+        const d = await r.json();
+        if (d.available === false) {
+            document.getElementById('libvirt-warning').classList.remove('nx-hidden');
+        }
+    } catch(e) {}
 }
 
+async function installLibvirt() {
+    showToast('Installing libvirt... this may take a moment', 'info');
+    try {
+        const r = await fetch('/api/settings/install/libvirt', {method:'POST'});
+        const d = await r.json();
+        if (d.success) { showToast('libvirt installed successfully', 'success'); document.getElementById('libvirt-warning').classList.add('nx-hidden'); }
+        else showToast('Installation failed: ' + (d.error || 'unknown'), 'error');
+    } catch(e) { showToast('Error installing libvirt', 'error'); }
+}
+
+function refreshVMs() { loadVMs(); }
+
+// ── Init ──
 loadVMs();
+checkLibvirt();
 setInterval(loadVMs, 10000);
 </script>
 {% endblock %}

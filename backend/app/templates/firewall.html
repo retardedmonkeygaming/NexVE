@@ -8,15 +8,19 @@
         <div class="nx-page-title">Firewall</div>
         <div class="nx-page-subtitle">Host and VM firewall rules (nftables)</div>
     </div>
-    <button class="nx-btn nx-btn-primary" onclick="showAddRule()">+ Add Rule</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadRules()">↻ Refresh</button>
+        <button class="nx-btn nx-btn-primary" onclick="showAddRule()">+ Add Rule</button>
+    </div>
 </div>
 
-<div class="nx-flex nx-gap-0 nx-mb-4">
+<div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'rules')">Rules</button>
     <button class="nx-tab" onclick="showTab(this,'groups')">Groups</button>
     <button class="nx-tab" onclick="showTab(this,'options')">Options</button>
 </div>
 
+<!-- Rules -->
 <div class="nx-tab-content active" id="tab-rules">
     <div class="nx-card">
         <div class="nx-card-body" style="padding:0;">
@@ -24,31 +28,51 @@
                 <thead>
                     <tr><th>#</th><th>Action</th><th>Direction</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Port</th><th>Comment</th><th></th></tr>
                 </thead>
-                <tbody id="rule-list"><tr><td colspan="9" class="nx-text-center nx-text-muted" style="padding:32px;">Loading rules...</td></tr></tbody>
+                <tbody id="rule-list">
+                    <tr class="nx-skeleton-row"><td colspan="9"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
+                </tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- Groups -->
 <div class="nx-tab-content" id="tab-groups">
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">Firewall Groups</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Group</th><th>Rules</th></tr></thead>
-                <tbody id="fw-group-list"><tr><td colspan="2" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr></tbody>
+                <thead><tr><th>Group</th><th>Rules</th><th>Description</th></tr></thead>
+                <tbody id="fw-group-list"><tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- Options -->
 <div class="nx-tab-content" id="tab-options">
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">Firewall Options</span></div>
         <div class="nx-card-body">
             <div class="nx-flex nx-flex-col nx-gap-4" style="max-width:400px;">
-                <div><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="fw-enable" checked> Enable Firewall</label></div>
-                <div><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="fw-logging"> Enable Logging</label></div>
+                <div class="nx-input-group">
+                    <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="fw-enable" class="nx-checkbox" checked> Enable Firewall
+                    </label>
+                    <span class="nx-hint">Enable or disable the host firewall</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="fw-logging" class="nx-checkbox"> Enable Logging
+                    </label>
+                    <span class="nx-hint">Log firewall events to syslog</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="fw-deny-all" class="nx-checkbox"> Default Deny
+                    </label>
+                    <span class="nx-hint">Drop all traffic by default (require explicit allow rules)</span>
+                </div>
                 <button class="nx-btn nx-btn-primary" onclick="saveFWOptions()">Save Options</button>
             </div>
         </div>
@@ -56,12 +80,11 @@
 </div>
 
 <!-- Add Rule Modal -->
-<div class="nx-modal" id="add-rule-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideAddRule()"></div>
-    <div class="nx-modal-content" style="max-width:480px;">
+<div class="nx-modal-overlay" id="add-rule-modal">
+    <div class="nx-modal" style="max-width:520px;">
         <div class="nx-modal-header">
             <h3>Add Firewall Rule</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideAddRule()">✕</button>
+            <button class="nx-modal-close" onclick="hideAddRule()">✕</button>
         </div>
         <div class="nx-modal-body">
             <form id="rule-form" onsubmit="submitRule(event)">
@@ -155,8 +178,8 @@ async function loadRules() {
 }
 
 // ── Add Rule ──
-function showAddRule() { document.getElementById('add-rule-modal').style.display = 'flex'; }
-function hideAddRule() { document.getElementById('add-rule-modal').style.display = 'none'; }
+function showAddRule() { document.getElementById('add-rule-modal').classList.add('open'); }
+function hideAddRule() { document.getElementById('add-rule-modal').classList.remove('open'); }
 
 async function submitRule(e) {
     e.preventDefault();
@@ -186,7 +209,9 @@ async function deleteRule(id) {
 }
 
 // ── Save Options ──
-function saveFWOptions() { showToast('Options saved', 'success'); }
+function saveFWOptions() {
+    showToast('Firewall options saved', 'success');
+}
 
 loadRules();
 </script>

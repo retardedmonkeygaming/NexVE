@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-NexVE Installer v2.1
-Full-screen ncurses TUI installer matching Proxmox VE aesthetic.
-Gray background, bordered boxes, selectable menus, progress bars.
+NexVE Installer v3.0
+Full-screen ncurses TUI installer with modern dark theme.
+Black background, teal accents, bordered boxes, selectable menus, progress bars.
 """
 
 import curses
@@ -23,23 +23,25 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # ═══════════════════════════════════════════════════════════════
 
 class Theme:
-    BG          = 236
-    FG          = 252
-    TITLE_BG    = 238
-    TITLE_FG    = 255
-    SELECTED_BG = 208
-    SELECTED_FG = 16
-    BORDER      = 243
-    HEADER      = 208
-    BTN_BG      = 238
-    BTN_FG      = 252
-    BTN_SEL_BG  = 208
-    BTN_SEL_FG  = 16
-    PROGRESS_BG = 238
-    PROGRESS_FG = 208
-    DIM         = 245
-    GREEN       = 114
-    RED         = 167
+    # Modern black theme with teal accent
+    BG          = 234    # Near-black background
+    FG          = 252    # Bright text
+    TITLE_BG    = 236    # Slightly lighter for title bar
+    TITLE_FG    = 255    # White title text
+    SELECTED_BG = 36     # Teal accent (cyan)
+    SELECTED_FG = 16     # Dark text on selected
+    BORDER      = 240    # Subtle gray border
+    HEADER      = 36     # Teal accent
+    BTN_BG      = 238    # Button background
+    BTN_FG      = 252    # Button text
+    BTN_SEL_BG  = 36     # Teal accent for selected button
+    BTN_SEL_FG  = 16     # Dark text on selected button
+    PROGRESS_BG = 238    # Progress bar background
+    PROGRESS_FG = 36     # Teal progress bar
+    DIM         = 243    # Dimmed text
+    GREEN       = 114    # Success green
+    RED         = 167    # Error red
+    CYAN        = 44     # Bright cyan for highlights
 
 
 def init_colors():
@@ -73,7 +75,7 @@ class TUI:
         self.stdscr.bkgd(curses.color_pair(1))
         self.stdscr.clear()
 
-    def draw_title_bar(self, title, subtitle="NexVE v2.1"):
+    def draw_title_bar(self, title, subtitle="NexVE v3.0"):
         bar = f"  {subtitle}  \u2502  {title}"
         self.stdscr.attron(curses.color_pair(2))
         self.stdscr.addnstr(0, 0, bar.ljust(self.w), self.w)

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# NexVE Installer v2.0
+# NexVE Installer v3.0
 # Launches the ncurses TUI installer (Proxmox-style)
 # Usage: sudo bash install.sh
 # ═══════════════════════════════════════════════════════════════

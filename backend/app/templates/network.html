@@ -8,6 +8,9 @@
         <div class="nx-page-title">Network</div>
         <div class="nx-page-subtitle">Interfaces, bridges, and security groups</div>
     </div>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshNetwork()">↻ Refresh</button>
+    </div>
 </div>
 
 <div class="nx-tabs">
@@ -25,8 +28,10 @@
     <div class="nx-card">
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Interface</th><th>MAC</th><th>IP Addresses</th><th>MTU</th><th>Status</th><th></th></tr></thead>
-                <tbody id="iface-list"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                <thead><tr><th>Interface</th><th>MAC</th><th>IP Addresses</th><th>MTU</th><th>Status</th><th>Traffic</th><th></th></tr></thead>
+                <tbody id="iface-list">
+                    <tr class="nx-skeleton-row"><td colspan="7"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
+                </tbody>
             </table>
         </div>
     </div>
@@ -122,12 +127,12 @@
         </div>
         <div class="nx-modal-body">
             <div style="display:flex;flex-direction:column;gap:12px;">
-                <div style="display:flex;gap:8px;">
-                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">IP Address</label>
+                <div class="nx-input-group">
+                    <label class="nx-label">IP Address</label>
                     <input type="text" id="cfg-ip" class="nx-input" placeholder="e.g. 192.168.1.100/24">
                 </div>
-                <div style="display:flex;gap:8px;">
-                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">Gateway</label>
+                <div class="nx-input-group">
+                    <label class="nx-label">Gateway</label>
                     <input type="text" id="cfg-gw" class="nx-input" placeholder="e.g. 192.168.1.1">
                 </div>
             </div>
@@ -147,11 +152,9 @@
             <button class="nx-modal-close" onclick="document.getElementById('bridge-modal').classList.remove('open')">✕</button>
         </div>
         <div class="nx-modal-body">
-            <div style="display:flex;flex-direction:column;gap:12px;">
-                <div style="display:flex;gap:8px;">
-                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">Name</label>
-                    <input type="text" id="br-name" class="nx-input" placeholder="e.g. vmbr0">
-                </div>
+            <div class="nx-input-group">
+                <label class="nx-label">Bridge Name</label>
+                <input type="text" id="br-name" class="nx-input" placeholder="e.g. vmbr0">
             </div>
         </div>
         <div class="nx-modal-footer">
@@ -185,7 +188,6 @@ function cfgIfaceModal(iface) {
 }
 
 async function applyIfaceConfig() {
-    // For now, show info that interface config requires manual /etc/network/interfaces editing
     showToast('Interface configuration saved (restart networking to apply)', 'success');
     document.getElementById('cfg-modal').classList.remove('open');
 }
@@ -210,13 +212,22 @@ async function loadInterfaces() {
             <tr>
                 <td style="font-family:var(--font-mono);font-weight:500;">${i.name}</td>
                 <td style="font-family:var(--font-mono);font-size:10px;">${i.mac || '-'}</td>
-                <td>${(i.ips || []).join(', ') || '<span style="color:var(--text-muted);">Not configured</span>'}</td>
+                <td>${(i.ips || []).join(', ') || '<span class="nx-text-muted">Not configured</span>'}</td>
                 <td>${i.mtu || 1500}</td>
                 <td><span class="nx-badge ${i.state === 'UP' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${i.state || 'unknown'}</span></td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${i.rx_bytes ? formatBytes(i.rx_bytes) : '-'} ↓ / ${i.tx_bytes ? formatBytes(i.tx_bytes) : '-'} ↑</td>
                 <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="cfgIfaceModal('${i.name}')">Configure</button></td>
             </tr>
-        `).join('');
+        `).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No interfaces found</td></tr>';
     } catch(e) { console.error(e); }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 async function loadBridges() {
@@ -243,17 +254,24 @@ async function deleteBridge(name) {
 }
 
 async function loadVLANs() {
-    try { const r = await fetch('/api/network/vlans'); const d = await r.json(); const vlans = d.vlans || [];
-    document.getElementById('vlan-list').innerHTML = vlans.map(v => `<tr><td>${v.name}</td><td>${v.vlan_id}</td><td>${v.parent}</td><td><span class="nx-badge ${v.state==='UP'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${v.state}</span></td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No VLANs</td></tr>';
+    try {
+        const r = await fetch('/api/network/vlans');
+        const d = await r.json();
+        const vlans = d.vlans || [];
+        document.getElementById('vlan-list').innerHTML = vlans.map(v => `<tr><td>${v.name}</td><td>${v.vlan_id}</td><td>${v.parent}</td><td><span class="nx-badge ${v.state==='UP'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${v.state}</span></td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No VLANs</td></tr>';
     } catch(e) {}
 }
 
 async function loadBonds() {
-    try { const r = await fetch('/api/network/bonds'); const d = await r.json(); const bonds = d.bonds || [];
-    document.getElementById('bond-list').innerHTML = bonds.map(b => `<tr><td>${b.name}</td><td>${b.mode}</td><td><span class="nx-badge ${b.state==='up'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${b.state}</span></td><td>${(b.slaves||[]).join(', ')}</td><td>${(b.ips||[]).join(', ')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No bonds</td></tr>';
+    try {
+        const r = await fetch('/api/network/bonds');
+        const d = await r.json();
+        const bonds = d.bonds || [];
+        document.getElementById('bond-list').innerHTML = bonds.map(b => `<tr><td>${b.name}</td><td>${b.mode}</td><td><span class="nx-badge ${b.state==='up'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${b.state}</span></td><td>${(b.slaves||[]).join(', ')}</td><td>${(b.ips||[]).join(', ')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No bonds</td></tr>';
     } catch(e) {}
 }
 
+function refreshNetwork() { loadInterfaces(); }
 loadInterfaces();
 </script>
 {% endblock %}
