@@ -14,6 +14,7 @@ import threading
 
 INSTALL_DIR = "/opt/nexve"
 LOG = "/tmp/nexve-install.log"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ═══════════════════════════════════════════════════════════════
 # TUI Theme — matches Proxmox installer aesthetic
@@ -417,6 +418,9 @@ class ResultsScreen:
 
     def check_all(self):
         """Check installed binaries and Python packages."""
+        venv_python = f"{INSTALL_DIR}/venv/bin/python3"
+        has_venv = os.path.isfile(venv_python)
+
         bins = [
             ("Python 3", "python3"),
             ("QEMU/KVM", "qemu-system-x86_64"),
@@ -427,7 +431,7 @@ class ResultsScreen:
             ("iSCSI", "iscsiadm"),
             ("SMART tools", "smartctl"),
             ("PCI utils (lspci)", "lspci"),
-            ("noVNC", "websockify"),
+            ("noVNC/websockify", "websockify"),
         ]
         for name, cmd in bins:
             ok = subprocess.run(f"which {cmd}", shell=True, capture_output=True).returncode == 0
@@ -442,8 +446,9 @@ class ResultsScreen:
             ("ldap3", "ldap3"),
         ]
         for name, mod in py_mods:
+            py = venv_python if has_venv else "python3"
             ok = subprocess.run(
-                f'python3 -c "import {mod}"', shell=True, capture_output=True
+                f'{py} -c "import {mod}"', shell=True, capture_output=True
             ).returncode == 0
             self.results.append((name, ok))
 
@@ -605,25 +610,33 @@ def get_install_steps(choices):
 
     if "KVM" in choices:
         steps.append(("Installing QEMU/KVM emulator",
-            "apt-get install -y -qq qemu-kvm qemu-system-x86 qemu-utils qemu-system"))
+            "apt-get install -y -qq qemu-kvm qemu-system-x86 qemu-utils 2>/dev/null || "
+            "apt-get install -y -qq qemu-system-x86 qemu-utils 2>/dev/null || true"))
         steps.append(("Installing libvirt daemon",
-            "apt-get install -y -qq libvirt-daemon-system libvirt-clients libvirt-dev"))
+            "apt-get install -y -qq libvirt-daemon-system libvirt-clients 2>/dev/null || "
+            "apt-get install -y -qq libvirt-daemon libvirt-clients 2>/dev/null || true"))
         steps.append(("Installing virt-manager + OVMF",
-            "apt-get install -y -qq virtinst virt-manager ovmf"))
+            "apt-get install -y -qq virtinst ovmf 2>/dev/null || "
+            "apt-get install -y -qq ovmf 2>/dev/null || true"))
         steps.append(("Installing libvirt Python bindings",
-            "pip3 install libvirt-python 2>/dev/null || apt-get install -y -qq python3-libvirt"))
+            f"{INSTALL_DIR}/venv/bin/pip install libvirt-python -q 2>/dev/null || "
+            "apt-get install -y -qq python3-libvirt 2>/dev/null || true"))
         steps.append(("Enabling libvirtd",
-            "systemctl enable --now libvirtd 2>/dev/null || true"))
+            "systemctl enable --now libvirtd 2>/dev/null || "
+            "systemctl enable libvirtd 2>/dev/null || true"))
 
     if "LXC" in choices:
         steps.append(("Installing LXC containers",
-            "apt-get install -y -qq lxc lxc-utils lxc-templates"))
+            "apt-get install -y -qq lxc lxc-utils 2>/dev/null || "
+            "apt-get install -y -qq lxc-utils 2>/dev/null || true"))
         steps.append(("Installing debootstrap",
             "apt-get install -y -qq debootstrap"))
 
     if "ZFS" in choices:
         steps.append(("Installing ZFS",
-            "apt-get install -y -qq zfsutils-linux"))
+            "apt-get install -y -qq zfsutils-linux 2>/dev/null || "
+            "apt-get install -y -qq zfsutils 2>/dev/null || "
+            "apt-get install -y -qq zfs-linux 2>/dev/null || true"))
     if "LVM" in choices:
         steps.append(("Installing LVM2",
             "apt-get install -y -qq lvm2"))
@@ -635,16 +648,21 @@ def get_install_steps(choices):
             "apt-get install -y -qq nfs-common"))
     if "CIFS" in choices:
         steps.append(("Installing CIFS/SMB client",
-            "apt-get install -y -qq cifs-utils samba-common-bin"))
+            "apt-get install -y -qq cifs-utils 2>/dev/null; "
+            "apt-get install -y -qq samba-common-bin 2>/dev/null || true"))
     if "ISCSI" in choices:
         steps.append(("Installing iSCSI initiator",
-            "apt-get install -y -qq open-iscsi iscsi-initiator-utils && systemctl enable iscsid 2>/dev/null || true"))
+            "apt-get install -y -qq open-iscsi 2>/dev/null || "
+            "apt-get install -y -qq iscsi-initiator-utils 2>/dev/null || true; "
+            "systemctl enable iscsid 2>/dev/null || true"))
         steps.append(("Installing SMART + disk tools",
-            "apt-get install -y -qq smartmontools gdisk hdparm"))
+            "apt-get install -y -qq smartmontools 2>/dev/null || true; "
+            "apt-get install -y -qq gdisk hdparm 2>/dev/null || true"))
 
     if "NET" in choices:
         steps.append(("Installing networking tools",
-            "apt-get install -y -qq bridge-utils iproute2 net-tools vlan ethtool ifenslave"))
+            "apt-get install -y -qq bridge-utils iproute2 net-tools 2>/dev/null || true; "
+            "apt-get install -y -qq vlan ethtool 2>/dev/null || true"))
     if "FIREWALL" in choices:
         steps.append(("Installing nftables firewall",
             "apt-get install -y -qq nftables && systemctl enable nftables 2>/dev/null || true"))
@@ -654,22 +672,29 @@ def get_install_steps(choices):
 
     if "CONSOLE" in choices:
         steps.append(("Installing noVNC + websockify",
-            "apt-get install -y -qq novnc websockify"))
+            "apt-get install -y -qq novnc 2>/dev/null || "
+            "apt-get install -y -qq python3-novnc 2>/dev/null || "
+            f"{INSTALL_DIR}/venv/bin/pip install websockify -q 2>/dev/null || true; "
+            "apt-get install -y -qq websockify 2>/dev/null || "
+            f"{INSTALL_DIR}/venv/bin/pip install websockify -q 2>/dev/null || true"))
         steps.append(("Installing xterm",
-            "apt-get install -y -qq xterm"))
+            "apt-get install -y -qq xterm 2>/dev/null || true"))
 
     if "CLOUD" in choices:
         steps.append(("Installing cloud-init",
-            "apt-get install -y -qq cloud-init cloud-utils"))
+            "apt-get install -y -qq cloud-init 2>/dev/null || true; "
+            "apt-get install -y -qq cloud-utils 2>/dev/null || true"))
         steps.append(("Installing ISO tools",
-            "apt-get install -y -qq genisoimage xorriso"))
+            "apt-get install -y -qq genisoimage 2>/dev/null || true; "
+            "apt-get install -y -qq xorriso 2>/dev/null || true"))
 
     if "MONITOR" in choices:
         steps.append(("Installing sysstat + procps",
-            "apt-get install -y -qq sysstat procps"))
+            "apt-get install -y -qq sysstat procps 2>/dev/null || true"))
     if "BACKUP" in choices:
         steps.append(("Enabling cron daemon",
-            "systemctl enable cron 2>/dev/null || true"))
+            "systemctl enable cron 2>/dev/null || "
+            "systemctl enable cronie 2>/dev/null || true"))
 
     steps.append(("Installing rsyslog",
         "apt-get install -y -qq rsyslog 2>/dev/null || true"))
@@ -677,34 +702,35 @@ def get_install_steps(choices):
     # Project setup
     steps.append(("Copying NexVE files",
         f"mkdir -p {INSTALL_DIR} && "
-        f"cp -r $(dirname $0 2>/dev/null || echo .)/backend {INSTALL_DIR}/ 2>/dev/null; "
-        f"cp -r $(dirname $0 2>/dev/null || echo .)/static {INSTALL_DIR}/ 2>/dev/null; "
-        f"cp -r $(dirname $0 2>/dev/null || echo .)/frontend {INSTALL_DIR}/ 2>/dev/null; "
-        f"cp -r $(dirname $0 2>/dev/null || echo .)/data {INSTALL_DIR}/ 2>/dev/null; "
-        f"cp -r $(dirname $0 2>/dev/null || echo .)/docs {INSTALL_DIR}/ 2>/dev/null; "
-        f"cp $(dirname $0 2>/dev/null || echo .)/requirements.txt {INSTALL_DIR}/ 2>/dev/null; "
+        f"cp -r {SCRIPT_DIR}/backend {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp -r {SCRIPT_DIR}/static {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp -r {SCRIPT_DIR}/frontend {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp -r {SCRIPT_DIR}/data {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp -r {SCRIPT_DIR}/docs {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp {SCRIPT_DIR}/requirements.txt {INSTALL_DIR}/ 2>/dev/null || true; "
+        f"cp {SCRIPT_DIR}/install.py {INSTALL_DIR}/ 2>/dev/null || true; "
         f"true"))
 
     steps.append(("Creating data directories",
         f"mkdir -p {INSTALL_DIR}/data/{{backups,cloud-init,isos,uploads,metrics}} && "
         f"mkdir -p {INSTALL_DIR}/static/{{css,js,images,fonts}} && "
-        f"mkdir -p /var/lib/libvirt/images && "
-        f"mkdir -p /var/lib/vz/{{template/cache,images,rootdir}} && "
-        f"mkdir -p /var/lib/nexve/{{backups,iso}}"))
+        f"mkdir -p /var/lib/libvirt/images 2>/dev/null || true && "
+        f"mkdir -p /var/lib/vz/{{template/cache,images,rootdir}} 2>/dev/null || true && "
+        f"mkdir -p /var/lib/nexve/{{backups,iso}} 2>/dev/null || true"))
 
     steps.append(("Creating Python virtual environment",
         f"python3 -m venv {INSTALL_DIR}/venv && "
         f"{INSTALL_DIR}/venv/bin/pip install --upgrade pip setuptools wheel -q 2>/dev/null"))
 
     steps.append(("Installing Python dependencies",
-        f"{INSTALL_DIR}/venv/bin/pip install -r {INSTALL_DIR}/requirements.txt -q 2>/dev/null"))
+        f"{INSTALL_DIR}/venv/bin/pip install -r {INSTALL_DIR}/requirements.txt 2>/dev/null"))
 
     steps.append(("Installing libvirt Python package",
-        f"{INSTALL_DIR}/venv/bin/pip install libvirt-python -q 2>/dev/null || true"))
+        f"{INSTALL_DIR}/venv/bin/pip install libvirt-python 2>/dev/null || true"))
 
     steps.append(("Setting user permissions",
-        "usermod -aG libvirt $SUDO_USER 2>/dev/null; "
-        "usermod -aG kvm $SUDO_USER 2>/dev/null; true"))
+        "usermod -aG libvirt ${SUDO_USER:-root} 2>/dev/null || true; "
+        "usermod -aG kvm ${SUDO_USER:-root} 2>/dev/null || true; true"))
 
     steps.append(("Configuring nftables base rules",
         "nft add table inet nexve 2>/dev/null || true; "
@@ -712,47 +738,72 @@ def get_install_steps(choices):
         "nft add chain inet nexve forward '{ policy accept; }' 2>/dev/null || true; "
         "nft add chain inet nexve host '{ policy accept; }' 2>/dev/null || true"))
 
-    steps.append(("Creating systemd service",
-        f'SECRET=$(openssl rand -hex 32) && '
-        f'cat > /etc/systemd/system/nexve.service << \'SVCEOF\'\n'
-        f'[Unit]\nDescription=NexVE Hypervisor Management Dashboard\n'
-        f'After=network-online.target libvirtd.service\n'
-        f'Wants=network-online.target\nRequires=libvirtd.service\n'
-        f'[Service]\nType=simple\n'
-        f'WorkingDirectory={INSTALL_DIR}/backend\n'
-        f'Environment=NEXVE_SECRET=$SECRET\nEnvironment=PYTHONUNBUFFERED=1\n'
-        f'ExecStart={INSTALL_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --log-level info\n'
-        f'Restart=always\nRestartSec=5\nUser=root\nGroup=root\n'
-        f'[Install]\nWantedBy=multi-user.target\n'
-        f'SVCEOF'))
+    # Create systemd service file
+    svc_cmd = (
+        f"SECRET=$(openssl rand -hex 32) && "
+        f"cat > /etc/systemd/system/nexve.service << 'SVCEOF' && "
+        f"[Unit]\n"
+        f"Description=NexVE Hypervisor Management Dashboard\n"
+        f"After=network-online.target libvirtd.service\n"
+        f"Wants=network-online.target\n"
+        f"Requires=libvirtd.service\n"
+        f"[Service]\n"
+        f"Type=simple\n"
+        f"WorkingDirectory={INSTALL_DIR}/backend\n"
+        f"Environment=NEXVE_SECRET=$SECRET\n"
+        f"Environment=PYTHONUNBUFFERED=1\n"
+        f"ExecStart={INSTALL_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000\n"
+        f"Restart=always\n"
+        f"RestartSec=5\n"
+        f"User=root\n"
+        f"Group=root\n"
+        f"[Install]\n"
+        f"WantedBy=multi-user.target\n"
+        f"SVCEOF"
+    )
+    steps.append(("Creating systemd service", svc_cmd))
 
     steps.append(("Starting NexVE service",
-        "systemctl daemon-reload && systemctl enable nexve 2>/dev/null && "
-        "systemctl start nexve 2>/dev/null && sleep 3"))
+        "systemctl daemon-reload 2>/dev/null; "
+        "systemctl enable nexve 2>/dev/null || true; "
+        "systemctl start nexve 2>/dev/null || true; sleep 2"))
 
     steps.append(("Setting permissions",
-        f"chmod -R 755 {INSTALL_DIR}/static 2>/dev/null; "
-        f"chmod 600 /etc/systemd/system/nexve.service 2>/dev/null; "
-        f"chmod 700 {INSTALL_DIR}/data 2>/dev/null; true"))
+        f"chmod -R 755 {INSTALL_DIR}/static 2>/dev/null || true; "
+        f"chmod 600 /etc/systemd/system/nexve.service 2>/dev/null || true; "
+        f"chmod 700 {INSTALL_DIR}/data 2>/dev/null || true; true"))
 
     steps.append(("Cleaning up",
-        "apt-get autoremove -y -qq 2>/dev/null; apt-get clean 2>/dev/null; true"))
+        "apt-get autoremove -y -qq 2>/dev/null || true; "
+        "apt-get clean 2>/dev/null || true; true"))
 
     return steps
 
 
+def get_uninstall_steps():
+    """Build uninstall steps."""
+    steps = []
+    steps.append(("Stopping NexVE service",
+        "systemctl stop nexve 2>/dev/null || true; "
+        "systemctl disable nexve 2>/dev/null || true"))
+    steps.append(("Removing systemd service",
+        "rm -f /etc/systemd/system/nexve.service; "
+        "systemctl daemon-reload 2>/dev/null || true"))
+    steps.append(("Removing NexVE files",
+        f"rm -rf {INSTALL_DIR} 2>/dev/null || true"))
+    steps.append(("Removing nftables rules",
+        "nft delete table inet nexve 2>/dev/null || true"))
+    steps.append(("Removing cron jobs",
+        "crontab -l 2>/dev/null | grep -v nexve | crontab - 2>/dev/null || true"))
+    steps.append(("Removing data directories",
+        "rm -rf /var/lib/nexve 2>/dev/null || true"))
+    return steps
+
+
 def main(stdscr):
+    global INSTALL_DIR
     init_colors()
     tui = TUI(stdscr)
-
-    # OS check
-    try:
-        with open("/etc/os-release") as f:
-            content = f.read().lower()
-        if "debian" not in content and "ubuntu" not in content:
-            pass  # Show warning but continue
-    except Exception:
-        pass
 
     # Root check
     if os.geteuid() != 0:
@@ -762,7 +813,54 @@ def main(stdscr):
         tui.stdscr.getch()
         return
 
-    # Component selection
+    # ── Main menu: Install / Uninstall / Exit ──
+    main_items = [
+        ("INSTALL", "Install NexVE", "Set up NexVE hypervisor management platform"),
+        ("UNINSTALL", "Uninstall NexVE", "Remove NexVE and all associated files"),
+        ("EXIT", "Exit installer", "Close without doing anything"),
+    ]
+    main_menu = Menu(
+        tui,
+        "NexVE v2.0 Installer",
+        main_items,
+        description="NexVE Hypervisor Management Platform\n"
+                   "Choose an action below.",
+    )
+    choice = main_menu.run()
+
+    if choice is None or choice == 2:  # Exit
+        return
+
+    if choice == 1:  # Uninstall
+        # Confirm uninstall
+        confirm_items = [
+            ("UNINSTALL", "UNINSTALL", "Remove all NexVE files and services"),
+        ]
+        confirm = Menu(
+            tui,
+            "Confirm Uninstall",
+            confirm_items,
+            description=f"This will remove NexVE from: {INSTALL_DIR}\n"
+                       "The service will be stopped and removed.\n"
+                       "Data in /var/lib/nexve will also be removed.\n\n"
+                       "Are you sure?",
+        )
+        if confirm.run() is None:
+            return
+
+        steps = get_uninstall_steps()
+        progress = ProgressScreen(tui, "Uninstalling NexVE...", steps)
+        progress.run()
+
+        # Done message
+        tui.clear()
+        tui.draw_title_bar("Uninstall Complete")
+        tui.draw_centered(tui.h // 2, "NexVE has been uninstalled.", 10)
+        tui.draw_centered(tui.h // 2 + 2, "Press any key to exit.", 8)
+        tui.stdscr.getch()
+        return
+
+    # ── Install flow ──
     components = [
         ("CORE", "Python 3", "Python runtime, FastAPI, Uvicorn, pip"),
         ("KVM", "KVM/QEMU", "Virtual machine emulator + libvirt"),
@@ -786,12 +884,12 @@ def main(stdscr):
         tui,
         "Select Components to Install",
         components,
-        description="Use Space to toggle, ↑↓ to navigate, Enter to confirm.\n"
+        description="Use Space to toggle, \u2191\u2193 to navigate, Enter to confirm.\n"
                     "All components are recommended for a full installation.",
         multi_select=True,
     )
 
-    # Select all by default
+    # Pre-select all components
     selector.checked = set(range(len(components)))
     result = selector.run()
 
@@ -801,13 +899,13 @@ def main(stdscr):
     selected_tags = [components[i][0] for i in result]
 
     # Install location
+    current_dir = INSTALL_DIR
     location_input = TextInput(
         tui,
         "Installation Directory",
         "Enter the installation path for NexVE:",
-        default="/opt/nexve"
+        default=current_dir
     )
-    global INSTALL_DIR
     install_dir = location_input.run()
     if install_dir:
         INSTALL_DIR = install_dir
@@ -835,7 +933,6 @@ def main(stdscr):
 
 
 if __name__ == "__main__":
-    # Ensure dialog is not needed — pure Python curses
     try:
         curses.wrapper(main)
     except KeyboardInterrupt:
