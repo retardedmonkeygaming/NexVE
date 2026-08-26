@@ -45,13 +45,8 @@
     term.open(document.getElementById('terminal-container'));
     fitAddon.fit();
 
-    // Get session token from cookie
-    function getCookie(name) {
-        const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-        return v ? v[2] : '';
-    }
-
-    const token = getCookie('nexve_session');
+    // Get session token from meta tag (cookie is httponly)
+    const token = document.querySelector('meta[name="nx-session-token"]')?.content || '';
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${location.host}/api/shell/ws?token=${encodeURIComponent(token)}`;
 

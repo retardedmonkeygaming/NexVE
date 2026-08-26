@@ -215,3 +215,21 @@ async def get_syslog(request: Request, level: str = "all", lines: int = 100):
     result = run_cmd(cmd, timeout=15)
     log_lines = result["stdout"].splitlines() if result["stdout"] else []
     return JSONResponse({"lines": log_lines})
+
+
+# ── Host Power Management ──
+
+@router.post("/host/{action}")
+async def host_power(request: Request, action: str):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    if user.get("role") != "admin":
+        return JSONResponse({"success": False, "error": "Admin required"}, status_code=403)
+    if action == "reboot":
+        run_cmd("reboot", timeout=5)
+        return JSONResponse({"success": True, "message": "Reboot initiated"})
+    elif action == "shutdown":
+        run_cmd("shutdown -h now", timeout=5)
+        return JSONResponse({"success": True, "message": "Shutdown initiated"})
+    return JSONResponse({"success": False, "error": "Invalid action"})

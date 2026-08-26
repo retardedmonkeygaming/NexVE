@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}NexVE — ISO Management{% endblock %}
+{% block breadcrumb %}ISO Management{% endblock %}
+
+{% block content %}
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">ISO Management</div>
+        <div class="nx-page-subtitle">Upload, download, and manage ISO images</div>
+    </div>
+    <div class="nx-flex nx-gap-2">
+        <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('upload-input').click()">Upload ISO</button>
+        <button class="nx-btn nx-btn-primary" onclick="showDownloadModal()">Download from URL</button>
+    </div>
+    <input type="file" id="upload-input" accept=".iso,.img" style="display:none;" onchange="uploadISO(this)">
+</div>
+
+<!-- Upload Progress -->
+<div id="upload-progress" class="nx-card nx-mt-4" style="display:none;border-color:var(--accent);">
+    <div class="nx-card-body">
+        <div class="nx-flex nx-items-center nx-gap-3">
+            <span style="color:var(--accent);">⏳</span>
+            <div style="flex:1;">
+                <div style="font-weight:500;font-size:var(--text-sm);" id="upload-filename">Uploading...</div>
+                <div class="nx-progress nx-mt-4"><div class="nx-progress-bar accent" id="upload-bar" style="width:0%"></div></div>
+            </div>
+            <span style="font-size:var(--text-sm);color:var(--text-muted);" id="upload-pct">0%</span>
+        </div>
+    </div>
+</div>
+
+<!-- ISO List -->
+<div class="nx-card nx-mt-4">
+    <div class="nx-card-header">
+        <span class="nx-card-title">Local ISO Images</span>
+        <span style="font-size:var(--text-xs);color:var(--text-muted);">{{ isos|length }} files</span>
+    </div>
+    <div class="nx-card-body" style="padding:0;">
+        <table class="nx-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="iso-list">
+                {% for iso in isos %}
+                <tr>
+                    <td style="font-weight:500;">{{ iso.name }}</td>
+                    <td style="color:var(--text-muted);">{{ iso.size_gb }} GB</td>
+                    <td style="font-size:var(--text-xs);color:var(--text-muted);">{{ iso.modified or '-' }}</td>
+                    <td>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteISO('{{ iso.filename }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not isos %}
+                <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:48px;">No ISO images found. Upload or download one to get started.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Download Modal -->
+<div class="nx-modal" id="download-modal" style="display:none;">
+    <div class="nx-modal-overlay" onclick="hideDownloadModal()"></div>
+    <div class="nx-modal-content" style="max-width:480px;">
+        <div class="nx-modal-header">
+            <h3>Download from URL</h3>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideDownloadModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="download-form" method="POST" action="/templates/download">
+                <div class="nx-input-group">
+                    <label class="nx-label">ISO URL</label>
+                    <input type="url" name="url" class="nx-input" placeholder="https://example.com/debian-12.iso" required>
+                    <span class="nx-hint">Direct link to an ISO image file.</span>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideDownloadModal()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('download-form').requestSubmit()">Download</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showDownloadModal() { document.getElementById('download-modal').style.display = 'flex'; }
+function hideDownloadModal() { document.getElementById('download-modal').style.display = 'none'; }
+
+async function uploadISO(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const progress = document.getElementById('upload-progress');
+    const bar = document.getElementById('upload-bar');
+    const pct = document.getElementById('upload-pct');
+    const fname = document.getElementById('upload-filename');
+
+    progress.style.display = '';
+    fname.textContent = `Uploading ${file.name}...`;
+    bar.style.width = '0%';
+    pct.textContent = '0%';
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/templates/upload');
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const p = Math.round((e.loaded / e.total) * 100);
+                bar.style.width = p + '%';
+                pct.textContent = p + '%';
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 302) {
+                showToast('ISO uploaded successfully', 'success');
+                setTimeout(() => location.reload(), 500);
+            } else {
+                showToast('Upload failed', 'error');
+                progress.style.display = 'none';
+            }
+        };
+
+        xhr.onerror = () => { showToast('Upload error', 'error'); progress.style.display = 'none'; };
+        xhr.send(fd);
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); progress.style.display = 'none'; }
+
+    input.value = '';
+}
+
+async function deleteISO(filename) {
+    if (!confirm(`Delete ${filename}?`)) return;
+    try {
+        await fetch(`/templates/delete/${encodeURIComponent(filename)}`);
+        showToast('ISO deleted', 'success');
+        setTimeout(() => location.reload(), 500);
+    } catch (e) { showToast('Error', 'error'); }
+}
+</script>
+{% endblock %}

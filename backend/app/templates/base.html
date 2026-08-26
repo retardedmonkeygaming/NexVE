@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}NexVE{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/nexve.css">
+    <meta name="nx-session-token" content="{{ request.cookies.get('nexve_session', '') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     {% block head %}{% endblock %}
@@ -63,6 +64,13 @@
                     <a href="/settings/2fa" style="display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:var(--text-sm);color:var(--text-secondary);text-decoration:none;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                         🔐 2FA
                     </a>
+                    <div style="border-top:1px solid var(--border-subtle);"></div>
+                    <button onclick="hostAction('reboot')" style="display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:var(--text-sm);color:var(--warning);background:none;border:none;width:100%;text-align:left;cursor:pointer;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
+                        🔄 Reboot Server
+                    </button>
+                    <button onclick="hostAction('shutdown')" style="display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:var(--text-sm);color:var(--danger);background:none;border:none;width:100%;text-align:left;cursor:pointer;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
+                        ⏻ Shutdown Server
+                    </button>
                     <div style="border-top:1px solid var(--border-subtle);"></div>
                     <a href="/logout" style="display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:var(--text-sm);color:var(--danger);text-decoration:none;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
                         🚪 Logout
@@ -201,6 +209,16 @@
 
 <script>
 // ─── User Menu ───
+// ── Host Power Management ──
+async function hostAction(action) {
+    if (action === 'shutdown' && !confirm('Shut down the server? All VMs will be stopped.')) return;
+    if (action === 'reboot' && !confirm('Reboot the server? All VMs will be stopped.')) return;
+    try {
+        const r = await fetch(`/api/settings/host/${action}`, {method: 'POST'});
+        showToast(`${action === 'reboot' ? 'Reboot' : 'Shutdown'} initiated...`, 'success');
+    } catch (e) { showToast(`Error: ${e.message}`, 'error'); }
+}
+
 function toggleUserMenu() {
     document.getElementById('user-menu').classList.toggle('nx-hidden');
 }

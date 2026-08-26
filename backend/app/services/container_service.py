@@ -8,9 +8,14 @@ class ContainerService:
     def run_cmd(self, cmd: str) -> dict:
         try:
             r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-            return {"success": r.returncode == 0, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+            stderr = r.stderr.strip()
+            if 'not found' in stderr.lower() or 'command not found' in stderr.lower():
+                return {"success": False, "stdout": "", "stderr": f"Command not available: {cmd.split()[0]}. Install lxc-utils and pct."}
+            return {"success": r.returncode == 0, "stdout": r.stdout.strip(), "stderr": stderr}
         except subprocess.TimeoutExpired:
             return {"success": False, "stdout": "", "stderr": "Timeout"}
+        except FileNotFoundError:
+            return {"success": False, "stdout": "", "stderr": f"Command not found: {cmd.split()[0]}"}
 
     def list_templates(self) -> List[dict]:
         r = self.run_cmd("pveam list local")
