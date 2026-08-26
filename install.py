@@ -146,6 +146,7 @@ class Menu:
         self.description = description
         self.multi_select = multi_select
         self.selected = 0
+        self.button_idx = 0
         self.checked = set() if multi_select else None
         self.scroll_offset = 0
 
@@ -219,28 +220,30 @@ class Menu:
 
     def run(self):
         """Run the menu and return selected index/indices."""
-        buttons = ["<Continue>", "<Cancel>"]
-        btn_selected = 0
-
         while True:
             self.draw()
             key = self.tui.stdscr.getch()
 
             if key == curses.KEY_UP or key == ord('k'):
                 self.selected = max(0, self.selected - 1)
+                self.button_idx = 0
             elif key == curses.KEY_DOWN or key == ord('j'):
                 self.selected = min(len(self.items) - 1, self.selected + 1)
+                self.button_idx = 0
             elif key == ord(' ') and self.multi_select:
                 if self.selected in self.checked:
                     self.checked.discard(self.selected)
                 else:
                     self.checked.add(self.selected)
             elif key == 9:  # Tab
-                btn_selected = 1 - btn_selected
+                self.button_idx = 1 - self.button_idx
             elif key == 10:  # Enter
-                if btn_selected == 1:  # Cancel
+                if self.button_idx == 1:  # Cancel
                     return None
                 if self.multi_select:
+                    if not self.checked:
+                        # Nothing selected — treat as select all
+                        self.checked = set(range(len(self.items)))
                     return sorted(self.checked)
                 return self.selected
             elif key == 27:  # Escape
