@@ -69,7 +69,7 @@ app.include_router(logs.router, prefix="/api/logs", tags=["Logs"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
 app.include_router(api_tokens.router, prefix="/api/tokens", tags=["API Tokens"])
 app.include_router(templates_route.router, prefix="/templates", tags=["Templates"])
-app.include_router(shell.router, tags=["Shell"])
+app.include_router(shell.router, prefix="/api/shell", tags=["Shell"])
 # New routers
 app.include_router(tags.router, prefix="/api/tags", tags=["Tags"])
 app.include_router(resource_pools.router, prefix="/api/resource-pools", tags=["Resource Pools"])

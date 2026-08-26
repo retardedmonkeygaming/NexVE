@@ -690,6 +690,30 @@ def get_install_steps(choices):
         f"{pip} install libvirt-python 2>/dev/null || true"))
 
     # ═══════════════════════════════════════════════════════════
+    # System configuration
+    # ═══════════════════════════════════════════════════════════
+
+    _hostname = globals().get('server_hostname', 'nexve')
+    _static_ip = globals().get('static_ip', '')
+    _gateway = globals().get('gateway', '')
+    _dns_servers = globals().get('dns_servers', '1.1.1.1, 8.8.8.8')
+    _tz = globals().get('server_tz', 'UTC')
+
+    steps.append(("Setting hostname",
+        f"hostnamectl set-hostname '{_hostname}' 2>/dev/null || true; "
+        f"sed -i 's/127\.0\.1\.1\s*.*/127.0.1.1\t{_hostname}/' /etc/hosts 2>/dev/null || true; "
+        f"echo 'Hostname set to {_hostname}'"))
+
+    steps.append(("Setting timezone",
+        f"timedatectl set-timezone '{_tz}' 2>/dev/null || true; "
+        f"echo 'Timezone set to {_tz}'"))
+
+    steps.append(("Configuring DNS",
+        f"echo '# NexVE DNS' > /etc/resolv.conf 2>/dev/null || true; "
+        f"for s in $(echo '{_dns_servers}' | tr ',' ' '); do echo \"nameserver $s\" >> /etc/resolv.conf; done 2>/dev/null || true; "
+        f"echo 'DNS configured: {_dns_servers}'"))
+
+    # ═══════════════════════════════════════════════════════════
     # Permissions & firewall
     # ═══════════════════════════════════════════════════════════
 
@@ -880,6 +904,66 @@ def main(stdscr):
         return
 
     selected_tags = [components[i][0] for i in result]
+
+    # ── Hostname ──
+    hostname_input = TextInput(
+        tui,
+        "Server Hostname",
+        "Enter the server hostname (visible in the web UI):",
+        default="nexve"
+    )
+    server_hostname = hostname_input.run() or "nexve"
+
+    # ── Network ──
+    # Detect current IP
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        current_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        current_ip = "192.168.1.100"
+
+    ip_input = TextInput(
+        tui,
+        "Network Configuration",
+        "Static IP address (leave blank for DHCP):",
+        default=current_ip
+    )
+    static_ip = ip_input.run() or ""
+
+    gw_input = TextInput(
+        tui,
+        "Network Configuration",
+        "Gateway (e.g. 192.168.1.1):",
+        default=""
+    )
+    gateway = gw_input.run() or ""
+
+    dns_input = TextInput(
+        tui,
+        "DNS Configuration",
+        "DNS servers (comma separated):",
+        default="1.1.1.1, 8.8.8.8"
+    )
+    dns_servers = dns_input.run() or "1.1.1.1, 8.8.8.8"
+
+    # ── Timezone ──
+    import subprocess as _sp
+    try:
+        current_tz = _sp.run("timedatectl show --property=Timezone --value 2>/dev/null",
+                           shell=True, capture_output=True, text=True).stdout.strip()
+    except Exception:
+        current_tz = "UTC"
+
+    tz_input = TextInput(
+        tui,
+        "Timezone",
+        "Enter timezone (e.g. America/New_York, Europe/London):",
+        default=current_tz or "UTC"
+    )
+    server_tz = tz_input.run() or "UTC"
 
     # Install location
     location_input = TextInput(

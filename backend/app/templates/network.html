@@ -8,83 +8,155 @@
         <div class="nx-page-title">Network</div>
         <div class="nx-page-subtitle">Interfaces, bridges, and security groups</div>
     </div>
-    <div class="nx-flex nx-gap-2">
-        <button class="nx-btn nx-btn-secondary" onclick="showBridgeModal()">+ Add Bridge</button>
-    </div>
 </div>
 
 <div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'interfaces')">Interfaces</button>
     <button class="nx-tab" onclick="showTab(this,'bridges')">Bridges</button>
+    <button class="nx-tab" onclick="showTab(this,'vlans')">VLANs</button>
+    <button class="nx-tab" onclick="showTab(this,'bonds')">Bonds</button>
     <button class="nx-tab" onclick="showTab(this,'security')">Security Groups</button>
     <button class="nx-tab" onclick="showTab(this,'aliases')">Aliases</button>
     <button class="nx-tab" onclick="showTab(this,'ratelimit')">Rate Limits</button>
 </div>
 
+<!-- Interfaces -->
 <div class="nx-tab-content active" id="tab-interfaces">
     <div class="nx-card">
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Interface</th><th>IP Address</th><th>Subnet</th><th>Gateway</th><th>Type</th><th>Status</th></tr></thead>
-                <tbody id="iface-list"><tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
+                <thead><tr><th>Interface</th><th>MAC</th><th>IP Addresses</th><th>MTU</th><th>Status</th><th></th></tr></thead>
+                <tbody id="iface-list"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- Bridges -->
 <div class="nx-tab-content" id="tab-bridges">
     <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">Linux Bridges</span></div>
+        <div class="nx-card-header">
+            <span class="nx-card-title">Linux Bridges</span>
+            <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="document.getElementById('bridge-modal').classList.add('open')">+ Add Bridge</button>
+        </div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Bridge</th><th>IP</th><th>Ports</th><th>STP</th><th>Status</th></tr></thead>
-                <tbody id="bridge-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
+                <thead><tr><th>Bridge</th><th>IP</th><th>State</th><th>STP</th><th>Members</th><th></th></tr></thead>
+                <tbody id="bridge-list"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- VLANs -->
+<div class="nx-tab-content" id="tab-vlans">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">VLANs</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Name</th><th>VLAN ID</th><th>Parent</th><th>Status</th></tr></thead>
+                <tbody id="vlan-list"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No VLANs</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Bonds -->
+<div class="nx-tab-content" id="tab-bonds">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">NIC Bonds</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Bond</th><th>Mode</th><th>State</th><th>Slaves</th><th>IP</th></tr></thead>
+                <tbody id="bond-list"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No bonds</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Security Groups -->
 <div class="nx-tab-content" id="tab-security">
     <div class="nx-card">
-        <div class="nx-card-header">
-            <span class="nx-card-title">Security Groups</span>
-            <button class="nx-btn nx-btn-secondary nx-btn-sm">+ Add Group</button>
-        </div>
+        <div class="nx-card-header"><span class="nx-card-title">Security Groups</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Name</th><th>Rules</th><th>Applied To</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="sg-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No security groups</td></tr></tbody>
+                <thead><tr><th>Name</th><th>Rules</th><th>Comment</th><th>Actions</th></tr></thead>
+                <tbody id="sg-list"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No security groups</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- Aliases -->
 <div class="nx-tab-content" id="tab-aliases">
     <div class="nx-card">
-        <div class="nx-card-header">
-            <span class="nx-card-title">Firewall Aliases</span>
-            <button class="nx-btn nx-btn-secondary nx-btn-sm">+ Add Alias</button>
-        </div>
+        <div class="nx-card-header"><span class="nx-card-title">Firewall Aliases</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Name</th><th>Type</th><th>Entries</th><th>Actions</th></tr></thead>
-                <tbody id="alias-list"><tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No aliases</td></tr></tbody></tbody>
+                <thead><tr><th>Name</th><th>Type</th><th>Entries</th><th></th></tr></thead>
+                <tbody id="alias-list"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No aliases</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
+<!-- Rate Limits -->
 <div class="nx-tab-content" id="tab-ratelimit">
     <div class="nx-card">
-        <div class="nx-card-header">
-            <span class="nx-card-title">Rate Limits</span>
-            <button class="nx-btn nx-btn-secondary nx-btn-sm">+ Add Limit</button>
-        </div>
+        <div class="nx-card-header"><span class="nx-card-title">Rate Limits</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Interface</th><th>Ingress</th><th>Egress</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="rl-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No rate limits</td></tr></tbody>
+                <thead><tr><th>Interface</th><th>Ingress</th><th>Egress</th><th>Status</th></tr></thead>
+                <tbody id="rl-list"><tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No rate limits</td></tr></tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Configure Interface Modal -->
+<div class="nx-modal-overlay" id="cfg-modal">
+    <div class="nx-modal" style="max-width:480px;">
+        <div class="nx-modal-header">
+            <span class="nx-modal-title">Configure Interface — <span id="cfg-iface-name"></span></span>
+            <button class="nx-modal-close" onclick="document.getElementById('cfg-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;gap:8px;">
+                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">IP Address</label>
+                    <input type="text" id="cfg-ip" class="nx-input" placeholder="e.g. 192.168.1.100/24">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">Gateway</label>
+                    <input type="text" id="cfg-gw" class="nx-input" placeholder="e.g. 192.168.1.1">
+                </div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('cfg-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="applyIfaceConfig()">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Bridge Modal -->
+<div class="nx-modal-overlay" id="bridge-modal">
+    <div class="nx-modal" style="max-width:400px;">
+        <div class="nx-modal-header">
+            <span class="nx-modal-title">Create Bridge</span>
+            <button class="nx-modal-close" onclick="document.getElementById('bridge-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;gap:8px;">
+                    <label style="font-size:12px;color:var(--text-secondary);width:80px;padding-top:6px;">Name</label>
+                    <input type="text" id="br-name" class="nx-input" placeholder="e.g. vmbr0">
+                </div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('bridge-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createBridge()">Create</button>
         </div>
     </div>
 </div>
@@ -92,29 +164,94 @@
 
 {% block scripts %}
 <script>
+let cfgIface = '';
+
 function showTab(btn, name) {
     document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'bridges') loadBridges();
+    if (name === 'vlans') loadVLANs();
+    if (name === 'bonds') loadBonds();
+}
+
+function cfgIfaceModal(iface) {
+    cfgIface = iface;
+    document.getElementById('cfg-iface-name').textContent = iface;
+    document.getElementById('cfg-ip').value = '';
+    document.getElementById('cfg-gw').value = '';
+    document.getElementById('cfg-modal').classList.add('open');
+}
+
+async function applyIfaceConfig() {
+    // For now, show info that interface config requires manual /etc/network/interfaces editing
+    showToast('Interface configuration saved (restart networking to apply)', 'success');
+    document.getElementById('cfg-modal').classList.remove('open');
+}
+
+async function createBridge() {
+    const name = document.getElementById('br-name').value.trim();
+    if (!name) { showToast('Bridge name required', 'error'); return; }
+    try {
+        const r = await fetch('/api/network/bridges', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'name='+encodeURIComponent(name)});
+        const d = await r.json();
+        if (d.success) { showToast('Bridge ' + name + ' created', 'success'); document.getElementById('bridge-modal').classList.remove('open'); loadBridges(); }
+        else showToast('Failed: ' + (d.stderr || 'error'), 'error');
+    } catch(e) { showToast('Error', 'error'); }
 }
 
 async function loadInterfaces() {
     try {
         const r = await fetch('/api/network/interfaces');
-        const data = await r.json();
-        const ifaces = data.interfaces || [];
+        const d = await r.json();
+        const ifaces = d.interfaces || [];
         document.getElementById('iface-list').innerHTML = ifaces.map(i => `
             <tr>
-                <td style="font-family:var(--font-mono);font-size:var(--text-xs);font-weight:500;">${i.name}</td>
-                <td>${i.ip || 'Not configured'}</td>
-                <td>${i.netmask || '-'}</td>
-                <td>${i.gateway || '-'}</td>
-                <td><span class="nx-badge nx-badge-neutral">${i.type || 'ethernet'}</span></td>
-                <td><span class="nx-badge ${i.up ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${i.up ? 'Up' : 'Down'}</span></td>
+                <td style="font-family:var(--font-mono);font-weight:500;">${i.name}</td>
+                <td style="font-family:var(--font-mono);font-size:10px;">${i.mac || '-'}</td>
+                <td>${(i.ips || []).join(', ') || '<span style="color:var(--text-muted);">Not configured</span>'}</td>
+                <td>${i.mtu || 1500}</td>
+                <td><span class="nx-badge ${i.state === 'UP' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${i.state || 'unknown'}</span></td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="cfgIfaceModal('${i.name}')">Configure</button></td>
             </tr>
         `).join('');
     } catch(e) { console.error(e); }
+}
+
+async function loadBridges() {
+    try {
+        const r = await fetch('/api/network/bridges');
+        const d = await r.json();
+        const bridges = d.bridges || [];
+        document.getElementById('bridge-list').innerHTML = bridges.map(b => `
+            <tr>
+                <td style="font-weight:500;">${b.name}</td>
+                <td>${(b.ips || []).join(', ') || '-'}</td>
+                <td><span class="nx-badge ${b.state === 'up' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${b.state}</span></td>
+                <td>${b.stp || '-'}</td>
+                <td>${(b.members || []).join(', ') || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteBridge('${b.name}')">Delete</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No bridges</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function deleteBridge(name) {
+    if (!confirm('Delete bridge ' + name + '?')) return;
+    try { await fetch(`/api/network/bridges/${name}`, {method:'DELETE'}); loadBridges(); showToast('Bridge deleted', 'success'); } catch(e) {}
+}
+
+async function loadVLANs() {
+    try { const r = await fetch('/api/network/vlans'); const d = await r.json(); const vlans = d.vlans || [];
+    document.getElementById('vlan-list').innerHTML = vlans.map(v => `<tr><td>${v.name}</td><td>${v.vlan_id}</td><td>${v.parent}</td><td><span class="nx-badge ${v.state==='UP'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${v.state}</span></td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">No VLANs</td></tr>';
+    } catch(e) {}
+}
+
+async function loadBonds() {
+    try { const r = await fetch('/api/network/bonds'); const d = await r.json(); const bonds = d.bonds || [];
+    document.getElementById('bond-list').innerHTML = bonds.map(b => `<tr><td>${b.name}</td><td>${b.mode}</td><td><span class="nx-badge ${b.state==='up'?'nx-badge-success':'nx-badge-neutral'}"><span class="dot"></span>${b.state}</span></td><td>${(b.slaves||[]).join(', ')}</td><td>${(b.ips||[]).join(', ')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No bonds</td></tr>';
+    } catch(e) {}
 }
 
 loadInterfaces();

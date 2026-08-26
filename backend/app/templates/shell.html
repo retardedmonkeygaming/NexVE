@@ -3,12 +3,12 @@
 {% block breadcrumb %}Shell{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
 <style>
-    #terminal-container { height: calc(100vh - 180px); background: #0a0a0a; border-radius: var(--radius-lg); overflow: hidden; }
-    .xterm { padding: 8px; }
+    #terminal-container { height: calc(100vh - 160px); background: #0c0c0e; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-subtle); }
+    #terminal-container .xterm { padding: 4px; height: 100%; }
 </style>
 {% endblock %}
 
@@ -18,50 +18,80 @@
 
 {% block scripts %}
 <script>
-const term = new Terminal({
-    theme: {
-        background: '#0a0a0a',
-        foreground: '#e5e7eb',
-        cursor: '#f97316',
-        selectionBackground: '#f9731633',
-    },
-    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-    fontSize: 14,
-    cursorBlink: true,
-});
+(async function() {
+    const term = new Terminal({
+        theme: {
+            background: '#0c0c0e',
+            foreground: '#e5e7eb',
+            cursor: '#f97316',
+            selectionBackground: '#f9731633',
+            black: '#0c0c0e',
+            red: '#ef4444',
+            green: '#22c55e',
+            yellow: '#eab308',
+            blue: '#3b82f6',
+            magenta: '#a855f7',
+            cyan: '#06b6d4',
+            white: '#e5e7eb',
+        },
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
+        fontSize: 13,
+        cursorBlink: true,
+        scrollback: 5000,
+    });
 
-const fitAddon = new FitAddon.FitAddon();
-term.loadAddon(fitAddon);
-term.open(document.getElementById('terminal-container'));
-fitAddon.fit();
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal-container'));
+    fitAddon.fit();
 
-const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${protocol}//${location.host}/api/console/shell`);
-ws.binaryType = 'arraybuffer';
-
-ws.onopen = () => {
-    term.write('\\r\\x1b[33mConnected to NexVE shell\\x1b[0m\\r\\n');
-};
-
-ws.onmessage = (evt) => {
-    if (typeof evt.data === 'string') {
-        term.write(evt.data);
-    } else {
-        const decoder = new TextDecoder();
-        term.write(decoder.decode(evt.data));
+    // Get session token from cookie
+    function getCookie(name) {
+        const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+        return v ? v[2] : '';
     }
-};
 
-ws.onclose = () => {
-    term.write('\\r\\x1b[31mConnection closed. Refresh to reconnect.\\x1b[0m\\r\\n');
-};
+    const token = getCookie('nexve_session');
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${location.host}/api/shell/ws?token=${encodeURIComponent(token)}`;
 
-term.onData(data => {
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+    let ws;
+    try {
+        ws = new WebSocket(wsUrl);
+    } catch(e) {
+        term.write('\r\n\x1b[31mFailed to connect to WebSocket.\x1b[0m\r\n');
+        return;
     }
-});
 
-window.addEventListener('resize', () => fitAddon.fit());
+    ws.onopen = () => {
+        term.write('\r\n\x1b[33mConnected to NexVE shell\x1b[0m\r\n');
+    };
+
+    ws.onmessage = (evt) => {
+        if (typeof evt.data === 'string') {
+            term.write(evt.data);
+        } else if (evt.data instanceof ArrayBuffer) {
+            term.write(new TextDecoder().decode(evt.data));
+        }
+    };
+
+    ws.onclose = (evt) => {
+        term.write('\r\n\x1b[31mConnection closed (code: ' + evt.code + '). Refresh to reconnect.\x1b[0m\r\n');
+    };
+
+    ws.onerror = () => {
+        term.write('\r\n\x1b[31mWebSocket error. Check if websockify/pty is available.\x1b[0m\r\n');
+    };
+
+    term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        fitAddon.fit();
+    });
+})();
 </script>
 {% endblock %}

@@ -12,9 +12,8 @@
 
 <div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'general')">General</button>
-    <button class="nx-tab" onclick="showTab(this,'network')">Network</button>
     <button class="nx-tab" onclick="showTab(this,'dns')">DNS</button>
-    <button class="nx-tab" onclick="showTab(this,'time')">Time</button>
+    <button class="nx-tab" onclick="showTab(this,'time')">Time & NTP</button>
     <button class="nx-tab" onclick="showTab(this,'services')">Services</button>
     <button class="nx-tab" onclick="showTab(this,'updates')">Updates</button>
     <button class="nx-tab" onclick="showTab(this,'syslog')">Syslog</button>
@@ -27,33 +26,12 @@
         <div class="nx-card-header"><span class="nx-card-title">Server Identity</span></div>
         <div class="nx-card-body">
             <div class="nx-form-grid">
-                <div class="nx-input-group"><label class="nx-label">Hostname</label><input type="text" id="set-hostname" class="nx-input" placeholder="nexve"></div>
-                <div class="nx-input-group"><label class="nx-label">Domain</label><input type="text" id="set-domain" class="nx-input" placeholder="local"></div>
-                <div class="nx-input-group"><label class="nx-label">Timezone</label>
-                    <select id="set-timezone" class="nx-select">
-                        <option value="UTC">UTC</option><option value="America/New_York">Eastern</option><option value="America/Chicago">Central</option>
-                        <option value="America/Los_Angeles">Pacific</option><option value="Europe/London">London</option><option value="Europe/Berlin">Berlin</option>
-                        <option value="Asia/Tokyo">Tokyo</option><option value="Asia/Kolkata">Kolkata</option>
-                    </select>
-                </div>
-                <div class="nx-input-group"><label class="nx-label">Keyboard Layout</label>
-                    <select id="set-keyboard" class="nx-select"><option value="en-us">English (US)</option><option value="en-gb">English (UK)</option><option value="de">German</option></select>
-                </div>
+                <div class="nx-input-group"><label class="nx-label">Hostname</label><input type="text" id="set-hostname" class="nx-input"></div>
+                <div class="nx-input-group"><label class="nx-label">OS</label><div id="set-os" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
+                <div class="nx-input-group"><label class="nx-label">Kernel</label><div id="set-kernel" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
+                <div class="nx-input-group"><label class="nx-label">Timezone</label><div id="set-timezone" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
             </div>
-            <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveGeneral()">Save</button>
-        </div>
-    </div>
-</div>
-
-<!-- Network -->
-<div class="nx-tab-content" id="tab-network">
-    <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">Network Interfaces</span></div>
-        <div class="nx-card-body" style="padding:0;">
-            <table class="nx-table">
-                <thead><tr><th>Interface</th><th>IP Address</th><th>Netmask</th><th>Gateway</th><th>Status</th></tr></thead>
-                <tbody id="net-interfaces"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
-            </table>
+            <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveHostname()">Save Hostname</button>
         </div>
     </div>
 </div>
@@ -64,9 +42,8 @@
         <div class="nx-card-header"><span class="nx-card-title">DNS Configuration</span></div>
         <div class="nx-card-body">
             <div class="nx-form-grid">
-                <div class="nx-input-group"><label class="nx-label">Primary DNS</label><input type="text" id="dns1" class="nx-input" placeholder="1.1.1.1"></div>
-                <div class="nx-input-group"><label class="nx-label">Secondary DNS</label><input type="text" id="dns2" class="nx-input" placeholder="8.8.8.8"></div>
-                <div class="nx-input-group"><label class="nx-label">Search Domain</label><input type="text" id="dns-search" class="nx-input" placeholder="local"></div>
+                <div class="nx-input-group full"><label class="nx-label">DNS Servers (comma separated)</label><input type="text" id="dns-servers" class="nx-input" placeholder="1.1.1.1, 8.8.8.8"></div>
+                <div class="nx-input-group full"><label class="nx-label">Search Domain</label><input type="text" id="dns-search" class="nx-input" placeholder="local"></div>
             </div>
             <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveDNS()">Apply DNS</button>
         </div>
@@ -79,10 +56,28 @@
         <div class="nx-card-header"><span class="nx-card-title">Time Configuration</span></div>
         <div class="nx-card-body">
             <div class="nx-form-grid">
-                <div class="nx-input-group"><label class="nx-label">NTP Server</label><input type="text" id="ntp-server" class="nx-input" value="pool.ntp.org"></div>
-                <div class="nx-input-group"><label class="nx-label">Current Time</label><div id="current-time" style="padding:8px 0;font-family:var(--font-mono);">-</div></div>
+                <div class="nx-input-group"><label class="nx-label">Current Time</label><div id="cur-time" style="padding:8px 0;font-family:var(--font-mono);color:var(--text-secondary);">-</div></div>
+                <div class="nx-input-group"><label class="nx-label">Timezone</label>
+                    <select id="set-tz" class="nx-select">
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">Eastern Time</option>
+                        <option value="America/Chicago">Central Time</option>
+                        <option value="America/Los_Angeles">Pacific Time</option>
+                        <option value="Europe/London">London</option>
+                        <option value="Europe/Berlin">Berlin</option>
+                        <option value="Asia/Tokyo">Tokyo</option>
+                        <option value="Asia/Kolkata">Kolkata</option>
+                        <option value="Asia/Dubai">Dubai</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <div class="nx-checkbox-group" style="margin-top:24px;">
+                        <input type="checkbox" class="nx-checkbox" id="ntp-enable" checked>
+                        <label for="ntp-enable" class="nx-label" style="margin:0;">Enable NTP synchronization</label>
+                    </div>
+                </div>
             </div>
-            <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveTime()">Sync Time</button>
+            <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveTime()">Save Time Settings</button>
         </div>
     </div>
 </div>
@@ -93,8 +88,8 @@
         <div class="nx-card-header"><span class="nx-card-title">System Services</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Service</th><th>Status</th><th>Description</th><th>Actions</th></tr></thead>
-                <tbody id="service-list"><tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
+                <thead><tr><th>Service</th><th>Status</th><th>Enabled</th><th>Description</th><th>Actions</th></tr></thead>
+                <tbody id="svc-list"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -107,8 +102,8 @@
             <span class="nx-card-title">System Updates</span>
             <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="checkUpdates()">Check for Updates</button>
         </div>
-        <div class="nx-card-body" id="updates-content">
-            <div class="nx-text-muted">Click "Check for Updates" to scan for available packages.</div>
+        <div class="nx-card-body" id="updates-body">
+            <div style="color:var(--text-muted);font-size:var(--text-sm);">Click "Check for Updates" to scan for available packages.</div>
         </div>
     </div>
 </div>
@@ -118,15 +113,15 @@
     <div class="nx-card">
         <div class="nx-card-header">
             <span class="nx-card-title">System Log</span>
-            <div class="nx-flex nx-gap-2">
+            <div style="display:flex;gap:8px;">
                 <select id="log-level" class="nx-select" style="width:auto;padding:4px 28px 4px 8px;font-size:var(--text-xs);" onchange="loadSyslog()">
                     <option value="all">All</option><option value="error">Errors</option><option value="warning">Warnings</option>
                 </select>
-                <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadSyslog()">↻ Refresh</button>
+                <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadSyslog()">↻</button>
             </div>
         </div>
         <div class="nx-card-body" style="padding:0;">
-            <pre id="syslog-output" style="font-family:var(--font-mono);font-size:var(--text-xs);padding:16px;max-height:400px;overflow:auto;color:var(--text-secondary);white-space:pre-wrap;">Loading syslog...</pre>
+            <pre id="syslog-out" style="font-family:var(--font-mono);font-size:11px;padding:12px;max-height:400px;overflow:auto;color:var(--text-secondary);white-space:pre-wrap;margin:0;">Loading...</pre>
         </div>
     </div>
 </div>
@@ -136,11 +131,14 @@
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">About NexVE</span></div>
         <div class="nx-card-body">
-            <div style="display:grid;grid-template-columns:160px 1fr;gap:8px 16px;font-size:var(--text-sm);" id="about-info">
-                <span class="nx-text-muted">Version</span><span>NexVE v2.0</span>
-                <span class="nx-text-muted">OS</span><span id="about-os">-</span>
-                <span class="nx-text-muted">Kernel</span><span id="about-kernel">-</span>
-                <span class="nx-text-muted">Uptime</span><span id="about-uptime">-</span>
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Version</span><span>NexVE v2.0</span>
+                <span style="color:var(--text-muted);">Hostname</span><span id="ab-host">-</span>
+                <span style="color:var(--text-muted);">OS</span><span id="ab-os">-</span>
+                <span style="color:var(--text-muted);">Kernel</span><span id="ab-kernel">-</span>
+                <span style="color:var(--text-muted);">Architecture</span><span id="ab-arch">-</span>
+                <span style="color:var(--text-muted);">Python</span><span id="ab-python">-</span>
+                <span style="color:var(--text-muted);">Uptime</span><span id="ab-uptime">-</span>
             </div>
         </div>
     </div>
@@ -156,102 +154,160 @@ function showTab(btn, name) {
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'services') loadServices();
     if (name === 'syslog') loadSyslog();
-    if (name === 'network') loadInterfaces();
+    if (name === 'dns') loadDNS();
+    if (name === 'time') loadTime();
 }
 
-async function saveGeneral() {
-    showToast('Settings saved', 'success');
-}
-async function saveDNS() {
-    showToast('DNS settings applied', 'success');
-}
-async function saveTime() {
-    showToast('Time synced', 'success');
-}
-
-async function loadServices() {
+// ── General ──
+async function loadGeneral() {
     try {
-        const r = await fetch('/api/settings/services');
-        const data = await r.json();
-        const list = document.getElementById('service-list');
-        const svcs = data.services || [];
-        list.innerHTML = svcs.map(s => `
-            <tr>
-                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${s.name}</td>
-                <td><span class="nx-badge ${s.active ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${s.active ? 'Running' : 'Stopped'}</span></td>
-                <td style="color:var(--text-muted);">${s.description || ''}</td>
-                <td>
-                    <div class="nx-flex nx-gap-1">
-                        ${s.active
-                            ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="serviceAction('${s.name}','restart')">Restart</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="serviceAction('${s.name}','stop')">Stop</button>`
-                            : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="serviceAction('${s.name}','start')">Start</button>`}
-                    </div>
-                </td>
-            </tr>
-        `).join('') || '<tr><td colspan="4" class="nx-text-center nx-text-muted">No services found</td></tr>';
+        const r = await fetch('/api/settings/system');
+        const d = await r.json();
+        document.getElementById('set-hostname').value = d.hostname || '';
+        document.getElementById('set-os').textContent = d.os || '-';
+        document.getElementById('set-kernel').textContent = d.kernel || '-';
+        document.getElementById('set-timezone').textContent = d.timezone || '-';
+        // About
+        document.getElementById('ab-host').textContent = d.hostname || '-';
+        document.getElementById('ab-os').textContent = d.os || '-';
+        document.getElementById('ab-kernel').textContent = d.kernel || '-';
+        document.getElementById('ab-arch').textContent = d.arch || '-';
+        document.getElementById('ab-python').textContent = d.python || '-';
+        if (d.uptime) {
+            const days = Math.floor(d.uptime / 86400);
+            const hrs = Math.floor((d.uptime % 86400) / 3600);
+            const mins = Math.floor((d.uptime % 3600) / 60);
+            document.getElementById('ab-uptime').textContent = `${days}d ${hrs}h ${mins}m`;
+        }
     } catch(e) { console.error(e); }
 }
 
-async function serviceAction(name, action) {
+async function saveHostname() {
+    const hostname = document.getElementById('set-hostname').value.trim();
+    if (!hostname) { showToast('Hostname cannot be empty', 'error'); return; }
     try {
-        await fetch(`/api/settings/services/${name}/${action}`, {method:'POST'});
-        showToast(`${name}: ${action} succeeded`, 'success');
-        setTimeout(loadServices, 1000);
+        const r = await fetch('/api/settings/hostname', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'hostname='+encodeURIComponent(hostname)});
+        const d = await r.json();
+        if (d.success) { showToast('Hostname saved: ' + hostname, 'success'); }
+        else { showToast('Failed: ' + (d.stderr || d.error || 'unknown'), 'error'); }
+    } catch(e) { showToast('Error saving hostname', 'error'); }
+}
+
+// ── DNS ──
+async function loadDNS() {
+    try {
+        const r = await fetch('/api/settings/dns');
+        const d = await r.json();
+        document.getElementById('dns-servers').value = (d.servers || []).join(', ');
+        document.getElementById('dns-search').value = d.search || '';
+    } catch(e) { console.error(e); }
+}
+
+async function saveDNS() {
+    const dns = document.getElementById('dns-servers').value;
+    const search = document.getElementById('dns-search').value;
+    try {
+        const r = await fetch('/api/settings/dns', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({dns, search})});
+        const d = await r.json();
+        if (d.success) showToast('DNS updated', 'success');
+        else showToast('Failed: ' + (d.error || 'unknown'), 'error');
     } catch(e) { showToast('Error', 'error'); }
 }
 
-async function checkUpdates() {
-    document.getElementById('updates-content').innerHTML = '<div class="nx-text-muted">Checking for updates...</div>';
+// ── Time ──
+async function loadTime() {
     try {
-        const r = await fetch('/api/settings/updates');
-        const data = await r.json();
-        const updates = data.updates || [];
-        if (updates.length === 0) {
-            document.getElementById('updates-content').innerHTML = '<div style="color:var(--success);">System is up to date.</div>';
-        } else {
-            document.getElementById('updates-content').innerHTML = `
-                <div style="margin-bottom:12px;color:var(--text-secondary);">${updates.length} updates available</div>
-                <div style="max-height:300px;overflow:auto;">
-                    ${updates.map(u => `<div style="padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);font-family:var(--font-mono);">${u}</div>`).join('')}
-                </div>
-                <button class="nx-btn nx-btn-primary nx-mt-4" onclick="applyUpdates()">Apply All Updates</button>`;
-        }
-    } catch(e) { document.getElementById('updates-content').innerHTML = '<div class="nx-text-danger">Failed to check updates</div>'; }
+        const r = await fetch('/api/settings/time');
+        const d = await r.json();
+        document.getElementById('cur-time').textContent = d.time || '-';
+        if (d.timezone) document.getElementById('set-tz').value = d.timezone;
+        document.getElementById('ntp-enable').checked = d.ntp_active;
+    } catch(e) { console.error(e); }
 }
 
-async function applyUpdates() { showToast('Updates applied', 'success'); }
-
-async function loadSyslog() {
+async function saveTime() {
+    const tz = document.getElementById('set-tz').value;
+    const ntp = document.getElementById('ntp-enable').checked ? 'true' : 'false';
     try {
-        const r = await fetch('/api/settings/syslog');
-        const data = await r.json();
-        document.getElementById('syslog-output').textContent = data.lines?.join('\\n') || 'No log entries';
-    } catch(e) { document.getElementById('syslog-output').textContent = 'Failed to load syslog'; }
+        await fetch('/api/settings/time', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: new URLSearchParams({timezone: tz, ntp})});
+        showToast('Time settings saved', 'success');
+        loadTime();
+    } catch(e) { showToast('Error', 'error'); }
 }
 
-async function loadInterfaces() {
+// ── Services ──
+async function loadServices() {
     try {
-        const r = await fetch('/api/network/interfaces');
-        const data = await r.json();
-        const list = document.getElementById('net-interfaces');
-        const ifaces = data.interfaces || [];
-        list.innerHTML = ifaces.map(i => `
+        const r = await fetch('/api/settings/services');
+        const d = await r.json();
+        const list = document.getElementById('svc-list');
+        const svcs = d.services || [];
+        list.innerHTML = svcs.map(s => `
             <tr>
-                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${i.name}</td>
-                <td>${i.ip || 'Not configured'}</td>
-                <td>${i.netmask || '-'}</td>
-                <td>${i.gateway || '-'}</td>
-                <td><span class="nx-badge ${i.up ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${i.up ? 'Up' : 'Down'}</span></td>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);font-weight:500;">${s.name}</td>
+                <td><span class="nx-badge ${s.active ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${s.active ? 'Running' : 'Stopped'}</span></td>
+                <td><span class="nx-badge ${s.enabled ? 'nx-badge-info' : 'nx-badge-neutral'}">${s.enabled ? 'Yes' : 'No'}</span></td>
+                <td style="color:var(--text-muted);font-size:var(--text-xs);">${s.description || ''}</td>
+                <td>
+                    <div style="display:flex;gap:4px;">
+                        ${s.active
+                            ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','restart')">Restart</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','stop')">Stop</button>`
+                            : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="svcAction('${s.name}','start')">Start</button>`}
+                    </div>
+                </td>
             </tr>
         `).join('');
     } catch(e) { console.error(e); }
 }
 
-// Load about info
-fetch('/api/nodes/').then(r=>r.json()).then(d => {
-    if (d.nodes && d.nodes[0]) {
-        document.getElementById('about-uptime').textContent = d.nodes[0].uptime + 's uptime';
-    }
-}).catch(()=>{});
+async function svcAction(name, action) {
+    try {
+        const r = await fetch(`/api/settings/services/${name}/${action}`, {method:'POST'});
+        const d = await r.json();
+        if (d.success) { showToast(`${name}: ${action} OK`, 'success'); setTimeout(loadServices, 500); }
+        else showToast(`Failed: ${d.stderr || 'error'}`, 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Updates ──
+async function checkUpdates() {
+    document.getElementById('updates-body').innerHTML = '<div style="color:var(--text-muted);font-size:var(--text-sm);">Checking for updates...</div>';
+    try {
+        const r = await fetch('/api/settings/updates');
+        const d = await r.json();
+        const updates = d.updates || [];
+        if (updates.length === 0) {
+            document.getElementById('updates-body').innerHTML = '<div style="color:var(--success);font-size:var(--text-sm);">System is up to date.</div>';
+        } else {
+            document.getElementById('updates-body').innerHTML = `
+                <div style="margin-bottom:8px;color:var(--text-secondary);font-size:var(--text-sm);">${updates.length} updates available</div>
+                <div style="max-height:240px;overflow:auto;font-family:var(--font-mono);font-size:11px;">
+                    ${updates.map(u => `<div style="padding:4px 0;border-bottom:1px solid var(--border-subtle);">${u}</div>`).join('')}
+                </div>
+                <button class="nx-btn nx-btn-primary nx-mt-4" onclick="applyUpdates()">Apply All Updates</button>`;
+        }
+    } catch(e) { document.getElementById('updates-body').innerHTML = '<div style="color:var(--danger);">Failed to check updates</div>'; }
+}
+
+async function applyUpdates() {
+    showToast('Applying updates... this may take a while', 'info');
+    try {
+        await fetch('/api/settings/updates/apply', {method:'POST'});
+        showToast('Updates applied', 'success');
+    } catch(e) { showToast('Error applying updates', 'error'); }
+}
+
+// ── Syslog ──
+async function loadSyslog() {
+    const level = document.getElementById('log-level')?.value || 'all';
+    try {
+        const r = await fetch(`/api/settings/syslog?level=${level}&lines=100`);
+        const d = await r.json();
+        document.getElementById('syslog-out').textContent = (d.lines || []).join('\n') || 'No log entries';
+    } catch(e) { document.getElementById('syslog-out').textContent = 'Failed to load syslog'; }
+}
+
+// Load general on page load
+loadGeneral();
 </script>
 {% endblock %}

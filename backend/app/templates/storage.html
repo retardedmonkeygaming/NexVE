@@ -8,115 +8,69 @@
         <div class="nx-page-title">Storage</div>
         <div class="nx-page-subtitle">Manage disks, pools, and storage backends</div>
     </div>
+    <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshAll()">↻ Refresh</button>
 </div>
 
 <div class="nx-tabs">
-    <button class="nx-tab active" onclick="showTab('disks')">Disks</button>
-    <button class="nx-tab" onclick="showTab('zfs')">ZFS</button>
-    <button class="nx-tab" onclick="showTab('lvm')">LVM</button>
-    <button class="nx-tab" onclick="showTab('btrfs')">BTRFS</button>
-    <button class="nx-tab" onclick="showTab('nfs')">NFS</button>
-    <button class="nx-tab" onclick="showTab('cifs')">CIFS/SMB</button>
-    <button class="nx-tab" onclick="showTab('iscsi')">iSCSI</button>
+    <button class="nx-tab active" onclick="showTab(this,'disks')">Disks</button>
+    <button class="nx-tab" onclick="showTab(this,'zfs')">ZFS</button>
+    <button class="nx-tab" onclick="showTab(this,'lvm')">LVM</button>
+    <button class="nx-tab" onclick="showTab(this,'btrfs')">BTRFS</button>
+    <button class="nx-tab" onclick="showTab(this,'nfs')">NFS</button>
+    <button class="nx-tab" onclick="showTab(this,'cifs')">CIFS</button>
+    <button class="nx-tab" onclick="showTab(this,'iscsi')">iSCSI</button>
 </div>
 
-<!-- Disks Tab -->
 <div class="nx-tab-content active" id="tab-disks">
     <div class="nx-card">
-        <div class="nx-card-header">
-            <span class="nx-card-title">Local Disks</span>
-            <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshDisks()">↻ Refresh</button>
-        </div>
+        <div class="nx-card-header"><span class="nx-card-title">Local Disks</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead>
-                    <tr>
-                        <th>Device</th>
-                        <th>Size</th>
-                        <th>Type</th>
-                        <th>Health</th>
-                        <th>Temperature</th>
-                        <th>Model</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="disk-list">
-                    <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">Loading disks...</td></tr>
-                </tbody>
+                <thead><tr><th>Device</th><th>Size</th><th>Type</th><th>FSType</th><th>Mount</th><th>Health</th><th>Temp</th><th>Model</th><th></th></tr></thead>
+                <tbody id="disk-list"><tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
-<!-- ZFS Tab -->
 <div class="nx-tab-content" id="tab-zfs">
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">ZFS Pools</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>Pool</th><th>Size</th><th>Used</th><th>Free</th><th>Health</th><th>Actions</th></tr></thead>
-                <tbody id="zfs-list"><tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
+                <thead><tr><th>Pool</th><th>Size</th><th>Used</th><th>Available</th><th>Capacity</th><th>Health</th></tr></thead>
+                <tbody id="zfs-list"><tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
-<!-- LVM Tab -->
 <div class="nx-tab-content" id="tab-lvm">
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">LVM Volume Groups</span></div>
         <div class="nx-card-body" style="padding:0;">
             <table class="nx-table">
-                <thead><tr><th>VG Name</th><th>Size</th><th>Used</th><th>Free</th><th>LVs</th></tr></thead>
-                <tbody id="lvm-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr></tbody>
+                <thead><tr><th>VG Name</th><th>Size</th><th>Free</th><th>PVs</th><th>LVs</th></tr></thead>
+                <tbody id="lvm-list"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
             </table>
         </div>
     </div>
 </div>
 
-<!-- BTRFS Tab -->
-<div class="nx-tab-content" id="tab-btrfs">
-    <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">BTRFS Filesystems</span></div>
-        <div class="nx-card-body" id="btrfs-body"><div class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</div></div>
-    </div>
-</div>
+<div class="nx-tab-content" id="tab-btrfs"><div class="nx-card"><div class="nx-card-body" id="btrfs-body" style="text-align:center;color:var(--text-muted);padding:24px;">Loading...</div></div></div>
+<div class="nx-tab-content" id="tab-nfs"><div class="nx-card"><div class="nx-card-body" style="padding:0;"><table class="nx-table"><thead><tr><th>Server</th><th>Export</th><th>Mount</th></tr></thead><tbody id="nfs-list"><tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted);">No NFS mounts</td></tr></tbody></table></div></div></div>
+<div class="nx-tab-content" id="tab-cifs"><div class="nx-card"><div class="nx-card-body" style="padding:0;"><table class="nx-table"><thead><tr><th>Server</th><th>Share</th><th>Mount</th></tr></thead><tbody><tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted);">No CIFS mounts</td></tr></tbody></table></div></div></div>
+<div class="nx-tab-content" id="tab-iscsi"><div class="nx-card"><div class="nx-card-body" style="padding:0;"><table class="nx-table"><thead><tr><th>Target</th><th>Portal</th><th>Status</th></tr></thead><tbody id="iscsi-list"><tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted);">No iSCSI sessions</td></tr></tbody></table></div></div></div>
 
-<!-- NFS Tab -->
-<div class="nx-tab-content" id="tab-nfs">
-    <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">NFS Mounts</span></div>
-        <div class="nx-card-body" style="padding:0;">
-            <table class="nx-table">
-                <thead><tr><th>Server</th><th>Export</th><th>Mount Point</th><th>Options</th><th>Actions</th></tr></thead>
-                <tbody id="nfs-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No NFS mounts</td></tr></tbody>
-            </table>
+<!-- SMART Modal -->
+<div class="nx-modal-overlay" id="smart-modal">
+    <div class="nx-modal" style="max-width:600px;">
+        <div class="nx-modal-header">
+            <span class="nx-modal-title" id="smart-title">SMART Details</span>
+            <button class="nx-modal-close" onclick="document.getElementById('smart-modal').classList.remove('open')">✕</button>
         </div>
-    </div>
-</div>
-
-<!-- CIFS Tab -->
-<div class="nx-tab-content" id="tab-cifs">
-    <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">CIFS/SMB Mounts</span></div>
-        <div class="nx-card-body" style="padding:0;">
-            <table class="nx-table">
-                <thead><tr><th>Server</th><th>Share</th><th>Mount Point</th><th>Actions</th></tr></thead>
-                <tbody id="cifs-list"><tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No CIFS mounts</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- iSCSI Tab -->
-<div class="nx-tab-content" id="tab-iscsi">
-    <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">iSCSI Targets</span></div>
-        <div class="nx-card-body" style="padding:0;">
-            <table class="nx-table">
-                <thead><tr><th>Target</th><th>Portal</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="iscsi-list"><tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No iSCSI connections</td></tr></tbody>
-            </table>
+        <div class="nx-modal-body">
+            <pre id="smart-output" style="font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;max-height:400px;overflow:auto;color:var(--text-secondary);">Loading...</pre>
         </div>
     </div>
 </div>
@@ -124,47 +78,108 @@
 
 {% block scripts %}
 <script>
-function showTab(name) {
+function showTab(btn, name) {
     document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
 }
 
-async function refreshDisks() {
+async function loadDisks() {
     try {
         const r = await fetch('/api/storage/disks');
-        const data = await r.json();
+        const d = await r.json();
         const list = document.getElementById('disk-list');
-        const disks = data.disks || [];
+        const disks = d.disks || [];
         if (disks.length === 0) {
-            list.innerHTML = '<tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No disks detected</td></tr>';
-        } else {
-            list.innerHTML = disks.map(d => `
-                <tr>
-                    <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${d.device}</td>
-                    <td>${d.size || '-'}</td>
-                    <td><span class="nx-badge nx-badge-neutral">${d.type || 'Unknown'}</span></td>
-                    <td><span class="nx-badge ${d.health === 'OK' ? 'nx-badge-success' : d.health === 'WARN' ? 'nx-badge-warning' : 'nx-badge-neutral'}"><span class="dot"></span>${d.health || 'Unknown'}</span></td>
-                    <td>${d.temp || '-'}</td>
-                    <td>${d.model || '-'}</td>
-                    <td>
-                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showSMART('${d.device}')">SMART</button>
-                    </td>
-                </tr>
-            `).join('');
+            list.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">No disks detected</td></tr>';
+            return;
         }
+        list.innerHTML = disks.map(d => {
+            const dev = d.name || '';
+            const children = (d.children || []).map(c => `<div style="font-size:10px;color:var(--text-muted);">${c.name} (${c.size || '-'}, ${c.fstype || '-'}, ${c.mountpoint || 'not mounted'})</div>`).join('');
+            return `
+            <tr>
+                <td style="font-family:var(--font-mono);font-weight:500;">/dev/${dev}</td>
+                <td>${d.size || '-'}</td>
+                <td><span class="nx-badge nx-badge-neutral">${d.type || '?'}</span></td>
+                <td>${d.fstype || '-'}</td>
+                <td>${d.mountpoint || '-'}</td>
+                <td id="health-${dev}"><span class="nx-badge nx-badge-neutral">Checking...</span></td>
+                <td id="temp-${dev}">-</td>
+                <td>${d.model || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showSMART('${dev}')">SMART</button></td>
+            </tr>
+            ${children ? `<tr><td colspan="9" style="padding:2px 12px 6px;">${children}</td></tr>` : ''}`;
+        }).join('');
+        // Check SMART for each disk
+        disks.forEach(d => checkSMART(d.name));
     } catch(e) { console.error(e); }
 }
 
-async function showSMART(device) {
+async function checkSMART(dev) {
     try {
-        const r = await fetch(`/api/storage/smart/${encodeURIComponent(device)}`);
-        const data = await r.json();
-        alert(JSON.stringify(data, null, 2));
-    } catch(e) { showToast('SMART data unavailable', 'error'); }
+        const r = await fetch(`/api/storage/disks/${dev}/health`);
+        const d = await r.json();
+        const healthEl = document.getElementById(`health-${dev}`);
+        const tempEl = document.getElementById(`temp-${dev}`);
+        if (d.smart_available === true) {
+            healthEl.innerHTML = '<span class="nx-badge nx-badge-success"><span class="dot"></span>OK</span>';
+        } else if (d.smart_available === false) {
+            healthEl.innerHTML = '<span class="nx-badge nx-badge-warning"><span class="dot"></span>WARN</span>';
+        } else {
+            healthEl.innerHTML = '<span class="nx-badge nx-badge-neutral">N/A</span>';
+        }
+        if (d.temperature) tempEl.textContent = d.temperature + '°C';
+    } catch(e) {
+        const el = document.getElementById(`health-${dev}`);
+        if (el) el.innerHTML = '<span class="nx-badge nx-badge-neutral">N/A</span>';
+    }
 }
 
-refreshDisks();
+async function showSMART(dev) {
+    document.getElementById('smart-modal').classList.add('open');
+    document.getElementById('smart-title').textContent = `SMART Details — /dev/${dev}`;
+    document.getElementById('smart-output').textContent = 'Loading SMART data...';
+    try {
+        const r = await fetch(`/api/storage/disks/${dev}/health`);
+        const d = await r.json();
+        document.getElementById('smart-output').textContent = JSON.stringify(d, null, 2);
+    } catch(e) {
+        document.getElementById('smart-output').textContent = 'Failed to load SMART data.\nMake sure smartmontools is installed:\n  apt install smartmontools';
+    }
+}
+
+async function loadZFS() {
+    try {
+        const r = await fetch('/api/storage/zfs/pools');
+        const d = await r.json();
+        const list = document.getElementById('zfs-list');
+        const pools = d.pools || [];
+        list.innerHTML = pools.map(p => `
+            <tr>
+                <td style="font-weight:500;">${p.name}</td>
+                <td>${p.size}</td><td>${p.used}</td><td>${p.avail}</td>
+                <td>${p.capacity}</td>
+                <td><span class="nx-badge ${p.health === 'ONLINE' ? 'nx-badge-success' : 'nx-badge-danger'}"><span class="dot"></span>${p.health}</span></td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No ZFS pools found</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function loadLVM() {
+    try {
+        const r = await fetch('/api/storage/lvm/vgs');
+        const d = await r.json();
+        const list = document.getElementById('lvm-list');
+        const vgs = d.vgs || [];
+        list.innerHTML = vgs.map(v => `
+            <tr><td style="font-weight:500;">${v.name}</td><td>${v.size}</td><td>${v.free}</td><td>${v.pv_count}</td><td>${v.lv_count}</td></tr>
+        `).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No LVM volume groups</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+function refreshAll() { loadDisks(); loadZFS(); loadLVM(); }
+refreshAll();
 </script>
 {% endblock %}
