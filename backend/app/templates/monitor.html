@@ -17,26 +17,26 @@
 <div class="nx-grid nx-grid-4 nx-mb-6">
     <div class="nx-stat">
         <div class="nx-stat-label">CPU Usage</div>
-        <div class="nx-stat-value" style="color:var(--accent);" id="cpu-value">-</div>
-        <div class="nx-stat-detail" id="cpu-cores">-</div>
+        <div class="nx-stat-value" style="color:var(--accent);" id="cpu-value">--%</div>
+        <div class="nx-stat-detail" id="cpu-cores">Loading...</div>
         <div class="nx-progress nx-mt-2"><div class="nx-progress-bar accent" id="cpu-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Memory</div>
-        <div class="nx-stat-value" style="color:var(--info);" id="mem-value">-</div>
-        <div class="nx-stat-detail" id="mem-detail">-</div>
+        <div class="nx-stat-value" style="color:var(--info);" id="mem-value">--%</div>
+        <div class="nx-stat-detail" id="mem-detail">Loading...</div>
         <div class="nx-progress nx-mt-2"><div class="nx-progress-bar info" id="mem-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
-        <div class="nx-stat-label">Disk I/O</div>
-        <div class="nx-stat-value" style="color:var(--success);" id="disk-value">-</div>
-        <div class="nx-stat-detail" id="disk-detail">-</div>
+        <div class="nx-stat-label">Disk</div>
+        <div class="nx-stat-value" style="color:var(--success);" id="disk-value">--%</div>
+        <div class="nx-stat-detail" id="disk-detail">Loading...</div>
         <div class="nx-progress nx-mt-2"><div class="nx-progress-bar success" id="disk-bar" style="width:0%"></div></div>
     </div>
     <div class="nx-stat">
-        <div class="nx-stat-label">Network</div>
-        <div class="nx-stat-value" style="color:var(--warning);" id="net-value">-</div>
-        <div class="nx-stat-detail" id="net-detail">-</div>
+        <div class="nx-stat-label">Load Average</div>
+        <div class="nx-stat-value" style="color:var(--warning);" id="load-value">-</div>
+        <div class="nx-stat-detail" id="net-detail">Loading...</div>
         <div class="nx-progress nx-mt-2"><div class="nx-progress-bar warning" id="net-bar" style="width:0%"></div></div>
     </div>
 </div>
@@ -59,15 +59,15 @@
 
 <div class="nx-grid nx-grid-2 nx-mb-6">
     <div class="nx-card">
-        <div class="nx-card-header"><span class="nx-card-title">Disk I/O (24h)</span></div>
-        <div class="nx-card-body" style="height:200px;">
-            <canvas id="disk-chart"></canvas>
-        </div>
-    </div>
-    <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">Network (24h)</span></div>
         <div class="nx-card-body" style="height:200px;">
             <canvas id="net-chart"></canvas>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Load Average (24h)</span></div>
+        <div class="nx-card-body" style="height:200px;">
+            <canvas id="load-chart"></canvas>
         </div>
     </div>
 </div>
@@ -87,11 +87,10 @@
                     <th>CPU %</th>
                     <th>Memory %</th>
                     <th>Status</th>
-                    <th>User</th>
                 </tr>
             </thead>
             <tbody id="proc-list">
-                <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">Loading...</td></tr>
+                <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:24px;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -100,31 +99,38 @@
 
 {% block scripts %}
 <script>
-let cpuChart, memChart, diskChart, netChart;
-const chartDefaults = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-        x: { display: false },
-        y: { 
-            beginAtZero: true, 
-            max: 100,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: '#606070', font: { size: 10 } }
-        }
-    },
-    elements: { point: { radius: 0 }, line: { tension: 0.4, borderWidth: 2 } }
-};
+let cpuChart, memChart, netChart, loadChart;
+
+// Store historical data
+let cpuHistory = [];
+let memHistory = [];
+let netRxHistory = [];
+let netTxHistory = [];
+let loadHistory = [];
+const MAX_HISTORY = 60; // 5 minutes at 5s intervals
 
 function createCharts() {
-    const labels = Array.from({length: 24}, (_, i) => `${i}:00`);
-    
+    const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { display: false },
+            y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: { color: '#606070', font: { size: 10 } }
+            }
+        },
+        elements: { point: { radius: 0 }, line: { tension: 0.4, borderWidth: 2 } },
+        animation: false
+    };
+
     cpuChart = new Chart(document.getElementById('cpu-chart'), {
         type: 'line',
         data: {
-            labels,
-            datasets: [{ data: new Array(24).fill(0), borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)', fill: true }]
+            labels: Array(MAX_HISTORY).fill(''),
+            datasets: [{ data: cpuHistory, borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)', fill: true }]
         },
         options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
     });
@@ -132,63 +138,99 @@ function createCharts() {
     memChart = new Chart(document.getElementById('mem-chart'), {
         type: 'line',
         data: {
-            labels,
-            datasets: [{ data: new Array(24).fill(0), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true }]
+            labels: Array(MAX_HISTORY).fill(''),
+            datasets: [{ data: memHistory, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true }]
         },
         options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100 } } }
-    });
-
-    diskChart = new Chart(document.getElementById('disk-chart'), {
-        type: 'line',
-        data: {
-            labels,
-            datasets: [{ data: new Array(24).fill(0), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true }]
-        },
-        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: undefined } } }
     });
 
     netChart = new Chart(document.getElementById('net-chart'), {
         type: 'line',
         data: {
-            labels,
+            labels: Array(MAX_HISTORY).fill(''),
             datasets: [
-                { data: new Array(24).fill(0), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, label: 'RX' },
-                { data: new Array(24).fill(0), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, label: 'TX' }
+                { data: netRxHistory, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, label: 'RX' },
+                { data: netTxHistory, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, label: 'TX' }
             ]
         },
         options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#a0a0b0', font: { size: 10 } } } } }
     });
+
+    loadChart = new Chart(document.getElementById('load-chart'), {
+        type: 'line',
+        data: {
+            labels: Array(MAX_HISTORY).fill(''),
+            datasets: [{ data: loadHistory, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true }]
+        },
+        options: chartDefaults
+    });
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
 }
 
 async function loadMetrics() {
     try {
         const r = await fetch('/api/monitor/current');
         const d = await r.json();
-        
-        // Update stats
-        document.getElementById('cpu-value').textContent = (d.cpu || 0).toFixed(1) + '%';
-        document.getElementById('cpu-bar').style.width = (d.cpu || 0) + '%';
-        document.getElementById('cpu-cores').textContent = (d.cpu_cores || 0) + ' cores';
-        
-        document.getElementById('mem-value').textContent = (d.memory_percent || 0).toFixed(1) + '%';
-        document.getElementById('mem-bar').style.width = (d.memory_percent || 0) + '%';
-        document.getElementById('mem-detail').textContent = `${(d.memory_used || 0)} / ${(d.memory_total || 0)}`;
-        
-        document.getElementById('disk-value').textContent = (d.disk_usage || 0).toFixed(1) + '%';
-        document.getElementById('disk-bar').style.width = (d.disk_usage || 0) + '%';
-        document.getElementById('disk-detail').textContent = `${d.disk_read || '0 B/s'} read`;
-        
-        document.getElementById('net-value').textContent = d.net_rx || '0 B/s';
-        document.getElementById('net-detail').textContent = `↑ ${d.net_tx || '0 B/s'}`;
-        
-        // Update charts with new data point
-        if (cpuChart && d.cpu_history) {
-            cpuChart.data.datasets[0].data = d.cpu_history;
+
+        // CPU
+        const cpuPct = d.cpu_percent || 0;
+        document.getElementById('cpu-value').textContent = cpuPct.toFixed(1) + '%';
+        document.getElementById('cpu-bar').style.width = cpuPct + '%';
+        document.getElementById('cpu-cores').textContent = (d.cpu_count || 0) + ' cores, ' + (d.cpu_freq_current || 0) + ' MHz';
+
+        // Memory
+        const memPct = d.memory_percent || 0;
+        document.getElementById('mem-value').textContent = memPct.toFixed(1) + '%';
+        document.getElementById('mem-bar').style.width = memPct + '%';
+        document.getElementById('mem-detail').textContent = ((d.memory_used_mb || 0) / 1024).toFixed(1) + 'G / ' + ((d.memory_total_mb || 0) / 1024).toFixed(1) + 'G';
+
+        // Disk
+        const diskPct = d.disk_percent || 0;
+        document.getElementById('disk-value').textContent = diskPct.toFixed(1) + '%';
+        document.getElementById('disk-bar').style.width = diskPct + '%';
+        document.getElementById('disk-detail').textContent = (d.disk_used_gb || 0) + 'G / ' + (d.disk_total_gb || 0) + 'G';
+
+        // Load & Network
+        document.getElementById('load-value').textContent = (d.load_1 || 0).toFixed(2) + ' / ' + (d.load_5 || 0).toFixed(2) + ' / ' + (d.load_15 || 0).toFixed(2);
+        document.getElementById('net-detail').textContent = '↓ ' + formatBytes(d.net_recv_rate || 0) + '  ↑ ' + formatBytes(d.net_sent_rate || 0);
+        document.getElementById('net-bar').style.width = Math.min(100, ((d.net_recv_rate || 0) + (d.net_sent_rate || 0)) / 1048576 * 100) + '%';
+
+        // Push to history
+        cpuHistory.push(cpuPct);
+        memHistory.push(memPct);
+        netRxHistory.push((d.net_recv_rate || 0) / 1024);
+        netTxHistory.push((d.net_sent_rate || 0) / 1024);
+        loadHistory.push(d.load_1 || 0);
+
+        if (cpuHistory.length > MAX_HISTORY) cpuHistory.shift();
+        if (memHistory.length > MAX_HISTORY) memHistory.shift();
+        if (netRxHistory.length > MAX_HISTORY) netRxHistory.shift();
+        if (netTxHistory.length > MAX_HISTORY) netTxHistory.shift();
+        if (loadHistory.length > MAX_HISTORY) loadHistory.shift();
+
+        // Update charts
+        if (cpuChart) {
+            cpuChart.data.datasets[0].data = [...cpuHistory];
             cpuChart.update('none');
         }
-        if (memChart && d.memory_history) {
-            memChart.data.datasets[0].data = d.memory_history;
+        if (memChart) {
+            memChart.data.datasets[0].data = [...memHistory];
             memChart.update('none');
+        }
+        if (netChart) {
+            netChart.data.datasets[0].data = [...netRxHistory];
+            netChart.data.datasets[1].data = [...netTxHistory];
+            netChart.update('none');
+        }
+        if (loadChart) {
+            loadChart.data.datasets[0].data = [...loadHistory];
+            loadChart.update('none');
         }
     } catch(e) { console.error('loadMetrics:', e); }
 }
@@ -205,9 +247,8 @@ async function loadProcesses() {
                 <td><span class="nx-badge ${p.cpu > 50 ? 'nx-badge-danger' : p.cpu > 20 ? 'nx-badge-warning' : 'nx-badge-success'}">${p.cpu.toFixed(1)}%</span></td>
                 <td><span class="nx-badge ${p.memory > 50 ? 'nx-badge-danger' : p.memory > 20 ? 'nx-badge-warning' : 'nx-badge-info'}">${p.memory.toFixed(1)}%</span></td>
                 <td><span class="nx-badge nx-badge-neutral">${p.status}</span></td>
-                <td style="color:var(--text-muted);">${p.user}</td>
             </tr>
-        `).join('') || '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">No processes</td></tr>';
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:24px;">No processes</td></tr>';
     } catch(e) { console.error(e); }
 }
 

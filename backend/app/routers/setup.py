@@ -13,7 +13,10 @@ SETUP_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NexVE — Initial Setup</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="stylesheet" href="/static/css/nexve.css">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#00d4aa">
 </head>
 <body class="nx-login">
 <div class="nx-wizard" style="max-width:640px;">
@@ -29,6 +32,11 @@ SETUP_HTML = """<!DOCTYPE html>
     <div class="nx-wizard-body">
         <!-- Step 1: Admin Account -->
         <div class="wizard-page" id="page-1">
+            <div style="text-align:center;margin-bottom:24px;">
+                <img src="/static/img/logo.svg" alt="NexVE" style="width:64px;height:64px;margin-bottom:12px;">
+                <h1 style="font-size:var(--text-2xl);font-weight:700;letter-spacing:-0.02em;">NexVE v3.0</h1>
+                <p class="nx-text-muted" style="font-size:var(--text-sm);">Hypervisor Management Platform</p>
+            </div>
             <h2 style="font-size:var(--text-xl);font-weight:700;margin-bottom:4px;">Create Admin Account</h2>
             <p class="nx-text-muted" style="font-size:var(--text-sm);margin-bottom:24px;">This will be the administrator for your NexVE system.</p>
             <div class="nx-flex nx-flex-col nx-gap-4">
@@ -59,7 +67,7 @@ SETUP_HTML = """<!DOCTYPE html>
                 <div class="nx-input-group">
                     <label class="nx-label">Hostname</label>
                     <input type="text" name="hostname" class="nx-input" placeholder="nexve" value="nexve">
-                    <span class="nx-hint">The server's network name. Visible in the sidebar and system info.</span>
+                    <span class="nx-hint">The server's network name.</span>
                 </div>
                 <div class="nx-input-group">
                     <label class="nx-label">Timezone</label>
@@ -79,12 +87,6 @@ SETUP_HTML = """<!DOCTYPE html>
                         <option value="Australia/Sydney">Sydney</option>
                     </select>
                 </div>
-                <div class="nx-input-group">
-                    <label class="nx-label">Language</label>
-                    <select name="language" class="nx-select">
-                        <option value="en">English</option>
-                    </select>
-                </div>
             </div>
         </div>
 
@@ -95,16 +97,12 @@ SETUP_HTML = """<!DOCTYPE html>
             <div class="nx-flex nx-flex-col nx-gap-4">
                 <div class="nx-input-group">
                     <label class="nx-label">IP Address</label>
-                    <input type="text" name="ip_address" class="nx-input" placeholder="e.g. 192.168.1.100" id="ip-input">
+                    <input type="text" name="ip_address" class="nx-input" placeholder="e.g. 192.168.1.100">
                     <span class="nx-hint">Leave blank to use DHCP.</span>
                 </div>
                 <div class="nx-input-group">
-                    <label class="nx-label">Netmask</label>
-                    <input type="text" name="netmask" class="nx-input" placeholder="e.g. 255.255.255.0" value="255.255.255.0">
-                </div>
-                <div class="nx-input-group">
                     <label class="nx-label">Gateway</label>
-                    <input type="text" name="gateway" class="nx-input" placeholder="e.g. 192.168.1.1" id="gw-input">
+                    <input type="text" name="gateway" class="nx-input" placeholder="e.g. 192.168.1.1">
                 </div>
                 <div class="nx-input-group">
                     <label class="nx-label">DNS Servers</label>
@@ -158,51 +156,34 @@ function showStep(n) {
 
 function buildSummary() {
     const get = (name) => document.querySelector(`[name="${name}"]`)?.value || '-';
-    const html = `
+    document.getElementById('summary').innerHTML = `
         <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:var(--text-sm);">
             <span class="nx-text-muted">Admin</span><span>${get('username')} (${get('email')})</span>
             <span class="nx-text-muted">Hostname</span><span>${get('hostname') || 'nexve'}</span>
             <span class="nx-text-muted">Timezone</span><span>${get('timezone')}</span>
             <span class="nx-text-muted">IP</span><span>${get('ip_address') || 'DHCP'}</span>
-            <span class="nx-text-muted">Gateway</span><span>${get('gateway') || '-'}</span>
             <span class="nx-text-muted">DNS</span><span>${get('dns') || '-'}</span>
-        </div>
-    `;
-    document.getElementById('summary').innerHTML = html;
+        </div>`;
 }
 
 function nextStep() {
     if (currentStep === 1) {
         const pw = document.querySelector('[name="password"]').value;
         const pw2 = document.querySelector('[name="password_confirm"]').value;
-        if (pw !== pw2) {
-            showToast('Passwords do not match', 'error');
-            return;
-        }
-        if (pw.length < 8) {
-            showToast('Password must be at least 8 characters', 'error');
-            return;
-        }
+        if (pw !== pw2) { showToast('Passwords do not match', 'error'); return; }
+        if (pw.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
     }
-
-    if (currentStep < totalSteps) {
-        currentStep++;
-        showStep(currentStep);
-    } else {
-        submitSetup();
-    }
+    if (currentStep < totalSteps) { currentStep++; showStep(currentStep); }
+    else submitSetup();
 }
 
-function prevStep() {
-    if (currentStep > 1) { currentStep--; showStep(currentStep); }
-}
+function prevStep() { if (currentStep > 1) { currentStep--; showStep(currentStep); } }
 
 async function submitSetup() {
     const btn = document.getElementById('btn-next');
     btn.disabled = true;
     btn.textContent = 'Initializing...';
 
-    const form = document.querySelector('.wizard-page:not(.nx-hidden)');
     const formData = new FormData();
     formData.append('username', document.querySelector('[name="username"]').value);
     formData.append('email', document.querySelector('[name="email"]').value);
@@ -243,10 +224,10 @@ showStep(1);
 async def setup_page(request: Request):
     db = SessionLocal()
     try:
-        if db.query(User).count() > 0:
-            return RedirectResponse(url="/", status_code=302)
+        user_count = db.query(User).count()
     finally:
         db.close()
+    # Always allow access to setup page - it checks user count internally
     return SETUP_HTML
 
 
@@ -270,8 +251,11 @@ async def complete_setup(
 
     db = SessionLocal()
     try:
-        if db.query(User).count() > 0:
-            return RedirectResponse(url="/", status_code=302)
+        # Delete existing users if re-running setup
+        existing_count = db.query(User).count()
+        if existing_count > 0:
+            db.query(User).delete()
+            db.commit()
 
         user = User(username=username, email=email, role="admin")
         user.set_password(password)
@@ -282,11 +266,9 @@ async def complete_setup(
 
     # Apply server settings
     try:
-        # Set hostname
         if hostname and hostname != "nexve":
             subprocess.run(["hostnamectl", "set-hostname", hostname],
                          capture_output=True, timeout=10)
-            # Update /etc/hosts
             hosts = "/etc/hosts"
             try:
                 with open(hosts) as f:
@@ -302,12 +284,10 @@ async def complete_setup(
             except Exception:
                 pass
 
-        # Set timezone
         if timezone and timezone != "UTC":
             subprocess.run(["timedatectl", "set-timezone", timezone],
                          capture_output=True, timeout=10)
 
-        # Set DNS
         if dns:
             dns_servers = [s.strip() for s in dns.split(",") if s.strip()]
             if dns_servers:
@@ -317,7 +297,7 @@ async def complete_setup(
                 with open("/etc/resolv.conf", "w") as f:
                     f.write(resolv)
     except Exception:
-        pass  # Non-critical — don't fail setup if system config fails
+        pass
 
     return HTMLResponse(
         '<div style="color:var(--success);">Account created! Redirecting...</div>'
