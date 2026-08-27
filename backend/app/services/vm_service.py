@@ -604,6 +604,237 @@ class VMService:
         db.commit()
         return {"success": True}
 
+        # -- Phase 1: Hot-plug Disk --
+
+    def hotplug_disk(self, db, vm_id: int, size_gb: int, interface: str = "virtio", backend: str = "local") -> dict:
+        """Add a disk to a running VM while it's live."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if self._get_vm_status(vm.name) != "running":
+            return {"success": False, "error": "VM must be running for hot-plug"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        existing = json.loads(vm.extra_disks or "[]")
+        idx = len(existing) + 1
+        dev_letter = chr(ord("b") + idx)
+        disk_path = f"/var/lib/libvirt/images/{vm.name}-disk{idx}.qcow2"
+        try:
+            r = subprocess.run(f"qemu-img create -f qcow2 {disk_path} {size_gb}G", shell=True, capture_output=True, text=True)
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr.strip()}
+            dom = conn.lookupByName(vm.name)
+            device_xml = f"""<disk type='file' device='disk'><driver name='qemu' type='qcow2'/><source file='{disk_path}'/><target dev='vd{dev_letter}' bus='{interface}'/></disk>"""
+            dom.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            existing.append({"index": idx, "size_gb": size_gb, "interface": interface, "backend": backend, "path": disk_path})
+            vm.extra_disks = json.dumps(existing)
+            db.commit()
+            return {"success": True, "disk": {"index": idx, "device": f"vd{dev_letter}", "size_gb": size_gb}}
+        except libvirt.libvirtError as e:
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
+            return {"success": False, "error": str(e)}
+
+    def detach_disk(self, db, vm_id: int, disk_index: int) -> dict:
+        """Remove a hot-plugged disk from a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        existing = json.loads(vm.extra_disks or "[]")
+        disk = next((d for d in existing if d["index"] == disk_index), None)
+        if not disk:
+            return {"success": False, "error": f"Disk index {disk_index} not found"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            dev_letter = chr(ord("b") + disk_index)
+            device_xml = f"""<disk type='file' device='disk'><driver name='qemu' type='qcow2'/><source file='{disk["path"]}'/><target dev='vd{dev_letter}' bus='{disk["interface"]}'/></disk>"""
+            flags = libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG if self._get_vm_status(vm.name) == "running" else libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            dom.detachDeviceFlags(device_xml, flags)
+            existing = [d for d in existing if d["index"] != disk_index]
+            vm.extra_disks = json.dumps(existing)
+            db.commit()
+            if os.path.exists(disk.get("path", "")):
+                os.remove(disk["path"])
+            return {"success": True}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # -- Phase 1: Hot-plug NIC --
+
+    def hotplug_nic(self, db, vm_id: int, bridge: str = "vmbr0", model: str = "virtio") -> dict:
+        """Add a NIC to a running VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if self._get_vm_status(vm.name) != "running":
+            return {"success": False, "error": "VM must be running for hot-plug"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        existing = json.loads(vm.extra_nics or "[]")
+        idx = len(existing) + 1
+        mac = self._generate_mac()
+        try:
+            dom = conn.lookupByName(vm.name)
+            nic_xml = f"""<interface type='bridge'><source bridge='{bridge}'/><mac address='{mac}'/><model type='{model}'/></interface>"""
+            dom.attachDeviceFlags(nic_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            existing.append({"index": idx, "bridge": bridge, "model": model, "mac": mac})
+            vm.extra_nics = json.dumps(existing)
+            db.commit()
+            return {"success": True, "nic": {"index": idx, "bridge": bridge, "mac": mac}}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    def detach_nic(self, db, vm_id: int, nic_index: int) -> dict:
+        """Remove a NIC from a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        existing = json.loads(vm.extra_nics or "[]")
+        nic = next((n for n in existing if n["index"] == nic_index), None)
+        if not nic:
+            return {"success": False, "error": f"NIC index {nic_index} not found"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            nic_xml = f"""<interface type='bridge'><source bridge='{nic["bridge"]}'/><mac address='{nic["mac"]}'/><model type='{nic["model"]}'/></interface>"""
+            flags = libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG if self._get_vm_status(vm.name) == "running" else libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            dom.detachDeviceFlags(nic_xml, flags)
+            existing = [n for n in existing if n["index"] != nic_index]
+            vm.extra_nics = json.dumps(existing)
+            db.commit()
+            return {"success": True}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # -- Phase 1: Deploy from Template --
+
+    def deploy_from_template(self, db, template_id: int, new_name: str) -> dict:
+        """Deploy a new VM from a template."""
+        template = db.query(VM).filter(VM.id == template_id).first()
+        if not template:
+            return {"success": False, "error": "Template not found"}
+        if not template.is_template:
+            return {"success": False, "error": "VM is not a template"}
+        if db.query(VM).filter(VM.name == new_name).first():
+            return {"success": False, "error": f"VM '{new_name}' already exists"}
+        mac = self._generate_mac()
+        new_vm = VM(name=new_name, vcpu=template.vcpu, cpu_type=template.cpu_type, memory_mb=template.memory_mb,
+                     disk_gb=template.disk_gb, disk_interface=template.disk_interface, os_type=template.os_type,
+                     machine_type=template.machine_type, bios_type=template.bios_type, boot_order=template.boot_order,
+                     mac_address=mac, serial_console=template.serial_console, agent_enabled=template.agent_enabled,
+                     balloon=template.balloon, tpm_enabled=template.tpm_enabled, secure_boot=template.secure_boot,
+                     scsi_hw=template.scsi_hw, numa=template.numa, notes=f"From template: {template.name}")
+        db.add(new_vm)
+        db.commit()
+        db.refresh(new_vm)
+        src_disk = f"/var/lib/libvirt/images/{template.name}.qcow2"
+        dst_disk = f"/var/lib/libvirt/images/{new_name}.qcow2"
+        if os.path.exists(src_disk):
+            subprocess.run(f"qemu-img create -f qcow2 -b {src_disk} -F qcow2 {dst_disk}", shell=True, capture_output=True)
+        self._create_libvirt_vm(new_vm, {"vcpu": new_vm.vcpu, "memory_mb": new_vm.memory_mb})
+        return {"success": True, "vm": {"id": new_vm.id, "name": new_vm.name}}
+
+    # -- Phase 1: Cloud-init --
+
+    def apply_cloud_init(self, db, vm_id: int) -> dict:
+        """Generate and attach cloud-init ISO."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if not vm.cloud_init:
+            return {"success": False, "error": "Cloud-init not enabled"}
+        ci_iso = f"/var/lib/libvirt/images/{vm.name}-cloudinit.iso"
+        ci_user = vm.cloud_init_user or "root"
+        user_data = f"#cloud-config\nusers:\n  - name: {ci_user}\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    shell: /bin/bash\n"
+        if vm.cloud_init_sshkey:
+            user_data += f"ssh_authorized_keys:\n  - {vm.cloud_init_sshkey}\n"
+        if vm.cloud_init_ip:
+            user_data += f"network:\n  version: 2\n  ethernets:\n    ens3:\n      addresses:\n        - {vm.cloud_init_ip}\n      gateway4: {vm.cloud_init_gateway or ''}\n      nameservers:\n        addresses: [{vm.cloud_init_dns or '8.8.8.8'}]\n"
+        meta_data = f"instance-id: {vm.name}\nlocal-hostname: {vm.name}\n"
+        try:
+            ci_tmp = f"/tmp/nexve-ci-{vm.name}"
+            os.makedirs(ci_tmp, exist_ok=True)
+            with open(f"{ci_tmp}/user-data", "w") as f:
+                f.write(user_data.replace("\n", "\n"))
+            with open(f"{ci_tmp}/meta-data", "w") as f:
+                f.write(meta_data.replace("\n", "\n"))
+            r = subprocess.run(f"genisoimage -output {ci_iso} -volid cidata -joliet -rock {ci_tmp}/user-data {ci_tmp}/meta-data", shell=True, capture_output=True, text=True)
+            if r.returncode != 0:
+                return {"success": False, "error": f"genisoimage failed: {r.stderr}"}
+            return {"success": True, "iso": ci_iso}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # -- Phase 1: Guest Agent --
+
+    def guest_agent_command(self, db, vm_id: int, command: str) -> dict:
+        """Send a command to the QEMU Guest Agent."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if not vm.agent_enabled:
+            return {"success": False, "error": "Guest agent not enabled"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            result = dom.agentCommand(command, 0, 0)
+            return {"success": True, "result": result}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    def guest_agent_info(self, db, vm_id: int) -> dict:
+        """Get guest agent info (network, OS)."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if not vm.agent_enabled:
+            return {"success": False, "error": "Guest agent not enabled"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        info = {}
+        try:
+            dom = conn.lookupByName(vm.name)
+            for cmd in ["guest-info", "guest-network-get-interfaces", "guest-get-osinfo"]:
+                try:
+                    result = dom.agentCommand(cmd, 0, 0)
+                    if result:
+                        info[cmd] = json.loads(result) if isinstance(result, str) else result
+                except Exception:
+                    pass
+            return {"success": True, "info": info}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    def guest_agent_fstrim(self, db, vm_id: int) -> dict:
+        return self.guest_agent_command(db, vm_id, "guest-fstrim")
+
+    def guest_agent_freeze(self, db, vm_id: int) -> dict:
+        return self.guest_agent_command(db, vm_id, "guest-fsfreeze-freeze")
+
+    def guest_agent_thaw(self, db, vm_id: int) -> dict:
+        return self.guest_agent_command(db, vm_id, "guest-fsfreeze-thaw")
+
+    def convert_to_template(self, db, vm_id: int) -> dict:
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if self._get_vm_status(vm.name) == "running":
+            return {"success": False, "error": "VM must be stopped before converting to template"}
+        vm.is_template = True
+        db.commit()
+        return {"success": True}
+
+
     # ── Internal helpers ──
 
     def _get_vm_status(self, name: str) -> str:

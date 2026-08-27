@@ -14,7 +14,7 @@ class VM(Base):
     memory_mb = Column(Integer, default=2048)
     disk_gb = Column(Integer, default=50)
     disk_interface = Column(String, default="virtio")  # virtio, scsi, ide, sata
-    os_type = Column(String, default="linux")
+    os_type = Column(String, default="linux")  # linux, windows, other
     machine_type = Column(String, default="q35")  # q35, i440fx
     bios_type = Column(String, default="seabios")  # seabios, ovmf (UEFI)
     boot_order = Column(String, default="c")  # c=cdrom, d=disk, n=network
@@ -30,6 +30,29 @@ class VM(Base):
     linked_from = Column(Integer, nullable=True)  # parent VM id for linked clones
     created_at = Column(DateTime, server_default=func.now())
     last_started = Column(DateTime, nullable=True)
+
+    # Phase 1: New fields
+    tpm_enabled = Column(Boolean, default=False)  # TPM 2.0 device
+    tpm_version = Column(String, default="v2.0")  # v1.2, v2.0
+    secure_boot = Column(Boolean, default=False)  # UEFI Secure Boot
+    uefi_disk = Column(String, nullable=True)  # NVRAM file path for OVMF
+    scsi_hw = Column(String, default="virtio-scsi-single")  # SCSI controller type
+    cpu_sockets = Column(Integer, default=1)  # Number of CPU sockets
+    cpu_cores = Column(Integer, nullable=True)  # Cores per socket (null = use vcpu)
+    cpu_threads = Column(Integer, default=1)  # Threads per core
+    numa = Column(Boolean, default=False)  # NUMA enabled
+    hugepages = Column(String, default="none")  # none, 2, 1024
+    virtio_iso = Column(String, nullable=True)  # VirtIO driver ISO path for Windows
+    cloud_init = Column(Boolean, default=False)  # Cloud-init enabled
+    cloud_init_user = Column(String, nullable=True)  # cloud-init user
+    cloud_init_sshkey = Column(Text, nullable=True)  # cloud-init SSH public key
+    cloud_init_ip = Column(String, nullable=True)  # cloud-init static IP
+    cloud_init_gateway = Column(String, nullable=True)  # cloud-init gateway
+    cloud_init_dns = Column(String, nullable=True)  # cloud-init DNS
+    extra_disks = Column(Text, nullable=True)  # JSON: [{"index":1,"size_gb":20,"interface":"virtio","backend":"local"},...]
+    extra_nics = Column(Text, nullable=True)  # JSON: [{"index":1,"bridge":"vmbr0","model":"virtio","mac":"..."},...]
+    passthrough_pci = Column(Text, nullable=True)  # JSON: ["0000:01:00.0",...]
+    passthrough_usb = Column(Text, nullable=True)  # JSON: [{"vendor":"10de","product":"1234"},...]
 
 
 class Container(Base):
@@ -85,4 +108,3 @@ class ApiToken(Base):
     last_used = Column(DateTime, nullable=True)
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
-

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -19,3 +19,49 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def migrate_database():
+    """Auto-migrate: add missing columns to existing tables."""
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+
+    # Define new columns per table: {table_name: [(col_name, col_def_sql), ...]}
+    migrations = {
+        "vms": [
+            ("tpm_enabled", "BOOLEAN DEFAULT 0"),
+            ("tpm_version", "VARCHAR DEFAULT 'v2.0'"),
+            ("secure_boot", "BOOLEAN DEFAULT 0"),
+            ("uefi_disk", "VARCHAR"),
+            ("scsi_hw", "VARCHAR DEFAULT 'virtio-scsi-single'"),
+            ("cpu_sockets", "INTEGER DEFAULT 1"),
+            ("cpu_cores", "INTEGER"),
+            ("cpu_threads", "INTEGER DEFAULT 1"),
+            ("numa", "BOOLEAN DEFAULT 0"),
+            ("hugepages", "VARCHAR DEFAULT 'none'"),
+            ("virtio_iso", "VARCHAR"),
+            ("cloud_init", "BOOLEAN DEFAULT 0"),
+            ("cloud_init_user", "VARCHAR"),
+            ("cloud_init_sshkey", "TEXT"),
+            ("cloud_init_ip", "VARCHAR"),
+            ("cloud_init_gateway", "VARCHAR"),
+            ("cloud_init_dns", "VARCHAR"),
+            ("extra_disks", "TEXT"),
+            ("extra_nics", "TEXT"),
+            ("passthrough_pci", "TEXT"),
+            ("passthrough_usb", "TEXT"),
+        ],
+    }
+
+    with engine.connect() as conn:
+        for table_name, columns in migrations.items():
+            if table_name not in existing_tables:
+                continue
+            existing_cols = {col["name"] for col in inspector.get_columns(table_name)}
+            for col_name, col_def in columns:
+                if col_name not in existing_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+                        conn.commit()
+                    except Exception:
+                        pass  # Column may already exist in concurrent access

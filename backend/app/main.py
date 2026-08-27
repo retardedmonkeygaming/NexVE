@@ -43,6 +43,13 @@ from .routers import (
 # Create all tables
 Base.metadata.create_all(bind=engine)
 
+# Auto-migrate: add new columns to existing tables
+try:
+    from .database import migrate_database
+    migrate_database()
+except Exception:
+    pass
+
 app = FastAPI(title="NexVE", version="3.0.0")
 
 # Mount static files

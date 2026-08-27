@@ -302,3 +302,72 @@ async def complete_setup(
     return HTMLResponse(
         '<div style="color:var(--success);">Account created! Redirecting...</div>'
     )
+
+@router.get("/reset")
+async def reset_page(request: Request):
+    """Show reset confirmation page."""
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexVE - Reset Setup</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="stylesheet" href="/static/css/nexve.css">
+</head><body class="nx-login">
+<div class="nx-wizard" style="max-width:540px;">
+    <div style="text-align:center;margin-bottom:24px;">
+        <img src="/static/img/logo.svg" alt="NexVE" style="width:64px;height:64px;margin-bottom:12px;">
+        <h1 style="font-size:var(--text-2xl);font-weight:700;">Reset NexVE Setup</h1>
+        <p class="nx-text-muted" style="font-size:var(--text-sm);margin-top:8px;">This will delete all users and require re-running the initial setup wizard.</p>
+    </div>
+    <div style="background:var(--bg-elevated);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-lg);padding:16px;margin-bottom:20px;">
+        <p style="color:var(--danger);font-size:var(--text-sm);font-weight:600;margin-bottom:8px;">Warning:</p>
+        <ul style="color:var(--text-secondary);font-size:var(--text-sm);list-style:disc;padding-left:20px;">
+            <li>All admin accounts will be deleted</li>
+            <li>2FA settings will be removed</li>
+            <li>API tokens will be invalidated</li>
+            <li>VMs, containers, and storage are NOT affected</li>
+        </ul>
+    </div>
+    <div id="reset-error"></div>
+    <div id="reset-success" class="nx-hidden">
+        <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--success);padding:12px;border-radius:var(--radius-lg);font-size:var(--text-sm);margin-bottom:16px;">
+            Reset complete! Redirecting to setup wizard...
+        </div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;">
+        <a href="/settings" class="nx-btn nx-btn-secondary">Cancel</a>
+        <button class="nx-btn" style="background:var(--danger);color:white;" onclick="doReset()">Reset Everything</button>
+    </div>
+</div>
+<script>
+async function doReset() {
+    if (!confirm('Are you sure? This cannot be undone.')) return;
+    try {
+        const r = await fetch('/setup/reset', {method: 'POST'});
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('reset-success').classList.remove('nx-hidden');
+            setTimeout(() => window.location.href = '/setup/', 2000);
+        } else {
+            document.getElementById('reset-error').innerHTML = '<div style="color:var(--danger);padding:8px;">' + (data.error || 'Reset failed') + '</div>';
+        }
+    } catch(e) {
+        document.getElementById('reset-error').innerHTML = '<div style="color:var(--danger);padding:8px;">Network error</div>';
+    }
+}
+</script>
+</body></html>""")
+
+
+@router.post("/reset")
+async def reset_setup(request: Request):
+    """Reset all users and re-run setup."""
+    db = SessionLocal()
+    try:
+        from ..models.user import User
+        from ..models.vm import VM, Container
+        db.query(User).delete()
+        db.commit()
+    finally:
+        db.close()
+    return JSONResponse({"success": True})

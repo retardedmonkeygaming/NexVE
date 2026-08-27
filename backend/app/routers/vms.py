@@ -447,6 +447,104 @@ async def detach_passthrough(
         db.close()
 
 
+
+# -- Phase 1: Hot-plug Disk --
+
+@router.post("/{vm_id}/hotplug/disk")
+async def hotplug_disk(request: Request, vm_id: int, size_gb: int = Form(...), interface: str = Form("virtio")):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.hotplug_disk(db, vm_id, size_gb, interface))
+    finally:
+        db.close()
+
+@router.post("/{vm_id}/hotplug/detach-disk")
+async def detach_disk(request: Request, vm_id: int, disk_index: int = Form(...)):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.detach_disk(db, vm_id, disk_index))
+    finally:
+        db.close()
+
+# -- Phase 1: Hot-plug NIC --
+
+@router.post("/{vm_id}/hotplug/nic")
+async def hotplug_nic_ep(request: Request, vm_id: int, bridge: str = Form("vmbr0"), model: str = Form("virtio")):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.hotplug_nic(db, vm_id, bridge, model))
+    finally:
+        db.close()
+
+@router.post("/{vm_id}/hotplug/detach-nic")
+async def detach_nic_ep(request: Request, vm_id: int, nic_index: int = Form(...)):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.detach_nic(db, vm_id, nic_index))
+    finally:
+        db.close()
+
+# -- Phase 1: Deploy from Template --
+
+@router.post("/{vm_id}/deploy-from-template")
+async def deploy_from_template_ep(request: Request, vm_id: int, new_name: str = Form(...)):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.deploy_from_template(db, vm_id, new_name))
+    finally:
+        db.close()
+
+# -- Phase 1: Cloud-init --
+
+@router.post("/{vm_id}/cloud-init/apply")
+async def apply_cloud_init_ep(request: Request, vm_id: int):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        return JSONResponse(content=vm_service.apply_cloud_init(db, vm_id))
+    finally:
+        db.close()
+
+# -- Phase 1: Guest Agent --
+
+@router.post("/{vm_id}/guest-agent/{command}")
+async def guest_agent_cmd(request: Request, vm_id: int, command: str):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    db = SessionLocal()
+    try:
+        if command == "info":
+            return JSONResponse(content=vm_service.guest_agent_info(db, vm_id))
+        elif command == "fstrim":
+            return JSONResponse(content=vm_service.guest_agent_fstrim(db, vm_id))
+        elif command == "freeze":
+            return JSONResponse(content=vm_service.guest_agent_freeze(db, vm_id))
+        elif command == "thaw":
+            return JSONResponse(content=vm_service.guest_agent_thaw(db, vm_id))
+        else:
+            return JSONResponse(content=vm_service.guest_agent_command(db, vm_id, command))
+    finally:
+        db.close()
+
+
 # ── Bulk Actions ──
 
 @router.post("/bulk/start")
