@@ -4,6 +4,7 @@ from ..database import SessionLocal
 from ..models.vm import Container
 from ..services.container_service import ContainerService
 from ..auth import get_current_user
+from ..main import log_task
 from ..security import generate_csrf_token
 import json
 
@@ -167,7 +168,15 @@ async def start_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    return JSONResponse(content=container_service.start_container(ct_id))
+    db = SessionLocal()
+    try:
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        name = ct.name if ct else str(ct_id)
+    finally:
+        db.close()
+    result = container_service.start_container_by_name(name)
+    log_task(user.id, user.username, "ct.start", "container", name, "completed" if result.get("success") else "failed")
+    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/stop")
@@ -175,7 +184,15 @@ async def stop_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    return JSONResponse(content=container_service.stop_container(ct_id))
+    db = SessionLocal()
+    try:
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        name = ct.name if ct else str(ct_id)
+    finally:
+        db.close()
+    result = container_service.stop_container_by_name(name)
+    log_task(user.id, user.username, "ct.stop", "container", name, "completed" if result.get("success") else "failed")
+    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/restart")
@@ -183,7 +200,15 @@ async def restart_container(request: Request, ct_id: int):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    return JSONResponse(content=container_service.restart_container(ct_id))
+    db = SessionLocal()
+    try:
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        name = ct.name if ct else str(ct_id)
+    finally:
+        db.close()
+    result = container_service.restart_container_by_name(name)
+    log_task(user.id, user.username, "ct.restart", "container", name, "completed" if result.get("success") else "failed")
+    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/delete")

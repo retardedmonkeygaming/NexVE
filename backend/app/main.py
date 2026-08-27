@@ -38,7 +38,7 @@ from .routers import (
 )
 from .routers import (
     migration, ha, cluster, cluster_mgmt, sdn, ceph, acme, notifications,
-    wireguard, dhcp_dns,
+    wireguard, dhcp_dns, oidc,
 )
 
 # Create all tables
@@ -101,6 +101,7 @@ app.include_router(sdn.router, prefix="/api/sdn", tags=["SDN"])
 app.include_router(ceph.router, prefix="/api/ceph", tags=["Ceph"])
 app.include_router(wireguard.router, prefix="/api/wireguard", tags=["WireGuard VPN"])
 app.include_router(dhcp_dns.router, prefix="/api/dhcp-dns", tags=["DHCP/DNS"])
+app.include_router(oidc.router, prefix="/auth/oidc", tags=["OIDC"])
 app.include_router(acme.router, prefix="/api/acme", tags=["ACME"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 

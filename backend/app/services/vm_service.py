@@ -272,7 +272,7 @@ class VMService:
             return {"success": False, "error": "VM not found"}
         if vm.is_template:
             return {"success": False, "error": "Cannot start a template. Clone it first."}
-        result = self._start_libvirt_vm(vm.name)
+        result = self._start_libvirt_vm(vm.name, vm=vm)
         if result["success"]:
             vm.last_started = datetime.utcnow()
             db.commit()
@@ -916,7 +916,7 @@ class VMService:
         except libvirt.libvirtError as e:
             return {"error": str(e)}
 
-    def _start_libvirt_vm(self, name: str) -> dict:
+    def _start_libvirt_vm(self, name: str, vm=None) -> dict:
         conn = self._ensure_conn()
         if not conn:
             diag = self.get_diagnostics()
@@ -924,6 +924,19 @@ class VMService:
             return {"success": False, "error": f"libvirt not available. {hint}"}
         try:
             dom = conn.lookupByName(name)
+        except libvirt.libvirtError:
+            # Domain not defined — try to auto-define it
+            if vm:
+                define_result = self._create_libvirt_vm(vm, {"vcpu": vm.vcpu, "memory_mb": vm.memory_mb})
+                if not define_result.get("success") and define_result.get("error"):
+                    return {"success": False, "error": f"VM not defined in libvirt and auto-definition failed: {define_result['error']}"}
+            else:
+                return {"success": False, "error": f"Domain '{name}' not found in libvirt. VM may need to be recreated."}
+            try:
+                dom = conn.lookupByName(name)
+            except libvirt.libvirtError as e:
+                return {"success": False, "error": f"Domain '{name}' could not be defined: {e}"}
+        try:
             dom.create()
             return {"success": True}
         except libvirt.libvirtError as e:

@@ -400,3 +400,117 @@ async def install_lxc(request: Request):
         timeout=120
     )
     return JSONResponse(result)
+
+
+@router.get("/system-report")
+async def system_report(request: Request):
+    """Generate and return a comprehensive HTML system report."""
+    from fastapi.responses import HTMLResponse
+    import psutil
+    import subprocess
+    import os
+    from datetime import datetime
+
+    cpu_count = psutil.cpu_count(logical=True)
+    cpu_physical = psutil.cpu_count(logical=False)
+    cpu_freq = psutil.cpu_freq()
+    cpu_percent = psutil.cpu_percent(interval=0.5)
+    load_avg = os.getloadavg()
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    disk = psutil.disk_usage("/")
+    net_io = psutil.net_io_counters()
+
+    vm_count = 0
+    ct_count = 0
+    try:
+        r = subprocess.run("virsh list --name 2>/dev/null | wc -l", shell=True, capture_output=True, text=True, timeout=5)
+        vm_count = int(r.stdout.strip()) if r.returncode == 0 else 0
+    except: pass
+    try:
+        r = subprocess.run("lxc-ls 2>/dev/null | wc -w", shell=True, capture_output=True, text=True, timeout=5)
+        ct_count = int(r.stdout.strip()) if r.returncode == 0 else 0
+    except: pass
+
+    zfs_pools = 0
+    try:
+        r = subprocess.run("zpool list -H 2>/dev/null | wc -l", shell=True, capture_output=True, text=True, timeout=5)
+        zfs_pools = int(r.stdout.strip()) if r.returncode == 0 else 0
+    except: pass
+
+    net_ifaces = []
+    for name, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            if addr.family.name == "AF_INET":
+                net_ifaces.append({"name": name, "ip": addr.address})
+
+    boot_seconds = psutil.boot_time()
+    uptime_seconds = datetime.now().timestamp() - boot_seconds
+    uptime_days = int(uptime_seconds // 86400)
+    uptime_hours = int((uptime_seconds % 86400) // 3600)
+    uptime_mins = int((uptime_seconds % 3600) // 60)
+    uptime_str = f"{uptime_days}d {uptime_hours}h {uptime_mins}m"
+
+    iface_rows = "".join(f"<tr><td>{i['name']}</td><td>{i['ip']}</td></tr>" for i in net_ifaces) if net_ifaces else '<tr><td colspan="2">No interfaces</td></tr>'
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>NexVE System Report</title>
+<style>
+body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:40px;background:#0f1419;color:#e4e8ec; }}
+h1 {{ color:#00d4aa;border-bottom:2px solid #00d4aa;padding-bottom:12px; }}
+h2 {{ color:#00d4aa;margin-top:32px; }}
+table {{ width:100%;border-collapse:collapse;margin:16px 0; }}
+th,td {{ padding:10px 16px;text-align:left;border-bottom:1px solid #2a3441; }}
+th {{ color:#8899a6;font-weight:600;text-transform:uppercase;font-size:0.8em; }}
+.stat {{ display:inline-block;background:#1a2332;padding:16px 24px;border-radius:8px;margin:8px;min-width:160px; }}
+.stat .value {{ font-size:1.8em;font-weight:700;color:#00d4aa; }}
+.stat .label {{ font-size:0.85em;color:#8899a6;margin-top:4px; }}
+.footer {{ margin-top:40px;padding-top:16px;border-top:1px solid #2a3441;color:#8899a6;font-size:0.85em; }}
+</style></head><body>
+<h1>🔒 NexVE System Report</h1>
+<p>Generated: {datetime.now().strftime('%B %d, %Y at %H:%M:%S')}</p>
+<p>Hostname: {os.uname().nodename} | OS: {os.uname().sysname} {os.uname().release} | Arch: {os.uname().machine}</p>
+<h2>📊 CPU</h2>
+<div style="text-align:center;">
+<div class="stat"><div class="value">{cpu_percent}%</div><div class="label">CPU Usage</div></div>
+<div class="stat"><div class="value">{cpu_count}</div><div class="label">Logical Cores</div></div>
+<div class="stat"><div class="value">{cpu_physical or 'N/A'}</div><div class="label">Physical Cores</div></div>
+<div class="stat"><div class="value">{cpu_freq.current if cpu_freq else 'N/A'} MHz</div><div class="label">Frequency</div></div>
+<div class="stat"><div class="value">{load_avg[0]:.2f} / {load_avg[1]:.2f} / {load_avg[2]:.2f}</div><div class="label">Load Avg</div></div>
+</div>
+<h2>💾 Memory</h2>
+<div style="text-align:center;">
+<div class="stat"><div class="value">{mem.total / (1024**3):.1f} GB</div><div class="label">Total RAM</div></div>
+<div class="stat"><div class="value">{mem.used / (1024**3):.1f} GB</div><div class="label">Used RAM</div></div>
+<div class="stat"><div class="value">{mem.percent}%</div><div class="label">Usage</div></div>
+<div class="stat"><div class="value">{swap.total / (1024**3):.1f} GB</div><div class="label">Swap</div></div>
+</div>
+<h2>💿 Disk</h2>
+<div style="text-align:center;">
+<div class="stat"><div class="value">{disk.total / (1024**3):.1f} GB</div><div class="label">Total</div></div>
+<div class="stat"><div class="value">{disk.used / (1024**3):.1f} GB</div><div class="label">Used</div></div>
+<div class="stat"><div class="value">{disk.free / (1024**3):.1f} GB</div><div class="label">Free</div></div>
+<div class="stat"><div class="value">{disk.percent}%</div><div class="label">Usage</div></div>
+</div>
+<h2>🌐 Network</h2>
+<table><tr><th>Interface</th><th>IP</th></tr>{iface_rows}</table>
+<div style="margin-top:12px;">
+<div class="stat"><div class="value">{net_io.bytes_recv / (1024**2):.1f} MB</div><div class="label">Received</div></div>
+<div class="stat"><div class="value">{net_io.bytes_sent / (1024**2):.1f} MB</div><div class="label">Sent</div></div>
+</div>
+<h2>🖥️ Virtualization</h2>
+<div style="text-align:center;">
+<div class="stat"><div class="value">{vm_count}</div><div class="label">Running VMs</div></div>
+<div class="stat"><div class="value">{ct_count}</div><div class="label">Containers</div></div>
+<div class="stat"><div class="value">{zfs_pools}</div><div class="label">ZFS Pools</div></div>
+</div>
+<h2>ℹ️ NexVE</h2>
+<table>
+<tr><th>Version</th><td>NexVE v3.0</td></tr>
+<tr><th>Uptime</th><td>{uptime_str}</td></tr>
+<tr><th>Python</th><td>{subprocess.run("python3 --version", shell=True, capture_output=True, text=True).stdout.strip()}</td></tr>
+</table>
+<div class="footer">Generated by NexVE v3.0 — Open Source Hypervisor Management Platform</div>
+</body></html>"""
+    return HTMLResponse(html)
+

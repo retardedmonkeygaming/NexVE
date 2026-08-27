@@ -4,6 +4,7 @@ from ..database import SessionLocal
 from ..models.vm import VM
 from ..services.vm_service import VMService
 from ..auth import get_current_user
+from ..main import log_task
 
 router = APIRouter()
 vm_service = VMService()
@@ -148,7 +149,9 @@ async def start_vm(request: Request, vm_id: int):
         return redir
     db = SessionLocal()
     try:
-        return JSONResponse(content=vm_service.start_vm(db, vm_id))
+        result = vm_service.start_vm(db, vm_id)
+        log_task(user.id, user.username, "vm.start", "vm", str(vm_id), "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
     finally:
         db.close()
 
@@ -160,7 +163,9 @@ async def stop_vm(request: Request, vm_id: int):
         return redir
     db = SessionLocal()
     try:
-        return JSONResponse(content=vm_service.stop_vm(db, vm_id))
+        result = vm_service.stop_vm(db, vm_id)
+        log_task(user.id, user.username, "vm.stop", "vm", str(vm_id), "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
     finally:
         db.close()
 

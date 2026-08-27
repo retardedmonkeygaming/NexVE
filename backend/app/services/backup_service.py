@@ -8,10 +8,14 @@ from typing import List
 
 
 class BackupService:
-    BACKUP_DIR = "/var/lib/nexve/backups"
+    BACKUP_DIR = os.path.expanduser("~/.nexve/backups")
 
     def __init__(self):
-        os.makedirs(self.BACKUP_DIR, exist_ok=True)
+        try:
+            os.makedirs(self.BACKUP_DIR, exist_ok=True)
+        except PermissionError:
+            self.BACKUP_DIR = os.path.expanduser("~/nexve_backups")
+            os.makedirs(self.BACKUP_DIR, exist_ok=True)
 
     def run_cmd(self, cmd: str, timeout: int = 300) -> dict:
         try:
@@ -447,18 +451,6 @@ class BackupService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def delete_backup(self, filename: str) -> dict:
-        """Delete a backup file."""
-        path = os.path.join(self.BACKUP_DIR, filename)
-        if os.path.isdir(path):
-            shutil.rmtree(path)
-        elif os.path.exists(path):
-            os.remove(path)
-        else:
-            return {"success": False, "error": "Backup not found"}
-        return {"success": True}
-
-    # ── Encrypted Backup ──
 
     def backup_vm_encrypted(self, vm_id: int, passphrase: str) -> dict:
         """Create an encrypted backup of a VM."""

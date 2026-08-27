@@ -9,6 +9,7 @@
         <div class="nx-page-subtitle">Scheduled and on-demand backups</div>
     </div>
     <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary" onclick="showEncryptedBackupModal()">🔐 Encrypted</button>
         <button class="nx-btn nx-btn-secondary" onclick="backupNow()">Backup Now</button>
         <button class="nx-btn nx-btn-primary" onclick="showScheduleModal()">+ Add Schedule</button>
     </div>
@@ -18,6 +19,8 @@
 <div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'schedules')">Schedules</button>
     <button class="nx-tab" onclick="showTab(this,'history')">History</button>
+    <button class="nx-tab" onclick="showTab(this,'restore')">Restore</button>
+    <button class="nx-tab" onclick="showTab(this,'pbs')">PBS</button>
 </div>
 
 <!-- Schedules Tab -->
@@ -57,12 +60,88 @@
                         <th>Status</th>
                         <th>Size</th>
                         <th>Duration</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="history-list">
-                    <tr class="nx-skeleton-row"><td colspan="6"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
+                    <tr class="nx-skeleton-row"><td colspan="7"><div class="nx-skeleton nx-skeleton-text w-full"></div></td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Tab -->
+<div class="nx-tab-content" id="tab-restore">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Backup Statistics</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadBackupStats()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" id="backup-stats">Loading...</div>
+    </div>
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Restore VM from Backup</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-3" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:2;"><label class="nx-label">Backup File Path</label><input type="text" id="restore-vm-path" class="nx-input" placeholder="/opt/nexve/data/backups/vm_1_20260101_120000.tar.gz"></div>
+                <div class="nx-input-group" style="flex:1;"><label class="nx-label">New VM Name (optional)</label><input type="text" id="restore-vm-name" class="nx-input" placeholder="Leave blank for original"></div>
+                <button class="nx-btn nx-btn-primary" onclick="restoreVM()">Restore VM</button>
+            </div>
+            <div id="restore-vm-status" style="margin-top:8px;"></div>
+        </div>
+    </div>
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Restore Container from Backup</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-3" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:2;"><label class="nx-label">Backup File Path</label><input type="text" id="restore-ct-path" class="nx-input" placeholder="/opt/nexve/data/backups/ct_100_20260101_120000.tar.gz"></div>
+                <div class="nx-input-group" style="flex:1;"><label class="nx-label">Container ID</label><input type="number" id="restore-ct-id" class="nx-input" value="100"></div>
+                <button class="nx-btn nx-btn-primary" onclick="restoreContainer()">Restore</button>
+            </div>
+            <div id="restore-ct-status" style="margin-top:8px;"></div>
+        </div>
+    </div>
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Restore Encrypted Backup</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-3" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:2;"><label class="nx-label">Encrypted Backup Path</label><input type="text" id="restore-enc-path" class="nx-input" placeholder="/opt/nexve/data/backups/vm_1_20260101.tar.gz.enc"></div>
+                <div class="nx-input-group" style="flex:1;"><label class="nx-label">Passphrase</label><input type="password" id="restore-enc-pass" class="nx-input" placeholder="Decryption passphrase"></div>
+                <button class="nx-btn nx-btn-primary" onclick="restoreEncrypted()">Decrypt & Restore</button>
+            </div>
+            <div id="restore-enc-status" style="margin-top:8px;"></div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Extract Single File from Backup</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-3" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:2;"><label class="nx-label">Backup File Path</label><input type="text" id="extract-path" class="nx-input" placeholder="/opt/nexve/data/backups/vm_1_20260101.tar.gz"></div>
+                <div class="nx-input-group" style="flex:1;"><label class="nx-label">File/Dir to Extract</label><input type="text" id="extract-file" class="nx-input" placeholder="config.xml"></div>
+                <button class="nx-btn nx-btn-primary" onclick="extractFile()">Extract</button>
+            </div>
+            <div id="extract-status" style="margin-top:8px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- PBS Tab -->
+<div class="nx-tab-content" id="tab-pbs">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Proxmox Backup Server</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadPBSStatus()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" id="pbs-status">Loading...</div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">PBS Backup</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-3" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:1;"><label class="nx-label">VM ID</label><input type="number" id="pbs-vm-id" class="nx-input" placeholder="100"></div>
+                <div class="nx-input-group" style="flex:2;"><label class="nx-label">Repository</label><input type="text" id="pbs-repo" class="nx-input" placeholder="backup@pbs:/mnt/backup"></div>
+                <button class="nx-btn nx-btn-primary" onclick="pbsBackup()">Backup to PBS</button>
+            </div>
+            <div id="pbs-backup-status" style="margin-top:8px;"></div>
         </div>
     </div>
 </div>
@@ -155,6 +234,20 @@
         </div>
     </div>
 </div>
+
+<!-- Encrypted Backup Modal -->
+<div class="nx-modal-overlay" id="encrypted-backup-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Encrypted Backup</h3><button class="nx-modal-close" onclick="document.getElementById('encrypted-backup-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">VM ID</label><input type="number" id="enc-vm-id" class="nx-input" placeholder="100"></div>
+                <div class="nx-input-group"><label class="nx-label">Encryption Passphrase</label><input type="password" id="enc-passphrase" class="nx-input" placeholder="Strong passphrase"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('encrypted-backup-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="startEncryptedBackup()">Encrypt & Backup</button></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -166,6 +259,8 @@ function showTab(btn, name) {
     btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
     if (name === 'history') loadHistory();
+    if (name === 'restore') loadBackupStats();
+    if (name === 'pbs') loadPBSStatus();
 }
 
 // ── Load Schedules ──
@@ -206,7 +301,7 @@ async function loadHistory() {
         const list = document.getElementById('history-list');
         const backups = data.backups || [];
         if (backups.length === 0) {
-            list.innerHTML = '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:48px;">No backup history</td></tr>';
+            list.innerHTML = '<tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:48px;">No backup history</td></tr>';
         } else {
             list.innerHTML = backups.map(b => `
                 <tr>
@@ -216,6 +311,11 @@ async function loadHistory() {
                     <td><span class="nx-badge ${b.status === 'success' ? 'nx-badge-success' : b.status === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning'}"><span class="dot"></span>${b.status || 'pending'}</span></td>
                     <td>${b.size || '-'}</td>
                     <td style="color:var(--text-muted);font-size:var(--text-xs);">${b.duration || '-'}</td>
+                    <td>
+                        <div class="nx-flex nx-gap-1">
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="deleteBackup('${b.id}')" title="Delete">🗑️</button>
+                        </div>
+                    </td>
                 </tr>
             `).join('');
         }
@@ -227,6 +327,7 @@ function showScheduleModal() { document.getElementById('schedule-modal').classLi
 function hideScheduleModal() { document.getElementById('schedule-modal').classList.remove('open'); }
 function backupNow() { document.getElementById('backup-modal').classList.add('open'); }
 function hideBackupModal() { document.getElementById('backup-modal').classList.remove('open'); }
+function showEncryptedBackupModal() { document.getElementById('encrypted-backup-modal').classList.add('open'); }
 
 // ── Submit Schedule ──
 async function submitSchedule(e) {
@@ -241,9 +342,9 @@ async function submitSchedule(e) {
             e.target.reset();
             loadSchedules();
         } else {
-            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+            showToast('Failed: ' + (data.error || 'unknown'), 'error');
         }
-    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 // ── Submit Backup ──
@@ -257,20 +358,140 @@ async function submitBackup(e) {
             showToast('Backup started', 'success');
             hideBackupModal();
         } else {
-            showToast(`Failed: ${data.error || 'unknown'}`, 'error');
+            showToast('Failed: ' + (data.error || 'unknown'), 'error');
         }
-    } catch(e) { showToast(`Error: ${e.message}`, 'error'); }
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 // ── Toggle/Delete Schedule ──
 async function toggleSchedule(id) {
-    try { await fetch(`/api/backups/schedules/${id}/toggle`, {method:'POST'}); loadSchedules(); } catch(e) {}
+    try { await fetch('/api/backups/schedules/' + id + '/toggle', {method:'POST'}); loadSchedules(); } catch(e) {}
 }
 async function deleteSchedule(id) {
     if (!confirm('Delete this backup schedule?')) return;
-    try { await fetch(`/api/backups/schedules/${id}`, {method:'DELETE'}); showToast('Schedule deleted','success'); loadSchedules(); } catch(e) {}
+    try { await fetch('/api/backups/schedules/' + id, {method:'DELETE'}); showToast('Schedule deleted','success'); loadSchedules(); } catch(e) {}
 }
 
+// ── Delete Backup ──
+async function deleteBackup(id) {
+    if (!confirm('Delete this backup file?')) return;
+    try {
+        const r = await fetch('/api/backups/delete/' + id, {method:'DELETE'});
+        const d = await r.json();
+        if (d.success !== false) { showToast('Backup deleted','success'); loadHistory(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Backup Stats ──
+async function loadBackupStats() {
+    try {
+        const r = await fetch('/api/backups/stats');
+        const d = await r.json();
+        document.getElementById('backup-stats').innerHTML = '<div class="nx-grid" style="grid-template-columns:repeat(4,1fr);gap:16px;">' +
+            '<div style="background:var(--bg-secondary);padding:16px;border-radius:8px;"><div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Total Backups</div><div style="font-size:1.5rem;font-weight:700;color:var(--accent);">' + d.backup_count + '</div></div>' +
+            '<div style="background:var(--bg-secondary);padding:16px;border-radius:8px;"><div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">VM Backups</div><div style="font-size:1.5rem;font-weight:700;color:var(--accent);">' + d.vm_backups + '</div></div>' +
+            '<div style="background:var(--bg-secondary);padding:16px;border-radius:8px;"><div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">CT Backups</div><div style="font-size:1.5rem;font-weight:700;color:var(--accent);">' + d.ct_backups + '</div></div>' +
+            '<div style="background:var(--bg-secondary);padding:16px;border-radius:8px;"><div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Storage Used</div><div style="font-size:1.5rem;font-weight:700;color:var(--accent);">' + d.total_size_human + '</div></div></div>';
+    } catch(e) { document.getElementById('backup-stats').innerHTML = '<span class="nx-text-muted">Failed to load statistics</span>'; }
+}
+
+// ── Restore VM ──
+async function restoreVM() {
+    const path = document.getElementById('restore-vm-path').value;
+    const name = document.getElementById('restore-vm-name').value;
+    if (!path) { showToast('Backup path required', 'error'); return; }
+    if (!confirm('Restore VM from backup? This will create a new VM.')) return;
+    document.getElementById('restore-vm-status').innerHTML = '<span style="color:var(--accent);">Restoring...</span>';
+    const fd = new FormData(); fd.append('backup_path', path); fd.append('vm_name', name);
+    const r = await fetch('/api/backups/restore/vm', {method:'POST', body:fd});
+    const d = await r.json();
+    document.getElementById('restore-vm-status').innerHTML = d.success ?
+        '<span style="color:var(--success);">' + d.message + '</span>' :
+        '<span style="color:var(--danger);">' + (d.error || 'Failed') + '</span>';
+}
+
+// ── Restore Container ──
+async function restoreContainer() {
+    const path = document.getElementById('restore-ct-path').value;
+    const ctId = document.getElementById('restore-ct-id').value;
+    if (!path) { showToast('Backup path required', 'error'); return; }
+    if (!confirm('Restore container from backup?')) return;
+    document.getElementById('restore-ct-status').innerHTML = '<span style="color:var(--accent);">Restoring...</span>';
+    const fd = new FormData(); fd.append('backup_path', path); fd.append('ct_id', ctId);
+    const r = await fetch('/api/backups/restore/container', {method:'POST', body:fd});
+    const d = await r.json();
+    document.getElementById('restore-ct-status').innerHTML = d.success ?
+        '<span style="color:var(--success);">' + d.message + '</span>' :
+        '<span style="color:var(--danger);">' + (d.error || 'Failed') + '</span>';
+}
+
+// ── Restore Encrypted ──
+async function restoreEncrypted() {
+    const path = document.getElementById('restore-enc-path').value;
+    const pass = document.getElementById('restore-enc-pass').value;
+    if (!path || !pass) { showToast('Path and passphrase required', 'error'); return; }
+    if (!confirm('Decrypt and restore this backup?')) return;
+    document.getElementById('restore-enc-status').innerHTML = '<span style="color:var(--accent);">Decrypting & restoring...</span>';
+    const fd = new FormData(); fd.append('backup_path', path); fd.append('passphrase', pass);
+    const r = await fetch('/api/backups/restore/encrypted', {method:'POST', body:fd});
+    const d = await r.json();
+    document.getElementById('restore-enc-status').innerHTML = d.success ?
+        '<span style="color:var(--success);">' + d.message + '</span>' :
+        '<span style="color:var(--danger);">' + (d.error || 'Failed') + '</span>';
+}
+
+// ── Extract File ──
+async function extractFile() {
+    const path = document.getElementById('extract-path').value;
+    const file = document.getElementById('extract-file').value;
+    if (!path || !file) { showToast('Both fields required', 'error'); return; }
+    const fd = new FormData(); fd.append('backup_path', path); fd.append('file_path', file);
+    const r = await fetch('/api/backups/extract', {method:'POST', body:fd});
+    const d = await r.json();
+    document.getElementById('extract-status').innerHTML = d.success ?
+        '<span style="color:var(--success);">Extracted to: ' + (d.output || '/tmp/nexve-restore') + '</span>' :
+        '<span style="color:var(--danger);">' + (d.error || 'Not found in archive') + '</span>';
+}
+
+// ── PBS Status ──
+async function loadPBSStatus() {
+    try {
+        const r = await fetch('/api/backups/pbs/status');
+        const d = await r.json();
+        document.getElementById('pbs-status').innerHTML = d.available ?
+            '<div style="color:var(--success);font-weight:600;">✓ PBS client (pxar) is installed and available</div>' :
+            '<div style="color:var(--warning);">⚠ PBS client not installed. Install with: <code style="background:var(--bg-tertiary);padding:2px 8px;border-radius:4px;">apt install proxmox-backup-client</code></div>';
+    } catch(e) { document.getElementById('pbs-status').innerHTML = '<span class="nx-text-muted">Failed to check PBS status</span>'; }
+}
+
+// ── PBS Backup ──
+async function pbsBackup() {
+    const vmId = document.getElementById('pbs-vm-id').value;
+    const repo = document.getElementById('pbs-repo').value;
+    if (!vmId || !repo) { showToast('VM ID and repository required', 'error'); return; }
+    document.getElementById('pbs-backup-status').innerHTML = '<span style="color:var(--accent);">Backing up to PBS...</span>';
+    const fd = new FormData(); fd.append('vm_id', vmId); fd.append('repository', repo);
+    const r = await fetch('/api/backups/backup/vm/incremental', {method:'POST', body:fd});
+    const d = await r.json();
+    document.getElementById('pbs-backup-status').innerHTML = d.success ?
+        '<span style="color:var(--success);">Backup complete: ' + (d.path || 'OK') + '</span>' :
+        '<span style="color:var(--danger);">' + (d.error || 'Failed') + '</span>';
+}
+
+// ── Encrypted Backup ──
+async function startEncryptedBackup() {
+    const vmId = document.getElementById('enc-vm-id').value;
+    const pass = document.getElementById('enc-passphrase').value;
+    if (!vmId || !pass) { showToast('VM ID and passphrase required', 'error'); return; }
+    const fd = new FormData(); fd.append('vm_id', vmId); fd.append('passphrase', pass);
+    const r = await fetch('/api/backups/backup/vm/encrypted', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('Encrypted backup created', 'success'); document.getElementById('encrypted-backup-modal').classList.remove('open'); }
+    else showToast(d.error || 'Failed', 'error');
+}
+
+// ── Init ──
 loadSchedules();
 </script>
 {% endblock %}

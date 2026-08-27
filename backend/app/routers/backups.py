@@ -4,6 +4,7 @@ from datetime import datetime
 from ..database import SessionLocal
 from ..models.vm import VM, Container, BackupSchedule
 from ..services.vm_service import VMService
+from ..services.backup_service import BackupService
 from ..services.container_service import ContainerService
 from ..auth import get_current_user
 import subprocess
@@ -11,6 +12,7 @@ import subprocess
 router = APIRouter()
 vm_service = VMService()
 container_service = ContainerService()
+backup_svc = BackupService()
 
 
 @router.get("/schedules")
@@ -240,8 +242,8 @@ async def restore_vm_backup(
     backup_path: str = Form(...),
     vm_name: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.restore_vm_from_backup(backup_path, vm_name))
 
 
@@ -251,8 +253,8 @@ async def restore_container_backup(
     backup_path: str = Form(...),
     ct_id: int = Form(0),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.restore_container_from_backup(backup_path, ct_id))
 
 
@@ -263,8 +265,8 @@ async def restore_encrypted_backup(
     passphrase: str = Form(...),
     vm_name: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.restore_vm_encrypted(backup_path, passphrase, vm_name))
 
 
@@ -274,8 +276,8 @@ async def backup_vm_encrypted(
     vm_id: int = Form(...),
     passphrase: str = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.backup_vm_encrypted(vm_id, passphrase))
 
 
@@ -284,22 +286,22 @@ async def backup_vm_incremental(
     request: Request,
     vm_id: int = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.backup_vm_incremental(vm_id))
 
 
 @router.get("/stats")
 async def backup_stats(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.get_backup_stats())
 
 
 @router.get("/pbs/status")
 async def pbs_status(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.pbs_status())
 
 
@@ -310,14 +312,14 @@ async def extract_from_backup(
     file_path: str = Form(...),
     output_path: str = Form("/tmp/nexve-restore"),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.extract_file_from_backup(backup_path, file_path, output_path))
 
 
 @router.delete("/{filename}")
 async def delete_backup_file(request: Request, filename: str):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user = get_current_user(request)
+    if not user: return RedirectResponse(url="/login", status_code=302)
     return JSONResponse(backup_svc.delete_backup(filename))
 
