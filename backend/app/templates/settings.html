@@ -207,8 +207,15 @@
     <div class="nx-card" style="border-color:rgba(239,68,68,0.3);">
         <div class="nx-card-header"><span class="nx-card-title" style="color:var(--danger);">Danger Zone</span></div>
         <div class="nx-card-body">
-            <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px;">Reset the initial setup wizard. This will delete all user accounts but keep VMs, containers, and storage intact.</p>
-            <a href="/setup/reset" class="nx-btn" style="background:var(--danger);color:white;display:inline-block;text-decoration:none;">Reset Setup Wizard</a>
+            <div style="margin-bottom:20px;">
+                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px;">Reset the initial setup wizard. This will delete all user accounts but keep VMs, containers, and storage intact.</p>
+                <a href="/setup/reset" class="nx-btn" style="background:var(--danger);color:white;display:inline-block;text-decoration:none;">Reset Setup Wizard</a>
+            </div>
+            <div style="border-top:1px solid rgba(239,68,68,0.2);padding-top:16px;">
+                <p style="font-size:var(--text-sm);color:var(--danger);font-weight:700;margin-bottom:4px;">⚠ Factory Reset</p>
+                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px;">Permanently destroy ALL data — VMs, containers, ISOs, storage pools, backups, users, firewall rules, cluster configs — and return NexVE to its bare-origin state.</p>
+                <a href="/setup/factory-reset" class="nx-btn" style="background:var(--danger);color:white;display:inline-block;text-decoration:none;padding:10px 24px;font-weight:700;">⚠ Factory Reset — Destroy Everything</a>
+            </div>
         </div>
     </div>
 

@@ -287,18 +287,61 @@ class ContainerService:
         return self.start_container_by_name(name)
 
     def delete_container(self, ct_id: int) -> dict:
+        import shutil
+        name = str(ct_id)
+        # Stop first if running
         status = self.get_container_status(ct_id)
         if status == "running":
             self.stop_container(ct_id)
-        r = self.run_cmd(f"lxc-destroy -n {ct_id}")
-        return {"success": r["success"], "error": r["stderr"] if not r["success"] else None}
+        # Destroy via lxc-destroy
+        r = self.run_cmd(f"lxc-destroy -n {name} --force")
+        # Fallback: manually remove rootfs if lxc-destroy failed
+        import os
+        rootfs_paths = [
+            f"/var/lib/lxc/{name}",
+            f"/var/lib/lxc/{name}/rootfs",
+        ]
+        for path in rootfs_paths:
+            if os.path.exists(path):
+                try:
+                    shutil.rmtree(path, ignore_errors=True)
+                except Exception:
+                    pass
+        # Also remove LVM/ZFS datasets if they exist
+        self.run_cmd(f"zfs destroy -r lxc/{name} 2>/dev/null || true")
+        self.run_cmd(f"lvremove -f /dev/*/lxc_{name} 2>/dev/null || true")
+        # Check if rootfs is truly gone
+        rootfs = f"/var/lib/lxc/{name}/rootfs"
+        if os.path.exists(rootfs):
+            return {"success": False, "error": f"Failed to remove container rootfs at {rootfs}. Run: rm -rf /var/lib/lxc/{name}"}
+        return {"success": True}
 
     def delete_container_by_name(self, name: str) -> dict:
+        import shutil
+        import os
+        # Stop first if running
         status = self.get_container_status_by_name(name)
         if status == "running":
             self.stop_container_by_name(name)
-        r = self.run_cmd(f"lxc-destroy -n {name}")
-        return {"success": r["success"], "error": r["stderr"] if not r["success"] else None}
+        # Destroy via lxc-destroy
+        r = self.run_cmd(f"lxc-destroy -n {name} --force")
+        # Fallback: manually remove rootfs
+        rootfs_paths = [
+            f"/var/lib/lxc/{name}",
+            f"/var/lib/lxc/{name}/rootfs",
+        ]
+        for path in rootfs_paths:
+            if os.path.exists(path):
+                try:
+                    shutil.rmtree(path, ignore_errors=True)
+                except Exception:
+                    pass
+        self.run_cmd(f"zfs destroy -r lxc/{name} 2>/dev/null || true")
+        self.run_cmd(f"lvremove -f /dev/*/lxc_{name} 2>/dev/null || true")
+        rootfs = f"/var/lib/lxc/{name}/rootfs"
+        if os.path.exists(rootfs):
+            return {"success": False, "error": f"Failed to remove container rootfs at {rootfs}"}
+        return {"success": True}
 
     def get_container_config(self, ct_id: int) -> dict:
         r = self.run_cmd(f"lxc-info -n {ct_id} 2>/dev/null")

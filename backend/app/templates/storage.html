@@ -60,6 +60,59 @@
     </div>
 </div>
 
+    <!-- ZFS Replication -->
+    <div class="nx-card" style="margin-top:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">ZFS Replication</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadReplicationStatus()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-4" style="align-items:flex-end;margin-bottom:12px;">
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Source Dataset</label>
+                    <input type="text" id="repl-source" class="nx-input" placeholder="e.g. tank/data">
+                </div>
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Target Host:Dataset</label>
+                    <input type="text" id="repl-target" class="nx-input" placeholder="e.g. 192.168.1.101:tank/backup">
+                </div>
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Snapshot (optional)</label>
+                    <input type="text" id="repl-snap" class="nx-input" placeholder="Auto-create if empty">
+                </div>
+                <button class="nx-btn nx-btn-primary" onclick="startReplication()">Replicate</button>
+            </div>
+            <div id="repl-status" style="color:var(--text-muted);font-size:var(--text-sm);"></div>
+            <div id="repl-jobs" style="margin-top:12px;"></div>
+        </div>
+    </div>
+
+    <!-- ZFS Snapshots -->
+    <div class="nx-card" style="margin-top:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">ZFS Snapshots</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadZFSSnapshots()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-4" style="align-items:flex-end;margin-bottom:12px;">
+                <div class="nx-input-group" style="flex:2;">
+                    <label class="nx-label">Dataset</label>
+                    <input type="text" id="snap-dataset" class="nx-input" placeholder="e.g. tank/data">
+                </div>
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Snapshot Name</label>
+                    <input type="text" id="snap-name" class="nx-input" placeholder="e.g. pre-update">
+                </div>
+                <button class="nx-btn nx-btn-primary" onclick="createZFSSnapshot()">Create Snapshot</button>
+            </div>
+            <table class="nx-table">
+                <thead><tr><th>Snapshot</th><th>Used</th><th>Referenced</th><th>Created</th><th></th></tr></thead>
+                <tbody id="zfs-snap-list"><tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);">Enter a dataset name above and click Refresh</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- LVM -->
 <div class="nx-tab-content" id="tab-lvm">
     <div class="nx-card">

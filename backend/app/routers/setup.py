@@ -371,3 +371,204 @@ async def reset_setup(request: Request):
     finally:
         db.close()
     return JSONResponse({"success": True})
+
+
+@router.post("/factory-reset")
+async def factory_reset(request: Request):
+    """Completely wipe everything: VMs, containers, storage configs, users, and database."""
+    import subprocess
+    import shutil
+    import os
+
+    errors = []
+
+    # 1. Stop and undefine all VMs via virsh
+    try:
+        r = subprocess.run("virsh list --name 2>/dev/null", shell=True, capture_output=True, text=True, timeout=10)
+        for vm_name in r.stdout.strip().splitlines():
+            if vm_name.strip():
+                subprocess.run(f"virsh destroy {vm_name.strip()} 2>/dev/null", shell=True, capture_output=True, timeout=10)
+                subprocess.run(f"virsh undefine {vm_name.strip()} --remove-all-storage 2>/dev/null", shell=True, capture_output=True, timeout=10)
+    except Exception as e:
+        errors.append(f"VM cleanup: {str(e)}")
+
+    # 2. Stop and destroy all LXC containers
+    try:
+        r = subprocess.run("lxc-ls 2>/dev/null || true", shell=True, capture_output=True, text=True, timeout=10)
+        for ct_name in r.stdout.strip().splitlines():
+            ct_name = ct_name.strip().strip("*").strip()
+            if ct_name:
+                subprocess.run(f"lxc-stop -n {ct_name} -t 5 2>/dev/null", shell=True, capture_output=True, timeout=15)
+                subprocess.run(f"lxc-destroy -n {ct_name} --force 2>/dev/null", shell=True, capture_output=True, timeout=15)
+    except Exception as e:
+        errors.append(f"Container cleanup: {str(e)}")
+
+    # 3. Remove all LXC rootfs directories
+    lxc_dir = "/var/lib/lxc"
+    if os.path.isdir(lxc_dir):
+        try:
+            for item in os.listdir(lxc_dir):
+                path = os.path.join(lxc_dir, item)
+                if os.path.isdir(path) and item.isdigit():
+                    shutil.rmtree(path, ignore_errors=True)
+        except Exception as e:
+            errors.append(f"LXC cleanup: {str(e)}")
+
+    # 4. Remove VM disk images
+    vm_dirs = ["/var/lib/libvirt/images", "/var/lib/nexve/vms"]
+    for vm_dir in vm_dirs:
+        if os.path.isdir(vm_dir):
+            try:
+                shutil.rmtree(vm_dir, ignore_errors=True)
+                os.makedirs(vm_dir, exist_ok=True)
+            except Exception as e:
+                errors.append(f"VM disk cleanup: {str(e)}")
+
+    # 5. Remove ISO images
+    iso_dir = "/var/lib/nexve/iso"
+    if os.path.isdir(iso_dir):
+        try:
+            for f in os.listdir(iso_dir):
+                os.remove(os.path.join(iso_dir, f))
+        except Exception as e:
+            errors.append(f"ISO cleanup: {str(e)}")
+
+    # 6. Remove backup files
+    backup_dir = "/opt/nexve/data/backups"
+    if os.path.isdir(backup_dir):
+        try:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        except Exception as e:
+            errors.append(f"Backup cleanup: {str(e)}")
+
+    # 7. Remove NexVE config files
+    config_dirs = ["/etc/nexve", "/opt/nexve/data", "/var/lib/nexve"]
+    for d in config_dirs:
+        if os.path.isdir(d):
+            try:
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception as e:
+                errors.append(f"Config cleanup ({d}): {str(e)}")
+
+    # 8. Wipe database tables
+    db = SessionLocal()
+    try:
+        # Delete all data from all NexVE tables
+        db.execute("DELETE FROM tasks")
+        db.execute("DELETE FROM task_log")
+        db.execute("DELETE FROM audit_log")
+        db.execute("DELETE FROM activity_log")
+        db.execute("DELETE FROM notifications")
+        db.execute("DELETE FROM vms")
+        db.execute("DELETE FROM containers")
+        db.execute("DELETE FROM backup_schedules")
+        db.execute("DELETE FROM api_tokens")
+        db.execute("DELETE FROM firewall_rules")
+        db.execute("DELETE FROM firewall_groups")
+        db.execute("DELETE FROM storage")
+        db.execute("DELETE FROM iso_images")
+        db.execute("DELETE FROM sessions")
+        db.execute("DELETE FROM users")
+        db.execute("DELETE FROM groups")
+        db.execute("DELETE FROM roles")
+        # Enhanced tables
+        for table in ["migration_jobs", "ha_groups", "ha_guests", "cluster_nodes",
+                       "cluster_config", "sdn_zones", "sdn_vnets", "ceph_config",
+                       "ssl_certificates", "acme_accounts", "backup_records",
+                       "backup_remotes", "notification_targets", "notification_rules",
+                       "system_settings", "settings_history", "user_ssh_keys",
+                       "user_quotas", "user_sessions", "storage_tiers",
+                       "firewall_stats", "vm_firewall_rules", "firewall_macros"]:
+            try:
+                db.execute(f"DELETE FROM {table}")
+            except Exception:
+                pass
+        # Feature tables
+        for table in ["vm_tags", "vm_tag_assignments", "resource_pools",
+                       "resource_pool_members", "ldap_config", "client_cert_config",
+                       "network_security_groups", "security_group_rules",
+                       "security_group_assignments", "network_firewall_aliases",
+                       "firewall_alias_entries", "network_rate_limits"]:
+            try:
+                db.execute(f"DELETE FROM {table}")
+            except Exception:
+                pass
+        db.commit()
+    except Exception as e:
+        errors.append(f"Database cleanup: {str(e)}")
+    finally:
+        db.close()
+
+    # 9. Remove nftables rules
+    subprocess.run("nft flush table inet nexve 2>/dev/null || true", shell=True, capture_output=True)
+
+    if errors:
+        return JSONResponse({"success": True, "warnings": errors, "message": "Factory reset completed with warnings"})
+    return JSONResponse({"success": True, "message": "Factory reset complete. All VMs, containers, storage, users, and configurations have been removed."})
+
+
+@router.get("/factory-reset")
+async def factory_reset_page(request: Request):
+    """Show factory reset confirmation page."""
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexVE - Factory Reset</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="stylesheet" href="/static/css/nexve.css">
+</head><body class="nx-login">
+<div class="nx-wizard" style="max-width:540px;">
+    <div style="text-align:center;margin-bottom:24px;">
+        <img src="/static/img/logo.svg" alt="NexVE" style="width:64px;height:64px;margin-bottom:12px;">
+        <h1 style="font-size:var(--text-2xl);font-weight:700;color:var(--danger);">Factory Reset</h1>
+        <p class="nx-text-muted" style="font-size:var(--text-sm);margin-top:8px;">This will permanently destroy EVERYTHING and return NexVE to its original state.</p>
+    </div>
+    <div style="background:var(--bg-elevated);border:2px solid rgba(239,68,68,0.4);border-radius:var(--radius-lg);padding:16px;margin-bottom:20px;">
+        <p style="color:var(--danger);font-size:var(--text-sm);font-weight:700;margin-bottom:8px;">⚠️ THIS ACTION IS IRREVERSIBLE</p>
+        <ul style="color:var(--text-secondary);font-size:var(--text-sm);list-style:disc;padding-left:20px;line-height:1.8;">
+            <li>All virtual machines will be <strong>stopped and permanently deleted</strong></li>
+            <li>All containers will be <strong>stopped and permanently deleted</strong></li>
+            <li>All ISO images will be removed</li>
+            <li>All storage configurations (ZFS pools, LVM, NFS, CIFS) will be wiped</li>
+            <li>All VM disk images and backups will be destroyed</li>
+            <li>All user accounts, sessions, and API tokens will be deleted</li>
+            <li>All firewall rules, network configs, SDN zones will be removed</li>
+            <li>All cluster and HA configurations will be destroyed</li>
+            <li>The system will return to the initial setup wizard</li>
+        </ul>
+    </div>
+    <div id="reset-error"></div>
+    <div id="reset-success" class="nx-hidden">
+        <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--success);padding:12px;border-radius:var(--radius-lg);font-size:var(--text-sm);margin-bottom:16px;">
+            Factory reset complete! Redirecting to setup wizard...
+        </div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;">
+        <a href="/settings" class="nx-btn nx-btn-secondary">Cancel</a>
+        <button class="nx-btn" style="background:var(--danger);color:white;padding:10px 24px;font-weight:700;" onclick="doFactoryReset()">⚠ Factory Reset</button>
+    </div>
+</div>
+<script>
+async function doFactoryReset() {
+    if (!confirm('FINAL WARNING: This will permanently delete ALL data including VMs, containers, storage, and users. Type "RESET" in your mind and click OK to proceed.')) return;
+    if (!confirm('Are you absolutely sure? There is NO undo.')) return;
+    document.getElementById('reset-error').innerHTML = '<div style="color:var(--warning);padding:8px;">Performing factory reset... Please wait...</div>';
+    try {
+        const r = await fetch('/setup/factory-reset', {method: 'POST'});
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('reset-success').classList.remove('nx-hidden');
+            if (data.warnings && data.warnings.length > 0) {
+                document.getElementById('reset-error').innerHTML = '<div style="color:var(--warning);padding:8px;font-size:var(--text-sm);">Warnings: ' + data.warnings.join('; ') + '</div>';
+            }
+            setTimeout(() => window.location.href = '/setup/', 3000);
+        } else {
+            document.getElementById('reset-error').innerHTML = '<div style="color:var(--danger);padding:8px;">' + (data.error || 'Reset failed') + '</div>';
+        }
+    } catch(e) {
+        document.getElementById('reset-error').innerHTML = '<div style="color:var(--danger);padding:8px;">Network error: ' + e.message + '</div>';
+    }
+}
+</script>
+</body></html>""")
+

@@ -230,3 +230,94 @@ def _prune_backups(backup_dir, prefix, retention_days, max_backups):
     for f in files:
         if os.path.getmtime(f) < cutoff:
             os.remove(f)
+
+
+# ── Backup Restore ──
+
+@router.post("/restore/vm")
+async def restore_vm_backup(
+    request: Request,
+    backup_path: str = Form(...),
+    vm_name: str = Form(""),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.restore_vm_from_backup(backup_path, vm_name))
+
+
+@router.post("/restore/container")
+async def restore_container_backup(
+    request: Request,
+    backup_path: str = Form(...),
+    ct_id: int = Form(0),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.restore_container_from_backup(backup_path, ct_id))
+
+
+@router.post("/restore/encrypted")
+async def restore_encrypted_backup(
+    request: Request,
+    backup_path: str = Form(...),
+    passphrase: str = Form(...),
+    vm_name: str = Form(""),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.restore_vm_encrypted(backup_path, passphrase, vm_name))
+
+
+@router.post("/backup/vm/encrypted")
+async def backup_vm_encrypted(
+    request: Request,
+    vm_id: int = Form(...),
+    passphrase: str = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.backup_vm_encrypted(vm_id, passphrase))
+
+
+@router.post("/backup/vm/incremental")
+async def backup_vm_incremental(
+    request: Request,
+    vm_id: int = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.backup_vm_incremental(vm_id))
+
+
+@router.get("/stats")
+async def backup_stats(request: Request):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.get_backup_stats())
+
+
+@router.get("/pbs/status")
+async def pbs_status(request: Request):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.pbs_status())
+
+
+@router.post("/extract")
+async def extract_from_backup(
+    request: Request,
+    backup_path: str = Form(...),
+    file_path: str = Form(...),
+    output_path: str = Form("/tmp/nexve-restore"),
+):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.extract_file_from_backup(backup_path, file_path, output_path))
+
+
+@router.delete("/{filename}")
+async def delete_backup_file(request: Request, filename: str):
+    user, redir = auth_check(request)
+    if redir: return redir
+    return JSONResponse(backup_svc.delete_backup(filename))
+

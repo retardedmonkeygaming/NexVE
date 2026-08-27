@@ -21,6 +21,9 @@
     <button class="nx-tab" onclick="showTab(this,'security')">Security Groups</button>
     <button class="nx-tab" onclick="showTab(this,'aliases')">Aliases</button>
     <button class="nx-tab" onclick="showTab(this,'ratelimit')">Rate Limits</button>
+    <button class="nx-tab" onclick="showTab(this,'sdn')">SDN</button>
+    <button class="nx-tab" onclick="showTab(this,'wireguard')">WireGuard</button>
+    <button class="nx-tab" onclick="showTab(this,'dhcpdns')">DHCP/DNS</button>
 </div>
 
 <!-- Interfaces -->
@@ -166,6 +169,192 @@
 {% endblock %}
 
 {% block scripts %}
+
+
+<!-- WireGuard VPN -->
+<div class="nx-tab-content" id="tab-wireguard">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">WireGuard VPN</span>
+            <div class="nx-flex nx-gap-2">
+                <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadWireGuard()">↻ Refresh</button>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showWgCreateModal()">+ Create Interface</button>
+            </div>
+        </div>
+        <div class="nx-card-body" id="wg-status">Loading...</div>
+    </div>
+    <div id="wg-interfaces"></div>
+</div>
+
+<!-- DHCP/DNS -->
+<div class="nx-tab-content" id="tab-dhcpdns">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">DHCP/DNS Service</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadDHCPDNS()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" id="dhcpdns-status">Loading...</div>
+    </div>
+    <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <span class="nx-card-title">DHCP Ranges</span>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showDhcpRangeModal()">+ Add Range</button>
+            </div>
+            <div class="nx-card-body" style="padding:0;">
+                <table class="nx-table">
+                    <thead><tr><th>Start</th><th>End</th><th>Netmask</th><th>Lease</th><th>Actions</th></tr></thead>
+                    <tbody id="dhcp-range-list"><tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <span class="nx-card-title">DNS Records</span>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showDnsRecordModal()">+ Add Record</button>
+            </div>
+            <div class="nx-card-body" style="padding:0;">
+                <table class="nx-table">
+                    <thead><tr><th>Domain</th><th>IP</th><th>Type</th><th>Actions</th></tr></thead>
+                    <tbody id="dns-record-list"><tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="nx-card" style="margin-top:16px;">
+        <div class="nx-card-header"><span class="nx-card-title">Active Leases</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Expires</th><th>MAC</th><th>IP</th><th>Hostname</th></tr></thead>
+                <tbody id="dhcp-lease-list"><tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- SDN -->
+<div class="nx-tab-content" id="tab-sdn">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">SDN Zones</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showSDNZoneModal()">+ Create Zone</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Zone</th><th>Type</th><th>VNets</th><th>Actions</th></tr></thead>
+                <tbody id="sdn-zone-list"><tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Virtual Networks</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showSDNVNetModal()">+ Create VNet</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Name</th><th>Zone</th><th>Type</th><th>VLAN/VXLAN ID</th><th>Actions</th></tr></thead>
+                <tbody id="sdn-vnet-list"><tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div class="nx-modal-overlay" id="wg-create-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Create WireGuard Interface</h3><button class="nx-modal-close" onclick="document.getElementById('wg-create-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Interface Name</label><input type="text" id="wg-name" class="nx-input" value="wg0"></div>
+                <div class="nx-input-group"><label class="nx-label">Listen Port</label><input type="number" id="wg-port" class="nx-input" value="51820"></div>
+                <div class="nx-input-group"><label class="nx-label">Address (CIDR)</label><input type="text" id="wg-addr" class="nx-input" placeholder="10.0.0.1/24"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('wg-create-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="createWgInterface()">Create</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="wg-peer-modal">
+    <div class="nx-modal" style="max-width:500px;">
+        <div class="nx-modal-header"><h3>Add WireGuard Peer</h3><button class="nx-modal-close" onclick="document.getElementById('wg-peer-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Interface</label><select id="wg-peer-iface" class="nx-select"></select></div>
+                <div class="nx-input-group"><label class="nx-label">Public Key</label><input type="text" id="wg-peer-pubkey" class="nx-input" placeholder="..."></div>
+                <div class="nx-input-group"><label class="nx-label">Endpoint</label><input type="text" id="wg-peer-endpoint" class="nx-input" placeholder="1.2.3.4:51820"></div>
+                <div class="nx-input-group"><label class="nx-label">Allowed IPs</label><input type="text" id="wg-peer-allowed" class="nx-input" value="0.0.0.0/0"></div>
+                <div class="nx-input-group"><label class="nx-label">Keepalive (sec, 0=off)</label><input type="number" id="wg-peer-keepalive" class="nx-input" value="0"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('wg-peer-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="addWgPeer()">Add Peer</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="wg-key-modal">
+    <div class="nx-modal" style="max-width:500px;">
+        <div class="nx-modal-header"><h3>Generated Keys</h3><button class="nx-modal-close" onclick="document.getElementById('wg-key-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body"><div id="wg-key-result"></div></div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('wg-key-modal').classList.remove('open')">Close</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="dhcp-range-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Add DHCP Range</h3><button class="nx-modal-close" onclick="document.getElementById('dhcp-range-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Start IP</label><input type="text" id="dhcp-start" class="nx-input" placeholder="192.168.1.100"></div>
+                <div class="nx-input-group"><label class="nx-label">End IP</label><input type="text" id="dhcp-end" class="nx-input" placeholder="192.168.1.200"></div>
+                <div class="nx-input-group"><label class="nx-label">Netmask</label><input type="text" id="dhcp-netmask" class="nx-input" value="255.255.255.0"></div>
+                <div class="nx-input-group"><label class="nx-label">Lease Time</label><input type="text" id="dhcp-lease" class="nx-input" value="24h"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('dhcp-range-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="addDhcpRange()">Add</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="dns-record-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Add DNS Record</h3><button class="nx-modal-close" onclick="document.getElementById('dns-record-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Domain</label><input type="text" id="dns-domain" class="nx-input" placeholder="server.local"></div>
+                <div class="nx-input-group"><label class="nx-label">IP Address</label><input type="text" id="dns-ip" class="nx-input" placeholder="192.168.1.10"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('dns-record-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="addDnsRecord()">Add</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="sdn-zone-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Create SDN Zone</h3><button class="nx-modal-close" onclick="document.getElementById('sdn-zone-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Zone Name</label><input type="text" id="sdn-zone-name" class="nx-input" placeholder="zone1"></div>
+                <div class="nx-input-group"><label class="nx-label">Zone Type</label><select id="sdn-zone-type" class="nx-select"><option value="simple">Simple</option><option value="vxlan">VXLAN</option><option value="vlan">VLAN</option></select></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('sdn-zone-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="createSDNZone()">Create</button></div>
+    </div>
+</div>
+
+<div class="nx-modal-overlay" id="sdn-vnet-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header"><h3>Create Virtual Network</h3><button class="nx-modal-close" onclick="document.getElementById('sdn-vnet-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">VNet Name</label><input type="text" id="sdn-vnet-name" class="nx-input" placeholder="vnet1"></div>
+                <div class="nx-input-group"><label class="nx-label">Zone</label><select id="sdn-vnet-zone" class="nx-select"></select></div>
+                <div class="nx-input-group"><label class="nx-label">VLAN/VXLAN ID</label><input type="number" id="sdn-vnet-id" class="nx-input" value="100"></div>
+                <div class="nx-input-group"><label class="nx-label">Subnet (CIDR)</label><input type="text" id="sdn-vnet-subnet" class="nx-input" placeholder="10.0.1.0/24"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer"><button class="nx-btn nx-btn-secondary" onclick="document.getElementById('sdn-vnet-modal').classList.remove('open')">Cancel</button><button class="nx-btn nx-btn-primary" onclick="createSDNVNet()">Create</button></div>
+    </div>
+</div>
+
 <script>
 let cfgIface = '';
 
@@ -273,5 +462,205 @@ async function loadBonds() {
 
 function refreshNetwork() { loadInterfaces(); }
 loadInterfaces();
+
+// ── WireGuard ──
+async function loadWireGuard() {
+    try {
+        const r = await fetch('/api/wireguard/status');
+        const d = await r.json();
+        const el = document.getElementById('wg-status');
+        if (!d.available) {
+            el.innerHTML = '<div style="padding:16px;color:var(--text-muted);">WireGuard not installed. Install with: <code>apt install wireguard</code></div>';
+            document.getElementById('wg-interfaces').innerHTML = '';
+            return;
+        }
+        el.innerHTML = '<div class="nx-grid" style="grid-template-columns:repeat(3,1fr);gap:8px;">' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Interfaces</div><div style="font-weight:600;">' + (d.interfaces||[]).length + '</div></div>' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Peers</div><div style="font-weight:600;">' + (d.traffic||{}).total_peers + '</div></div>' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Total RX/TX</div><div style="font-weight:600;">' + formatBytes((d.traffic||{}).total_rx_bytes) + ' / ' + formatBytes((d.traffic||{}).total_tx_bytes) + '</div></div></div>';
+
+        const ifaces = d.interfaces || [];
+        document.getElementById('wg-interfaces').innerHTML = ifaces.map(iface => '<div class="nx-card" style="margin-bottom:16px;"><div class="nx-card-header"><span class="nx-card-title">' + iface.name + '</span><div class="nx-flex nx-gap-2"><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showWgPeerModal(\'' + iface.name + '\')">+ Add Peer</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="viewWgConfig(\'' + iface.name + '\')">View Config</button><button class="nx-btn nx-btn-danger nx-btn-sm" onclick="deleteWgInterface(\'' + iface.name + '\')">Delete</button></div></div><div class="nx-card-body" style="padding:0;"><table class="nx-table"><thead><tr><th>Public Key</th><th>Endpoint</th><th>Allowed IPs</th><th>RX</th><th>TX</th><th>Last Handshake</th><th></th></tr></thead><tbody>' + ((iface.peers||[]).map(p => '<tr><td style="font-family:var(--font-mono);font-size:var(--text-xs);">' + p.public_key + '</td><td>' + (p.endpoint||'-') + '</td><td>' + (p.allowed_ips||[]).join(', ') + '</td><td>' + formatBytes(p.transfer_rx||0) + '</td><td>' + formatBytes(p.transfer_tx||0) + '</td><td>' + (p.latest_handshake ? new Date(p.latest_handshake*1000).toLocaleString() : 'Never') + '</td><td></td></tr>').join('') || '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">No peers configured</td></tr>') + '</tbody></table></div></div>').join('') || '<div style="text-align:center;padding:24px;color:var(--text-muted);">No WireGuard interfaces. Create one to start.</div>';
+    } catch(e) { console.error('loadWireGuard:', e); }
+}
+
+function formatBytes(b) { if (!b) return '0 B'; const u=['B','KB','MB','GB','TB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(1)+' '+u[i]; }
+
+function showWgCreateModal() { document.getElementById('wg-create-modal').classList.add('open'); }
+function showWgPeerModal(iface) {
+    document.getElementById('wg-peer-iface').innerHTML = '<option value="'+iface+'">'+iface+'</option>';
+    document.getElementById('wg-peer-modal').classList.add('open');
+}
+
+async function createWgInterface() {
+    const fd = new FormData();
+    fd.append('name', document.getElementById('wg-name').value);
+    fd.append('listen_port', document.getElementById('wg-port').value);
+    fd.append('address', document.getElementById('wg-addr').value);
+    const r = await fetch('/api/wireguard/interfaces/create', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('Interface created', 'success'); document.getElementById('wg-create-modal').classList.remove('open'); loadWireGuard(); }
+    else showToast(d.error || 'Failed', 'error');
+}
+
+async function addWgPeer() {
+    const fd = new FormData();
+    fd.append('interface', document.getElementById('wg-peer-iface').value);
+    fd.append('public_key', document.getElementById('wg-peer-pubkey').value);
+    fd.append('endpoint', document.getElementById('wg-peer-endpoint').value);
+    fd.append('allowed_ips', document.getElementById('wg-peer-allowed').value);
+    fd.append('keepalive', document.getElementById('wg-peer-keepalive').value);
+    const r = await fetch('/api/wireguard/peers/add', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('Peer added', 'success'); document.getElementById('wg-peer-modal').classList.remove('open'); loadWireGuard(); }
+    else showToast(d.stderr||d.error||'Failed', 'error');
+}
+
+async function deleteWgInterface(name) {
+    if (!confirm('Delete WireGuard interface '+name+'?')) return;
+    await fetch('/api/wireguard/interfaces/'+name, {method:'DELETE'});
+    showToast('Interface deleted', 'success'); loadWireGuard();
+}
+
+async function removeWgPeer(iface, pubkey) {
+    await fetch('/api/wireguard/peers/'+iface+'/'+encodeURIComponent(pubkey), {method:'DELETE'});
+    showToast('Peer removed', 'success'); loadWireGuard();
+}
+
+async function viewWgConfig(name) {
+    const r = await fetch('/api/wireguard/interfaces/'+name+'/config');
+    const d = await r.json();
+    document.getElementById('wg-key-result').innerHTML = '<pre style="background:var(--bg-overlay);padding:12px;border-radius:var(--radius);font-size:var(--text-sm);white-space:pre-wrap;">'+(d.config||'No config')+'</pre>';
+    document.getElementById('wg-key-modal').classList.add('open');
+}
+
+// ── DHCP/DNS ──
+async function loadDHCPDNS() {
+    try {
+        const r = await fetch('/api/dhcp-dns/status');
+        const d = await r.json();
+        const el = document.getElementById('dhcpdns-status');
+        el.innerHTML = '<div class="nx-grid" style="grid-template-columns:repeat(4,1fr);gap:8px;">' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Service</div><div style="font-weight:600;">'+(d.available?'<span style="color:var(--success);">Installed</span>':'<span style="color:var(--danger);">Not Installed</span>')+'</div></div>' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Running</div><div style="font-weight:600;">'+(d.running?'<span style="color:var(--success);">Active</span>':'<span style="color:var(--warning);">Inactive</span>')+'</div></div>' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">DHCP</div><div style="font-weight:600;">'+(d.dhcp_enabled?'Enabled':'Disabled')+'</div></div>' +
+            '<div><div style="font-size:var(--text-xs);color:var(--text-muted);">Leases</div><div style="font-weight:600;">'+d.active_leases+'</div></div></div>';
+    } catch(e) { document.getElementById('dhcpdns-status').textContent = 'Failed to load'; }
+
+    try {
+        const r2 = await fetch('/api/dhcp-dns/dhcp/ranges');
+        const ranges = await r2.json();
+        const el = document.getElementById('dhcp-range-list');
+        el.innerHTML = ranges.length ? ranges.map(r => '<tr><td>'+r.start+'</td><td>'+r.end+'</td><td>'+r.netmask+'</td><td>'+r.lease_time+'</td><td><button class="nx-btn nx-btn-danger nx-btn-sm" onclick="removeDhcpRange(\''+r.start+'\',\''+r.end+'\')">Remove</button></td></tr>').join('') : '<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">No DHCP ranges configured</td></tr>';
+    } catch(e) {}
+
+    try {
+        const r3 = await fetch('/api/dhcp-dns/dns/records');
+        const records = await r3.json();
+        const el = document.getElementById('dns-record-list');
+        el.innerHTML = records.length ? records.map(r => '<tr><td>'+r.domain+'</td><td style="font-family:var(--font-mono);">'+r.ip+'</td><td>'+r.type+'</td><td><button class="nx-btn nx-btn-danger nx-btn-sm" onclick="removeDnsRecord(\''+r.domain+'\')">Remove</button></td></tr>').join('') : '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No DNS records</td></tr>';
+    } catch(e) {}
+
+    try {
+        const r4 = await fetch('/api/dhcp-dns/dhcp/leases');
+        const leases = await r4.json();
+        const el = document.getElementById('dhcp-lease-list');
+        el.innerHTML = leases.length ? leases.map(l => '<tr><td>'+new Date(parseInt(l.expires)*1000).toLocaleString()+'</td><td style="font-family:var(--font-mono);">'+l.mac+'</td><td style="font-family:var(--font-mono);">'+l.ip+'</td><td>'+l.name+'</td></tr>').join('') : '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No active leases</td></tr>';
+    } catch(e) {}
+}
+
+function showDhcpRangeModal() { document.getElementById('dhcp-range-modal').classList.add('open'); }
+function showDnsRecordModal() { document.getElementById('dns-record-modal').classList.add('open'); }
+
+async function addDhcpRange() {
+    const fd = new FormData();
+    fd.append('start', document.getElementById('dhcp-start').value);
+    fd.append('end', document.getElementById('dhcp-end').value);
+    fd.append('netmask', document.getElementById('dhcp-netmask').value);
+    fd.append('lease_time', document.getElementById('dhcp-lease').value);
+    const r = await fetch('/api/dhcp-dns/dhcp/ranges/add', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('DHCP range added', 'success'); document.getElementById('dhcp-range-modal').classList.remove('open'); loadDHCPDNS(); }
+    else showToast(d.error||'Failed', 'error');
+}
+
+async function removeDhcpRange(start, end) {
+    const fd = new FormData(); fd.append('start', start); fd.append('end', end);
+    await fetch('/api/dhcp-dns/dhcp/ranges/remove', {method:'DELETE', body:fd});
+    showToast('Range removed', 'success'); loadDHCPDNS();
+}
+
+async function addDnsRecord() {
+    const fd = new FormData();
+    fd.append('domain', document.getElementById('dns-domain').value);
+    fd.append('ip', document.getElementById('dns-ip').value);
+    const r = await fetch('/api/dhcp-dns/dns/records/add', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('DNS record added', 'success'); document.getElementById('dns-record-modal').classList.remove('open'); loadDHCPDNS(); }
+    else showToast(d.error||'Failed', 'error');
+}
+
+async function removeDnsRecord(domain) {
+    await fetch('/api/dhcp-dns/dns/records/'+encodeURIComponent(domain), {method:'DELETE'});
+    showToast('Record removed', 'success'); loadDHCPDNS();
+}
+
+// ── SDN ──
+async function loadSDN() {
+    try {
+        const r = await fetch('/api/sdn/status');
+        const d = await r.json();
+        const zones = d.zones || [];
+        document.getElementById('sdn-zone-list').innerHTML = zones.length ? zones.map(z => '<tr><td style="font-weight:500;">'+z.name+'</td><td>'+(z.type||'simple')+'</td><td>'+(z.vnet_count||0)+'</td><td><button class="nx-btn nx-btn-danger nx-btn-sm" onclick="deleteSDNZone(\''+z.name+'\')">Delete</button></td></tr>').join('') : '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No SDN zones</td></tr>';
+    } catch(e) { document.getElementById('sdn-zone-list').innerHTML = '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">SDN not available</td></tr>'; }
+    try {
+        const r2 = await fetch('/api/sdn/vnets');
+        const vnets = await r2.json();
+        document.getElementById('sdn-vnet-list').innerHTML = (vnets||[]).length ? vnets.map(v => '<tr><td style="font-weight:500;">'+v.name+'</td><td>'+(v.zone||'-')+'</td><td>'+(v.type||'-')+'</td><td>'+(v.id||'-')+'</td><td><button class="nx-btn nx-btn-danger nx-btn-sm" onclick="deleteSDNVNet(\''+v.name+'\')">Delete</button></td></tr>').join('') : '<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">No virtual networks</td></tr>';
+    } catch(e) { document.getElementById('sdn-vnet-list').innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">SDN not available</td></tr>'; }
+}
+
+function showSDNZoneModal() { document.getElementById('sdn-zone-modal').classList.add('open'); }
+function showSDNVNetModal() {
+    fetch('/api/sdn/zones').then(r=>r.json()).then(zones => {
+        document.getElementById('sdn-vnet-zone').innerHTML = (zones||[]).map(z => '<option value="'+z.name+'">'+z.name+'</option>').join('') || '<option value="">No zones</option>';
+    }).catch(()=>{});
+    document.getElementById('sdn-vnet-modal').classList.add('open');
+}
+
+async function createSDNZone() {
+    const fd = new FormData();
+    fd.append('name', document.getElementById('sdn-zone-name').value);
+    fd.append('zone_type', document.getElementById('sdn-zone-type').value);
+    const r = await fetch('/api/sdn/zones/create', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('Zone created', 'success'); document.getElementById('sdn-zone-modal').classList.remove('open'); loadSDN(); }
+    else showToast(d.error||d.stderr||'Failed', 'error');
+}
+
+async function createSDNVNet() {
+    const fd = new FormData();
+    fd.append('name', document.getElementById('sdn-vnet-name').value);
+    fd.append('zone_name', document.getElementById('sdn-vnet-zone').value);
+    fd.append('vlan_id', document.getElementById('sdn-vnet-id').value);
+    fd.append('subnet', document.getElementById('sdn-vnet-subnet').value);
+    const r = await fetch('/api/sdn/vnets/create', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success) { showToast('VNet created', 'success'); document.getElementById('sdn-vnet-modal').classList.remove('open'); loadSDN(); }
+    else showToast(d.error||d.stderr||'Failed', 'error');
+}
+
+async function deleteSDNZone(name) {
+    if (!confirm('Delete SDN zone '+name+'?')) return;
+    await fetch('/api/sdn/zones/'+name, {method:'DELETE'});
+    showToast('Zone deleted', 'success'); loadSDN();
+}
+
+async function deleteSDNVNet(name) {
+    if (!confirm('Delete VNet '+name+'?')) return;
+    await fetch('/api/sdn/vnets/'+name, {method:'DELETE'});
+    showToast('VNet deleted', 'success'); loadSDN();
+}
+
 </script>
 {% endblock %}

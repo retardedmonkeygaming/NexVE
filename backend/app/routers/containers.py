@@ -192,16 +192,23 @@ async def delete_container(request: Request, ct_id: int):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    db = SessionLocal()
-    try:
-        ct = db.query(Container).filter(Container.id == ct_id).first()
-        if ct:
-            db.delete(ct)
-            db.commit()
-    finally:
-        db.close()
+    # First, actually destroy the container on the system
+    result = container_service.delete_container(ct_id)
 
-    return JSONResponse(content=container_service.delete_container(ct_id))
+    # Only remove from DB if destruction succeeded
+    if result.get("success"):
+        db = SessionLocal()
+        try:
+            ct = db.query(Container).filter(Container.id == ct_id).first()
+            if ct:
+                db.delete(ct)
+                db.commit()
+        finally:
+            db.close()
+    else:
+        return JSONResponse(content=result, status_code=500)
+
+    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/update")
