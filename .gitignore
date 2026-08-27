@@ -1,0 +1,37 @@
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/nexve.db
+
+# Runtime / cache
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+*.log
+
+# Python venv
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Server logs
+/freebuff/
