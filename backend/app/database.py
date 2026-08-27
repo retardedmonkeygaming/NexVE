@@ -3,8 +3,15 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Use user-writable path for development, system path for production
-_data_dir = os.path.join(os.path.dirname(__file__), "../../data")
+# Database lives in /var/lib/nexve in production, fallback to source tree in dev
+_prod_dir = "/var/lib/nexve"
+_dev_dir = os.path.join(os.path.dirname(__file__), "../../data")
+
+if os.path.isdir("/opt/nexve") or os.path.isdir(_prod_dir):
+    _data_dir = _prod_dir
+else:
+    _data_dir = _dev_dir
+
 os.makedirs(_data_dir, exist_ok=True)
 DATABASE_URL = f"sqlite:///{os.path.join(_data_dir, 'nexve.db')}"
 
