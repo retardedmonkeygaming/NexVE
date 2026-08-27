@@ -549,6 +549,20 @@ async def vm_metrics(request: Request, vm_id: int):
         db.close()
 
 
+
+
+
+# ── Libvirt Diagnostics ──
+
+@router.get("/diagnostics")
+async def libvirt_diagnostics(request: Request):
+    """Get detailed libvirt connection diagnostics for troubleshooting."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    diag = vm_service.get_diagnostics()
+    return JSONResponse(content=diag)
+
 # ── VM Status (for libvirt check) ──
 
 @router.get("/status")

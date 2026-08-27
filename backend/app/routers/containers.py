@@ -17,7 +17,6 @@ async def create_container_page(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
-    # Import here to avoid circular imports
     from fastapi.templating import Jinja2Templates
     import os
     TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "../templates")
@@ -34,6 +33,15 @@ async def list_templates(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     return JSONResponse({"templates": container_service.list_templates()})
+
+
+@router.get("/system-info")
+async def system_info(request: Request):
+    """Get LXC system information for diagnostics."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return JSONResponse(content=container_service.get_system_info())
 
 
 @router.get("/")
@@ -84,7 +92,7 @@ async def create_container(
     memory_mb: int = Form(512),
     swap_mb: int = Form(512),
     disk_gb: int = Form(8),
-    template: str = Form("debian-12"),
+    template: str = Form("debian/bookworm"),
     ip_address: str = Form(""),
     unprivileged: bool = Form(True),
     nesting: bool = Form(False),
@@ -120,12 +128,10 @@ async def create_container(
         "shutdown_order": shutdown_order,
     }
 
-    # Create in LXC first (fail if LXC unavailable)
     result = container_service.create_container(config)
     if not result.get("success"):
         return JSONResponse(content=result)
 
-    # Only create in DB if LXC succeeded
     db = SessionLocal()
     try:
         ct = Container(
@@ -283,20 +289,9 @@ async def backup_container(request: Request, ct_id: int):
 
 @router.get("/status")
 async def container_status(request: Request):
-    """Check container management availability (LXC tools)."""
+    """Check LXC container management availability with detailed diagnostics."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    
-    import shutil
-    has_pct = shutil.which('pct') is not None
-    has_lxc = shutil.which('lxc-ls') is not None
-    has_lxc_attach = shutil.which('lxc-attach') is not None
-    
-    return JSONResponse({
-        "available": has_pct or has_lxc,
-        "pct": has_pct,
-        "lxc": has_lxc,
-        "lxc_attach": has_lxc_attach,
-        "message": "" if (has_pct or has_lxc) else "LXC tools not installed. Install: apt install lxc-utils",
-    })
+    info = container_service.get_system_info()
+    return JSONResponse(content=info)

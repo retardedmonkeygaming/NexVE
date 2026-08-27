@@ -558,7 +558,7 @@ def get_install_steps(choices):
             f"({apt_install('libvirt-daemon-system', 'libvirt-clients')} || "
             f"{apt_install('libvirt-daemon', 'libvirt-clients')}) && true"))
         steps.append(("Installing virt-manager + OVMF UEFI firmware",
-            f"{apt_install('virtinst', 'ovmf')} && true"))
+            f"{apt_install('virtinst', 'ovmf', 'libvirt-dev')} && true"))
         steps.append(("Enabling libvirtd",
             "systemctl enable --now libvirtd 2>/dev/null || "
             "systemctl enable libvirtd 2>/dev/null || true"))
@@ -688,8 +688,14 @@ def get_install_steps(choices):
         f"{pip} install -r {INSTALL_DIR}/requirements.txt 2>/dev/null || "
         f"{pip} install -r {INSTALL_DIR}/requirements.txt 2>&1 | tail -5"))
 
+    steps.append(("Installing libvirt development headers",
+        f"({apt_install('libvirt-dev', 'libvirt-daemon-system', 'libvirt-clients')} || "
+        f"{apt_install('libvirt-devel', 'libvirt-daemon')} || true"))
+
     steps.append(("Installing libvirt Python bindings",
-        f"{pip} install libvirt-python 2>/dev/null || true"))
+        f"{pip} install libvirt-python 2>/dev/null || "
+        f"{pip} install libvirt-python 2>&1 | tail -3 || "
+        f"echo 'libvirt-python install failed - VM management may be limited' && true"))
 
     # ═══════════════════════════════════════════════════════════
     # System configuration

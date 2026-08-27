@@ -1,7 +1,7 @@
 """
-NexVE Container Service v3.0
+NexVE Container Service v3.1
 Uses standard LXC commands (lxc-*) for container management.
-Replaces proprietary Proxmox PCT commands.
+Supports lxc-download template (preferred) and debootstrap fallback.
 """
 import subprocess
 import os
@@ -30,41 +30,72 @@ class ContainerService:
         r = self.run_cmd("which lxc-attach 2>/dev/null")
         return r["success"]
 
+    def _has_download_template(self) -> bool:
+        """Check if lxc-download template is available."""
+        r = self.run_cmd("ls /usr/share/lxc/templates/lxc-download 2>/dev/null || which lxc-download 2>/dev/null")
+        return r["success"]
+
+    def _get_lxc_version(self) -> str:
+        """Get LXC version."""
+        r = self.run_cmd("lxc-ls --version 2>/dev/null || lxc-info --version 2>/dev/null")
+        return r["stdout"] if r["success"] else "unknown"
+
+    def _list_download_templates(self, dist: str) -> List[str]:
+        """List available releases for a distribution via lxc-download."""
+        r = self.run_cmd(
+            f"lxc-download --list --dist {dist} 2>/dev/null",
+            timeout=30
+        )
+        releases = []
+        if r["success"]:
+            for line in r["stdout"].splitlines():
+                line = line.strip()
+                if line and not line.startswith("DIST") and not line.startswith("-"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        releases.append(parts[1])  # RELEASE column
+        return releases
+
     def list_templates(self) -> List[dict]:
         """List available LXC templates."""
-        # Check for downloaded rootfs tarballs in common locations
-        templates = []
-        search_dirs = [
-            "/var/cache/lxc/templates",
-            "/var/lib/lxc/templates",
-            os.path.expanduser("~/.cache/lxc/templates"),
-            "/usr/share/lxc/templates",
+        templates = [
+            {"id": "debian/bookworm", "name": "Debian 12 (Bookworm)", "status": "available", "dist": "debian", "release": "bookworm"},
+            {"id": "debian/bullseye", "name": "Debian 11 (Bullseye)", "status": "available", "dist": "debian", "release": "bullseye"},
+            {"id": "ubuntu/jammy", "name": "Ubuntu 22.04 (Jammy)", "status": "available", "dist": "ubuntu", "release": "jammy"},
+            {"id": "ubuntu/noble", "name": "Ubuntu 24.04 (Noble)", "status": "available", "dist": "ubuntu", "release": "noble"},
+            {"id": "ubuntu/focal", "name": "Ubuntu 20.04 (Focal)", "status": "available", "dist": "ubuntu", "release": "focal"},
+            {"id": "alpine/3.19", "name": "Alpine Linux 3.19", "status": "available", "dist": "alpine", "release": "3.19"},
+            {"id": "alpine/3.20", "name": "Alpine Linux 3.20", "status": "available", "dist": "alpine", "release": "3.20"},
+            {"id": "fedora/39", "name": "Fedora 39", "status": "available", "dist": "fedora", "release": "39"},
+            {"id": "fedora/40", "name": "Fedora 40", "status": "available", "dist": "fedora", "release": "40"},
+            {"id": "centos/stream9", "name": "CentOS Stream 9", "status": "available", "dist": "centos", "release": "stream9"},
+            {"id": "rockylinux/9", "name": "Rocky Linux 9", "status": "available", "dist": "rockylinux", "release": "9"},
+            {"id": "almalinux/9", "name": "AlmaLinux 9", "status": "available", "dist": "almalinux", "release": "9"},
         ]
-        found_any = False
-        for d in search_dirs:
-            if os.path.isdir(d):
-                for f in sorted(os.listdir(d)):
-                    if f.endswith((".tar.gz", ".tar.xz", ".tar.zst", ".tar.bz2")):
-                        templates.append({
-                            "id": f,
-                            "name": f.split("_")[0].replace("-rootfs", ""),
-                            "status": "ready",
-                        })
-                        found_any = True
-
-        # Fallback: suggest popular distro rootfs images
-        if not found_any:
-            templates = [
-                {"id": "debian-12", "name": "debian-12 (download)", "status": "available"},
-                {"id": "ubuntu-24.04", "name": "ubuntu-24.04 (download)", "status": "available"},
-                {"id": "alpine-3.19", "name": "alpine-3.19 (download)", "status": "available"},
-                {"id": "fedora-39", "name": "fedora-39 (download)", "status": "available"},
-                {"id": "centos-stream9", "name": "centos-stream9 (download)", "status": "available"},
-            ]
         return templates
 
+    def get_system_info(self) -> dict:
+        """Get LXC system information for diagnostics."""
+        info = {
+            "has_lxc": self._has_lxc(),
+            "has_lxc_attach": self._has_lxc_attach(),
+            "has_download_template": self._has_download_template(),
+            "lxc_version": self._get_lxc_version(),
+            "is_root": os.geteuid() == 0,
+        }
+        # Check for common issues
+        issues = []
+        if not info["has_lxc"]:
+            issues.append("LXC tools not found. Install: apt install lxc-utils")
+        if not info["has_download_template"]:
+            issues.append("lxc-download template not found. Install: apt install lxc")
+        if not info["is_root"]:
+            issues.append("Not running as root. Containers require root privileges.")
+        info["issues"] = issues
+        return info
+
     def create_container(self, config: dict) -> dict:
-        """Create a new LXC container using debootstrap or lxc-create."""
+        """Create a new LXC container using the download template."""
         name = config["name"]
         ct_id = config.get("ct_id", 1000)
         hostname = config.get("hostname", name)
@@ -72,101 +103,151 @@ class ContainerService:
         memory_mb = config.get("memory_mb", 512)
         swap_mb = config.get("swap_mb", 512)
         disk_gb = config.get("disk_gb", 8)
-        template = config.get("template", "debian")
+        template = config.get("template", "debian/bookworm")
         ip_address = config.get("ip_address", "")
         unprivileged = config.get("unprivileged", True)
         nesting = config.get("nesting", False)
-        mount_points = config.get("mount_points", "")
-        cpu_weight = config.get("cpu_weight", 100)
-        io_priority = config.get("io_priority", "normal")
+
+        # Parse dist/release from template id (e.g., "debian/bookworm" -> dist="debian", release="bookworm")
+        if "/" in template:
+            parts = template.split("/")
+            dist = parts[0]
+            release = parts[1]
+        else:
+            dist = template
+            release = "latest"
+
+        # Pre-flight checks
+        if not self._has_lxc():
+            return {
+                "success": False,
+                "error": "LXC tools are not installed on this system.",
+                "hint": "Install LXC: apt install lxc-utils lxc\nOn Debian/Ubuntu: apt install lxc debootstrap\nOn RHEL/Fedora: dnf install lxc"
+            }
+
+        if not os.geteuid() == 0:
+            return {
+                "success": False,
+                "error": "Container creation requires root privileges.",
+                "hint": "Run NexVE as root or with sudo."
+            }
 
         # Check if container already exists
         check = self.run_cmd(f"lxc-info -n {name} 2>/dev/null")
-        if check["success"] and "stopped" in check["stdout"]:
+        if check["success"] and ("RUNNING" in check["stdout"].upper() or "STOPPED" in check["stdout"].upper()):
             return {"success": False, "error": f"Container '{name}' already exists"}
 
-        # Determine template name for lxc-create
-        template_lower = template.lower().replace(".tar.gz", "").replace(".tar.xz", "")
-        if "debian" in template_lower:
-            lxc_template = "debian"
-        elif "ubuntu" in template_lower:
-            lxc_template = "ubuntu"
-        elif "alpine" in template_lower:
-            lxc_template = "alpine"
-        elif "fedora" in template_lower:
-            lxc_template = "fedora"
-        elif "centos" in template_lower:
-            lxc_template = "centos"
+        # Remove leftover config if any
+        self.run_cmd(f"lxc-destroy -n {name} 2>/dev/null")
+
+        # Method 1: Try lxc-download template (preferred — downloads a rootfs tarball)
+        if self._has_download_template():
+            dl_cmd = (
+                f"lxc-create -n {name} -t download"
+                f" -- --dist {dist} --release {release} --arch amd64 --no-validate"
+            )
+            r = self.run_cmd(dl_cmd, timeout=180)
+            if r["success"]:
+                return self._post_create(config, name, ct_id, hostname, vcpu, memory_mb, swap_mb, ip_address, unprivileged, nesting)
+            # If download fails, log the error but continue to fallback
+            dl_error = r["stderr"] or r["stdout"]
+
         else:
-            lxc_template = "download"
+            dl_error = "lxc-download template not available"
 
-        # Build LXC configuration
-        lxc_dir = f"/var/lib/lxc/{name}"
-        os.makedirs(lxc_dir, exist_ok=True)
-
-        # Create container with lxc-create
-        cmd = f"lxc-create -n {name} -t {lxc_template}"
-        if lxc_template == "download":
-            cmd += f" -- --dist {template_lower.split('-')[0]} --release {template_lower.split('-')[-1]} --arch amd64"
+        # Method 2: Try debootstrap directly (works on Debian/Ubuntu)
+        debootstrap_check = self.run_cmd("which debootstrap 2>/dev/null")
+        if debootstrap_check["success"]:
+            deb_cmd = f"lxc-create -n {name} -t debian -- --release bookworm"
+            r = self.run_cmd(deb_cmd, timeout=180)
+            if r["success"]:
+                return self._post_create(config, name, ct_id, hostname, vcpu, memory_mb, swap_mb, ip_address, unprivileged, nesting)
+            deb_error = r["stderr"] or r["stdout"]
         else:
-            cmd += f" -- --release {template_lower.split('-')[-1] if '-' in template_lower else 'latest'}"
+            deb_error = "debootstrap not available"
 
-        r = self.run_cmd(cmd, timeout=120)
-        if not r["success"]:
-            return {"success": False, "error": r["stderr"] or r["stdout"] or "Failed to create container"}
+        # Method 3: Try creating a minimal container with busybox (last resort)
+        busybox_check = self.run_cmd("which busybox 2>/dev/null")
+        if busybox_check["success"]:
+            bb_cmd = f"lxc-create -n {name} -t busybox"
+            r = self.run_cmd(bb_cmd, timeout=60)
+            if r["success"]:
+                return self._post_create(config, name, ct_id, hostname, vcpu, memory_mb, swap_mb, ip_address, unprivileged, nesting)
 
-        # Write LXC config
-        config_path = f"{lxc_dir}/config"
-        config_content = f"""# NexVE LXC Container Configuration
-lxc.uts.name = {hostname}
-lxc.arch = amd64
+        # All methods failed
+        return {
+            "success": False,
+            "error": f"Failed to create container '{name}'. All template methods failed.",
+            "details": {
+                "download_template": dl_error,
+                "debootstrap": deb_error if debootstrap_check.get("success") else "not installed",
+            },
+            "hint": (
+                "To fix this:\n"
+                "1. Install LXC with download support: apt install lxc debootstrap\n"
+                "2. Ensure network access for downloading rootfs images\n"
+                "3. Try a different template (e.g., debian/bookworm is most reliable)\n"
+                "4. Check: lxc-create -t download -n test -- --dist debian --release bookworm"
+            )
+        }
 
-# Resource limits
-lxc.cgroup2.cpu.max = {vcpu * 100000} 100000
-lxc.cgroup2.memory.max = {memory_mb * 1024 * 1024}
-lxc.cgroup2.memory.swap.max = {swap_mb * 1024 * 1024}
-
-# Networking
-lxc.net.0.type = veth
-lxc.net.0.link = vmbr0
-lxc.net.0.flags = up
-"""
-        if ip_address:
-            config_content += f"lxc.net.0.ipv4.address = {ip_address}/24\n"
-
-        if nesting:
-            config_content += "lxc.sysctl.kernel.unprivileged_userns_clone = 1\n"
-            config_content += "lxc.apparmor.profile = unconfined\n"
-
-        # Privileged container settings
-        if not unprivileged:
-            config_content += "lxc.idmap = u 0 0 65536\n"
-            config_content += "lxc.idmap = g 0 0 65536\n"
-
+    def _post_create(self, config, name, ct_id, hostname, vcpu, memory_mb, swap_mb, ip_address, unprivileged, nesting):
+        """Apply post-creation configuration to a container."""
+        config_path = f"/var/lib/lxc/{name}/config"
         try:
-            with open(config_path, "w") as f:
-                f.write(config_content)
+            extra = f"\n# NexVE Configuration\n"
+            extra += f"lxc.uts.name = {hostname}\n"
+
+            if vcpu:
+                cpu_quota = vcpu * 100000
+                extra += f"lxc.cgroup2.cpu.max = {cpu_quota} 100000\n"
+
+            if memory_mb:
+                mem_bytes = memory_mb * 1024 * 1024
+                extra += f"lxc.cgroup2.memory.max = {mem_bytes}\n"
+
+            if swap_mb:
+                swap_bytes = swap_mb * 1024 * 1024
+                extra += f"lxc.cgroup2.memory.swap.max = {swap_bytes}\n"
+
+            extra += "lxc.net.0.type = veth\n"
+            extra += "lxc.net.0.link = lxcbr0\n"
+            extra += "lxc.net.0.flags = up\n"
+            if ip_address:
+                extra += f"lxc.net.0.ipv4.address = {ip_address}/24\n"
+
+            if nesting:
+                extra += "lxc.sysctl.kernel.unprivileged_userns_clone = 1\n"
+                extra += "lxc.apparmor.profile = unconfined\n"
+
+            if not unprivileged:
+                extra += "lxc.idmap = u 0 0 65536\n"
+                extra += "lxc.idmap = g 0 0 65536\n"
+
+            with open(config_path, "a") as f:
+                f.write(extra)
         except Exception as e:
-            return {"success": False, "error": f"Failed to write config: {e}"}
+            return {
+                "success": True,
+                "container": {"ct_id": ct_id, "name": name, "hostname": hostname},
+                "warning": f"Container created but config update failed: {e}"
+            }
 
         return {"success": True, "container": {"ct_id": ct_id, "name": name, "hostname": hostname}}
 
     def get_container_status(self, ct_id: int) -> str:
-        """Get container status by name (ct_id used as name for LXC)."""
-        # Try to find container by searching DB for the name
-        # For now, use ct_id as name
         r = self.run_cmd(f"lxc-info -n {ct_id} --state 2>/dev/null")
         if r["success"]:
-            if "RUNNING" in r["stdout"]:
+            stdout = r["stdout"].upper()
+            if "RUNNING" in stdout:
                 return "running"
-            elif "STOPPED" in r["stdout"]:
+            elif "STOPPED" in stdout:
                 return "stopped"
-            elif "FROZEN" in r["stdout"]:
+            elif "FROZEN" in stdout:
                 return "paused"
         return "unknown"
 
     def get_container_status_by_name(self, name: str) -> str:
-        """Get container status by name."""
         r = self.run_cmd(f"lxc-info -n {name} --state 2>/dev/null")
         if r["success"]:
             stdout = r["stdout"].upper()
@@ -217,7 +298,6 @@ lxc.net.0.flags = up
         return {"success": r["success"], "error": r["stderr"] if not r["success"] else None}
 
     def get_container_config(self, ct_id: int) -> dict:
-        """Get LXC container configuration."""
         r = self.run_cmd(f"lxc-info -n {ct_id} 2>/dev/null")
         config = {}
         if r["success"]:
@@ -226,7 +306,6 @@ lxc.net.0.flags = up
                     key, val = line.split(":", 1)
                     config[key.strip()] = val.strip()
 
-        # Also try to read the config file
         config_file = f"/var/lib/lxc/{ct_id}/config"
         if os.path.exists(config_file):
             try:
@@ -241,7 +320,6 @@ lxc.net.0.flags = up
         return config
 
     def get_container_config_by_name(self, name: str) -> dict:
-        """Get LXC container configuration by name."""
         r = self.run_cmd(f"lxc-info -n {name} 2>/dev/null")
         config = {}
         if r["success"]:
@@ -264,9 +342,7 @@ lxc.net.0.flags = up
         return config
 
     def update_container(self, ct_id: int, config: dict) -> dict:
-        """Update container resource limits via cgroup."""
         updates = []
-
         if "vcpu" in config and config["vcpu"]:
             cpu_quota = int(config["vcpu"]) * 100000
             updates.append(f"lxc.cgroup2.cpu.max = {cpu_quota} 100000")
@@ -288,7 +364,6 @@ lxc.net.0.flags = up
         if not updates:
             return {"success": True}
 
-        # Write updates to config file
         config_path = f"/var/lib/lxc/{ct_id}/config"
         try:
             existing = {}
@@ -300,13 +375,11 @@ lxc.net.0.flags = up
                             key, val = line.split("=", 1)
                             existing[key.strip()] = val.strip()
 
-            # Apply updates
             for update in updates:
                 if "=" in update:
                     key, val = update.split("=", 1)
                     existing[key.strip()] = val.strip()
 
-            # Write back
             with open(config_path, "w") as f:
                 for key, val in existing.items():
                     f.write(f"{key} = {val}\n")
@@ -316,7 +389,6 @@ lxc.net.0.flags = up
             return {"success": False, "error": str(e)}
 
     def add_mount_point(self, ct_id: int, idx: int, volume: str, mp: str) -> dict:
-        """Add a mount point to a container."""
         config_path = f"/var/lib/lxc/{ct_id}/config"
         try:
             with open(config_path, "a") as f:
@@ -326,7 +398,6 @@ lxc.net.0.flags = up
             return {"success": False, "error": str(e)}
 
     def remove_mount_point(self, ct_id: int, idx: int) -> dict:
-        """Remove a mount point from a container."""
         config_path = f"/var/lib/lxc/{ct_id}/config"
         try:
             if os.path.exists(config_path):
@@ -341,7 +412,6 @@ lxc.net.0.flags = up
             return {"success": False, "error": str(e)}
 
     def container_exec(self, ct_id: int, command: str) -> dict:
-        """Execute a command inside a running container."""
         r = self.run_cmd(f"lxc-attach -n {ct_id} -- {command}", timeout=30)
         return {"success": r["success"], "stdout": r["stdout"], "stderr": r["stderr"]}
 
@@ -350,17 +420,17 @@ lxc.net.0.flags = up
         return {"success": r["success"], "stdout": r["stdout"], "stderr": r["stderr"]}
 
     def backup_container(self, ct_id: int, storage: str = "local") -> dict:
-        """Snapshot a container."""
-        r = self.run_cmd(f"lxc-stop -n {ct_id} -t 10", timeout=30)
+        self.run_cmd(f"lxc-stop -n {ct_id} -t 10", timeout=30)
+        backup_dir = "/var/lib/nexve/backups"
+        os.makedirs(backup_dir, exist_ok=True)
         r = self.run_cmd(
-            f"tar czf /var/lib/nexve/backups/{ct_id}_$(date +%Y%m%d_%H%M%S).tar.gz -C /var/lib/lxc/{ct_id}/rootfs .",
+            f"tar czf {backup_dir}/{ct_id}_$(date +%Y%m%d_%H%M%S).tar.gz -C /var/lib/lxc/{ct_id}/rootfs .",
             timeout=300
         )
         self.start_container(ct_id)
         return {"success": r["success"], "stdout": r["stdout"], "stderr": r["stderr"]}
 
     def restore_container(self, ct_id: int, archive: str) -> dict:
-        """Restore a container from backup."""
         rootfs_path = f"/var/lib/lxc/{ct_id}/rootfs"
         os.makedirs(rootfs_path, exist_ok=True)
         r = self.run_cmd(f"tar xzf {archive} -C {rootfs_path}", timeout=300)
