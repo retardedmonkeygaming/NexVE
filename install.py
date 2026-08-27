@@ -44,6 +44,33 @@ class Theme:
     CYAN        = 44     # Bright cyan for highlights
 
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# OS Detection — Debian/Ubuntu only
+# ═══════════════════════════════════════════════════════════════
+
+def detect_os():
+    """Detect the Linux distribution. Returns (distro, version, codename)."""
+    info = {"distro": "unknown", "version": "0", "codename": "unknown"}
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("ID="):
+                    info["distro"] = line.split("=", 1)[1].strip().strip('"').lower()
+                elif line.startswith("VERSION_ID="):
+                    info["version"] = line.split("=", 1)[1].strip().strip('"')
+                elif line.startswith("VERSION_CODENAME="):
+                    info["codename"] = line.split("=", 1)[1].strip().strip('"')
+    except Exception:
+        pass
+    return info
+
+def is_supported_os():
+    """Check if the OS is Debian or Ubuntu."""
+    info = detect_os()
+    return info["distro"] in ("debian", "ubuntu", "linuxmint", "pop")
+
 def init_colors():
     curses.start_color()
     curses.use_default_colors()
@@ -524,6 +551,18 @@ def get_install_steps(choices):
     pip = f"{INSTALL_DIR}/venv/bin/pip"
     venv = f"{INSTALL_DIR}/venv/bin/python3"
 
+    # Detect OS for package name variations
+    os_info = detect_os()
+    distro = os_info["distro"]
+
+    # Debian/Ubuntu package name mappings
+    PKG = {
+        "qemu": "qemu-system-x86" if distro == "debian" else "qemu-kvm",
+        "libvirt-daemon": "libvirt-daemon-system" if distro == "debian" else "libvirt-daemon",
+        "novnc": "novnc" if distro == "debian" else "novnc",
+        "zfs": "zfsutils-linux" if distro == "debian" else "zfsutils",
+    }
+
     # Step 1: System update
     steps.append(("Updating package lists",
         "apt-get update -qq 2>/dev/null || apt-get update 2>/dev/null || true"))
@@ -552,10 +591,10 @@ def get_install_steps(choices):
     # ── KVM/QEMU ──
     if "KVM" in choices:
         steps.append(("Installing QEMU/KVM",
-            f"({apt_install('qemu-kvm', 'qemu-system-x86', 'qemu-utils')} || "
+            f"({apt_install(PKG['qemu'], 'qemu-utils')} || "
             f"{apt_install('qemu-system-x86', 'qemu-utils')}) && true"))
         steps.append(("Installing libvirt daemon",
-            f"({apt_install('libvirt-daemon-system', 'libvirt-clients')} || "
+            f"({apt_install(PKG['libvirt-daemon'], 'libvirt-clients')} || "
             f"{apt_install('libvirt-daemon', 'libvirt-clients')}) && true"))
         steps.append(("Installing virt-manager + OVMF UEFI firmware",
             f"{apt_install('virtinst', 'ovmf', 'libvirt-dev')} && true"))
@@ -727,13 +766,65 @@ def get_install_steps(choices):
 
     steps.append(("Setting user permissions",
         "usermod -aG libvirt ${SUDO_USER:-root} 2>/dev/null || true; "
-        "usermod -aG kvm ${SUDO_USER:-root} 2>/dev/null || true; true"))
+        "usermod -aG kvm ${SUDO_USER:-root} 2>/dev/null || true; "
+        "usermod -aG libvirt-qemu ${SUDO_USER:-root} 2>/dev/null || true; "
+        "usermod -aG input ${SUDO_USER:-root} 2>/dev/null || true; "
+        "usermod -aG disk ${SUDO_USER:-root} 2>/dev/null || true; "
+        "usermod -aG lxd ${SUDO_USER:-root} 2>/dev/null || true; "
+        "chmod +x /dev/kvm 2>/dev/null || true; "
+        "chown root:kvm /dev/kvm 2>/dev/null || true; "
+        "echo 'User groups configured for libvirt, kvm, disk, input' && true"))
 
     steps.append(("Configuring nftables base rules",
         "nft add table inet nexve 2>/dev/null || true; "
         "nft add chain inet nexve input '{ policy accept; }' 2>/dev/null || true; "
         "nft add chain inet nexve forward '{ policy accept; }' 2>/dev/null || true; "
         "nft add chain inet nexve host '{ policy accept; }' 2>/dev/null || true; true"))
+
+
+    # ═══════════════════════════════════════════════════════════
+    # Plug-and-Play configuration
+    # ═══════════════════════════════════════════════════════════
+
+    steps.append(("Configuring libvirt default network",
+        "virsh net-autostart default 2>/dev/null || true; "
+        "virsh net-start default 2>/dev/null || true; "
+        "echo 'Default NAT network enabled' && true"))
+
+    steps.append(("Configuring LXC bridge",
+        "mkdir -p /etc/lxc 2>/dev/null || true; "
+        "echo 'lxc.net.0.link = lxcbr0' > /etc/lxc/default.conf 2>/dev/null || true; "
+        "echo 'LXC default bridge configured' && true"))
+
+    steps.append(("Enabling KVM kernel module",
+        "modprobe kvm 2>/dev/null || true; "
+        "modprobe kvm_intel 2>/dev/null || true; "
+        "modprobe kvm_amd 2>/dev/null || true; "
+        "echo 'kvm' >> /etc/modules-load.d/kvm.conf 2>/dev/null || true; "
+        "echo 'KVM modules configured' && true"))
+
+    steps.append(("Configuring IP forwarding",
+        "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-nexve.conf 2>/dev/null || true; "
+        "echo 'net.bridge.bridge-nf-call-iptables = 1' >> /etc/sysctl.d/99-nexve.conf 2>/dev/null || true; "
+        "echo 'net.bridge.bridge-nf-call-ip6tables = 1' >> /etc/sysctl.d/99-nexve.conf 2>/dev/null || true; "
+        "sysctl --system 2>/dev/null || true; "
+        "echo 'IP forwarding enabled' && true"))
+
+    steps.append(("Creating NexVE directories",
+        f"mkdir -p /var/lib/libvirt/images /var/lib/libvirt/qemu/nvram 2>/dev/null || true; "
+        f"mkdir -p /var/lib/lxc /var/lib/nexve/backups /var/lib/nexve/iso 2>/dev/null || true; "
+        f"mkdir -p {INSTALL_DIR}/data/backups {INSTALL_DIR}/data/cloud-init "
+        f"{INSTALL_DIR}/data/isos {INSTALL_DIR}/data/uploads {INSTALL_DIR}/data/metrics 2>/dev/null || true; "
+        f"echo 'All directories created' && true"))
+
+    steps.append(("Configuring nftables for VMs/containers",
+        "nft add table inet nexve 2>/dev/null || true; "
+        "nft add chain inet nexve input '{ policy accept; }' 2>/dev/null || true; "
+        "nft add chain inet nexve forward '{ policy accept; }' 2>/dev/null || true; "
+        "nft add chain inet nexve output '{ policy accept; }' 2>/dev/null || true; "
+        "nft add rule inet nexve forward ct state established,related accept 2>/dev/null || true; "
+        "nft add rule inet nexve forward iifname lxcbr0 accept 2>/dev/null || true; "
+        "echo 'Firewall rules configured' && true"))
 
     # ═══════════════════════════════════════════════════════════
     # Create systemd service file using a proper heredoc
@@ -831,6 +922,16 @@ def main(stdscr):
         tui.draw_centered(tui.h // 2 + 1, "Usage: sudo python3 install.py", 8)
         tui.stdscr.getch()
         return
+
+    # Check OS compatibility
+    if not is_supported_os():
+        tui.clear()
+        tui.draw_centered(tui.h // 2 - 1, "Warning: Unsupported OS detected", 11)
+        os_info = detect_os()
+        tui.draw_centered(tui.h // 2, f"Detected: {os_info['distro']} {os_info['version']}", 8)
+        tui.draw_centered(tui.h // 2 + 1, "NexVE is designed for Debian 10-13 and Ubuntu 20.04+", 8)
+        tui.draw_centered(tui.h // 2 + 2, "Press any key to continue anyway, or Ctrl+C to exit", 8)
+        tui.stdscr.getch()
 
     # ── Main menu ──
     main_items = [

@@ -1,36 +1,46 @@
-# NexVE v3.1 — Core dependencies
+# NexVE v3.1 — Complete dependencies for Debian/Ubuntu
+# Install: pip install -r requirements.txt
+
+# ── Core Framework ──
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 sqlalchemy==2.0.36
-bcrypt==4.2.1
-psutil==6.1.0
 jinja2==3.1.4
 python-multipart==0.0.12
-websockets==13.1
 aiofiles==24.1.0
-itsdangerous==2.2.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
-# Authentication & Security
+# ── Authentication & Security ──
+bcrypt==4.2.1
 python-jose[cryptography]==3.3.0
+itsdangerous==2.2.0
 pyotp==2.9.0
 qrcode[pil]==8.0
 Pillow==11.0.0
 ldap3==2.9.1
 
-# Cryptography
+# ── Cryptography ──
 certifi>=2023.7.22
 cryptography>=41.0.0
 
-# HTTP client
+# ── HTTP Client ──
 httpx>=0.25.0
 
-# Virtualization & System
-paramiko>=3.4.0
+# ── System Monitoring ──
+psutil==6.1.0
+
+# ── Networking ──
 netifaces>=0.11.0
+websockets==13.1
+
+# ── Virtualization ──
+paramiko>=3.4.0
 websockify>=0.12.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+
+# ── Date/Time ──
 python-dateutil>=2.8.2
 
-# Libvirt Python bindings (install separately if build fails: pip install libvirt-python)
-# libvirt-python is installed separately in install.py because it requires libvirt-dev headers
+# ── Note: libvirt-python must be installed separately ──
+# The installer handles this: pip install libvirt-python
+# It requires libvirt-dev headers (apt install libvirt-dev)

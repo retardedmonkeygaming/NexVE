@@ -57,7 +57,13 @@ async def login_page(request: Request):
 
 
 @router.post("/login")
-async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(default=""),
+    login_method: str = Form(default="password"),
+    totp_code: str = Form(default=""),
+):
     ip = request.client.host
 
     if is_locked_out(ip):
@@ -69,14 +75,40 @@ async def login_submit(request: Request, username: str = Form(...), password: st
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == username).first()
+
+        # TOTP-only login (authenticator app)
+        if login_method == "totp":
+            if not user:
+                record_failure(ip)
+                return RedirectResponse(url="/login?error=1", status_code=302)
+            if not user.is_active:
+                return templates.TemplateResponse(request=request, name="login.html", context={
+                    "error": "Account is disabled.", "locked": False,
+                })
+            if not user.totp_enabled or not user.totp_secret:
+                return templates.TemplateResponse(request=request, name="login.html", context={
+                    "error": "Authenticator not configured for this account. Use password login.", "locked": False,
+                })
+            from ..auth import verify_totp
+            if not verify_totp(user.totp_secret, totp_code):
+                record_failure(ip)
+                return templates.TemplateResponse(request=request, name="login.html", context={
+                    "error": "Invalid authenticator code.", "locked": False,
+                })
+            clear_failures(ip)
+            token = create_session(user.id)
+            response = RedirectResponse(url="/", status_code=302)
+            response.set_cookie("nexve_session", token, httponly=True, max_age=86400)
+            return response
+
+        # Standard password login
         if not user or not user.verify_password(password):
             record_failure(ip)
             return RedirectResponse(url="/login?error=1", status_code=302)
 
         if not user.is_active:
             return templates.TemplateResponse(request=request, name="login.html", context={
-                "error": "Account is disabled.",
-                "locked": False,
+                "error": "Account is disabled.", "locked": False,
             })
 
         clear_failures(ip)

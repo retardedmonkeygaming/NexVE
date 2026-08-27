@@ -228,6 +228,16 @@
             <span class="nx-taskbar-count" id="task-count">0</span>
             <svg id="task-chevron" class="nx-taskbar-expand" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </div>
+        <!-- Task list panel -->
+        <div id="task-list-panel" style="display:none;position:fixed;bottom:48px;right:16px;width:380px;max-height:400px;background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.4);overflow:hidden;z-index:1000;">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:600;font-size:var(--text-sm);">Recent Tasks</span>
+                <button onclick="document.getElementById('task-list-panel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">✕</button>
+            </div>
+            <div id="task-list-body" style="overflow-y:auto;max-height:340px;padding:8px;">
+                <div style="text-align:center;color:var(--text-muted);padding:24px;">No recent tasks</div>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -363,13 +373,44 @@ document.addEventListener('keydown', (e) => {
 
 // ─── Task Panel ───
 let taskPanelOpen = false;
-function toggleTaskPanel() { taskPanelOpen = !taskPanelOpen; loadTasks(); }
+function toggleTaskPanel() {
+    taskPanelOpen = !taskPanelOpen;
+    const panel = document.getElementById('task-list-panel');
+    if (taskPanelOpen) {
+        panel.style.display = 'block';
+        loadTasks();
+    } else {
+        panel.style.display = 'none';
+    }
+}
 
 async function loadTasks() {
     try {
         const r = await fetch('/api/tasks?limit=20');
         const data = await r.json();
-        document.getElementById('task-count').textContent = data.tasks.length;
+        const tasks = data.tasks || [];
+        document.getElementById('task-count').textContent = tasks.length;
+        const body = document.getElementById('task-list-body');
+        if (!body) return;
+        if (tasks.length === 0) {
+            body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;">No recent tasks</div>';
+            return;
+        }
+        const icons = {'vm.create':'🖥️','vm.start':'▶️','vm.stop':'⏹️','vm.delete':'🗑️','ct.start':'▶️','ct.stop':'⏹️','ct.restart':'🔄','ct.delete':'🗑️','backup.start':'💾','login (2FA)':'🔑'};
+        const statusColors = {completed:'var(--success)',failed:'var(--danger)',running:'var(--accent)'};
+        body.innerHTML = tasks.map(t => {
+            const icon = icons[t.action] || '📋';
+            const color = statusColors[t.status] || 'var(--text-muted)';
+            const time = t.started_at ? new Date(t.started_at).toLocaleString() : '';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-subtle);font-size:var(--text-xs);">' +
+                '<span style="font-size:16px;">' + icon + '</span>' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (t.action || '') + '</div>' +
+                '<div style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (t.target_name || t.target_type || '') + ' · ' + time + '</div>' +
+                '</div>' +
+                '<span style="color:' + color + ';font-weight:600;font-size:10px;text-transform:uppercase;">' + (t.status || '') + '</span>' +
+                '</div>';
+        }).join('');
     } catch (e) { console.error(e); }
 }
 

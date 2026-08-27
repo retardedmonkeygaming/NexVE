@@ -4,7 +4,7 @@ from ..database import SessionLocal
 from ..models.vm import Container
 from ..services.container_service import ContainerService
 from ..auth import get_current_user
-from ..main import log_task
+from ..task_utils import log_task
 from ..security import generate_csrf_token
 import json
 

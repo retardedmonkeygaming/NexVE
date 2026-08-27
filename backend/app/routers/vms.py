@@ -4,7 +4,7 @@ from ..database import SessionLocal
 from ..models.vm import VM
 from ..services.vm_service import VMService
 from ..auth import get_current_user
-from ..main import log_task
+from ..task_utils import log_task
 
 router = APIRouter()
 vm_service = VMService()

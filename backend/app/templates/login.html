@@ -8,6 +8,15 @@
     <link rel="stylesheet" href="/static/css/nexve.css">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#00d4aa">
+    <style>
+        .login-method-toggle { display:flex; gap:4px; background:var(--bg-secondary); border-radius:var(--radius-lg); padding:4px; margin-bottom:16px; }
+        .login-method-btn { flex:1; padding:10px 12px; border:none; background:transparent; color:var(--text-muted); font-size:var(--text-sm); font-weight:500; border-radius:var(--radius-md); cursor:pointer; transition:all 0.2s; }
+        .login-method-btn.active { background:var(--accent); color:#000; font-weight:600; }
+        .login-method-btn:hover:not(.active) { color:var(--text-primary); }
+        .login-method-panel { display:none; }
+        .login-method-panel.active { display:block; }
+        .auth-method-icon { font-size:28px; margin-bottom:4px; }
+    </style>
 </head>
 <body class="nx-login">
     <div class="nx-login-card">
@@ -23,21 +32,69 @@
         </div>
         {% endif %}
 
-        <form method="POST" action="/login" class="nx-flex nx-flex-col nx-gap-4">
-            <div class="nx-input-group">
-                <label class="nx-label">Username</label>
-                <input type="text" name="username" required autofocus class="nx-input" placeholder="Enter your username">
-            </div>
-            <div class="nx-input-group">
-                <label class="nx-label">Password</label>
-                <input type="password" name="password" required class="nx-input" placeholder="Enter your password">
-            </div>
-            <button type="submit" class="nx-btn nx-btn-primary nx-btn-lg nx-w-full" style="margin-top:8px;">
-                Sign In →
+        <!-- Sign-in Method Toggle -->
+        <div class="login-method-toggle">
+            <button type="button" class="login-method-btn active" onclick="switchLoginMethod('password')" id="btn-password">
+                🔑 Password
             </button>
-        </form>
+            <button type="button" class="login-method-btn" onclick="switchLoginMethod('totp')" id="btn-totp">
+                📱 Authenticator
+            </button>
+        </div>
+
+        <!-- Password Login Panel -->
+        <div class="login-method-panel active" id="panel-password">
+            <form method="POST" action="/login" class="nx-flex nx-flex-col nx-gap-4">
+                <input type="hidden" name="login_method" value="password">
+                <div class="nx-input-group">
+                    <label class="nx-label">Username</label>
+                    <input type="text" name="username" required autofocus class="nx-input" placeholder="Enter your username">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Password</label>
+                    <input type="password" name="password" required class="nx-input" placeholder="Enter your password">
+                </div>
+                <button type="submit" class="nx-btn nx-btn-primary nx-btn-lg nx-w-full" style="margin-top:8px;">
+                    Sign In →
+                </button>
+            </form>
+        </div>
+
+        <!-- TOTP Login Panel -->
+        <div class="login-method-panel" id="panel-totp">
+            <form method="POST" action="/login" class="nx-flex nx-flex-col nx-gap-4">
+                <input type="hidden" name="login_method" value="totp">
+                <div style="text-align:center;margin-bottom:8px;">
+                    <div class="auth-method-icon">📱</div>
+                    <p style="color:var(--text-muted);font-size:var(--text-sm);">Enter your username and the 6-digit code from your authenticator app</p>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Username</label>
+                    <input type="text" name="username" required class="nx-input" placeholder="Enter your username">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Authenticator Code</label>
+                    <input type="text" name="totp_code" required class="nx-input" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" style="text-align:center;font-size:1.25rem;letter-spacing:8px;font-family:monospace;">
+                </div>
+                <button type="submit" class="nx-btn nx-btn-primary nx-btn-lg nx-w-full" style="margin-top:8px;">
+                    Verify & Sign In →
+                </button>
+            </form>
+        </div>
 
         <p class="nx-text-center nx-text-muted" style="margin-top:24px;font-size:var(--text-xs);">NexVE v3.0 — Your private hypervisor</p>
     </div>
+
+    <script>
+    function switchLoginMethod(method) {
+        document.querySelectorAll('.login-method-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.login-method-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('btn-' + method).classList.add('active');
+        document.getElementById('panel-' + method).classList.add('active');
+        // Focus the first input in the active panel
+        const firstInput = document.getElementById('panel-' + method).querySelector('input:not([type=hidden])');
+        if (firstInput) firstInput.focus();
+    }
+    </script>
 </body>
 </html>
