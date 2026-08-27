@@ -13,7 +13,10 @@ class ACMEService:
     """Manages ACME/Let's Encrypt certificates."""
 
     def __init__(self):
-        self.cert_dir = "/etc/nexve/ssl"
+        # Use user-writable path for development, system path for production
+        self.cert_dir = os.path.expanduser("~/.nexve/ssl")
+        if os.path.exists("/etc/nexve"):
+            self.cert_dir = "/etc/nexve/ssl"
         os.makedirs(self.cert_dir, exist_ok=True)
 
     def get_status(self) -> dict:

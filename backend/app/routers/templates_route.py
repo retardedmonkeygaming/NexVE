@@ -53,9 +53,9 @@ async def upload_iso(request: Request, file: UploadFile = File(...)):
         while chunk := await file.read(1024 * 1024):
             f.write(chunk)
 
-    # Return JSON for AJAX, redirect for form
-    accept = request.headers.get("accept", "")
-    if "json" in accept or "xmlhttprequest" in request.headers.get("x-requested-with", ""):
+    # Always return JSON for AJAX (XHR) or redirect for form POST
+    xreq = request.headers.get("x-requested-with", "")
+    if "xmlhttprequest" in xreq.lower():
         return JSONResponse({"success": True, "filename": file.filename})
     return RedirectResponse(url="/templates", status_code=303)
 
@@ -94,6 +94,10 @@ async def delete_iso(filename: str, request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     iso_svc.delete(filename)
+    # Return JSON for AJAX, redirect for browser
+    xreq = request.headers.get("x-requested-with", "")
+    if "xmlhttprequest" in xreq.lower():
+        return JSONResponse({"success": True, "filename": filename})
     return RedirectResponse(url="/templates", status_code=303)
 
 

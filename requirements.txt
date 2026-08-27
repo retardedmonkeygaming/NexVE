@@ -16,3 +16,10 @@ ldap3==2.9.1
 certifi>=2023.7.22
 cryptography>=41.0.0
 httpx>=0.25.0
+# NexVE v3.0 additional dependencies
+paramiko>=3.4.0
+netifaces>=0.11.0
+websockify>=0.12.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dateutil>=2.8.2

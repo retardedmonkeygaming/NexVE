@@ -3,8 +3,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-DATABASE_URL = "sqlite:///../data/nexve.db"
-os.makedirs(os.path.join(os.path.dirname(__file__), "../../data"), exist_ok=True)
+# Use user-writable path for development, system path for production
+_data_dir = os.path.join(os.path.dirname(__file__), "../../data")
+os.makedirs(_data_dir, exist_ok=True)
+DATABASE_URL = f"sqlite:///{os.path.join(_data_dir, 'nexve.db')}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -13,7 +13,31 @@ async def current_stats(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    return JSONResponse(monitor_svc.get_current())
+    data = monitor_svc.get_current()
+    # Ensure all required fields exist with defaults
+    return JSONResponse({
+        "cpu_percent": data.get("cpu_percent", 0),
+        "cpu_count": data.get("cpu_count", 1),
+        "cpu_freq_current": data.get("cpu_freq_current", 0),
+        "cpu_freq_max": data.get("cpu_freq_max", 0),
+        "memory_percent": data.get("memory_percent", 0),
+        "memory_used_mb": data.get("memory_used_mb", 0),
+        "memory_total_mb": data.get("memory_total_mb", 0),
+        "memory_available_mb": data.get("memory_available_mb", 0),
+        "disk_percent": data.get("disk_percent", 0),
+        "disk_used_gb": data.get("disk_used_gb", 0),
+        "disk_total_gb": data.get("disk_total_gb", 0),
+        "disk_free_gb": data.get("disk_free_gb", 0),
+        "net_sent_bytes": data.get("net_sent_bytes", 0),
+        "net_recv_bytes": data.get("net_recv_bytes", 0),
+        "net_sent_rate": data.get("net_sent_rate", 0),
+        "net_recv_rate": data.get("net_recv_rate", 0),
+        "load_1": data.get("load_1", 0),
+        "load_5": data.get("load_5", 0),
+        "load_15": data.get("load_15", 0),
+        "uptime": data.get("uptime", 0),
+        "timestamp": data.get("timestamp", ""),
+    })
 
 
 @router.get("/history")
@@ -31,6 +55,7 @@ async def collect(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     metric = monitor_svc._snapshot()
+    monitor_svc._last_snapshot = metric
     monitor_svc._append_metric(metric)
     return JSONResponse(metric)
 

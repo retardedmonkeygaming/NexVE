@@ -12,7 +12,7 @@
         <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('upload-input').click()">Upload ISO</button>
         <button class="nx-btn nx-btn-primary" onclick="showDownloadModal()">Download from URL</button>
     </div>
-    <input type="file" id="upload-input" accept=".iso,.img" style="display:none;" onchange="uploadISO(this)">
+    <input type="file" id="upload-input" accept=".iso,.img,.qcow2,.raw" style="display:none;" onchange="uploadISO(this)">
 </div>
 
 <!-- Upload Progress -->
@@ -33,7 +33,7 @@
 <div class="nx-card nx-mt-4">
     <div class="nx-card-header">
         <span class="nx-card-title">Local ISO Images</span>
-        <span style="font-size:var(--text-xs);color:var(--text-muted);">{{ isos|length }} files</span>
+        <span style="font-size:var(--text-xs);color:var(--text-muted);" id="iso-count">{{ isos|length }} files</span>
     </div>
     <div class="nx-card-body" style="padding:0;">
         <table class="nx-table">
@@ -50,9 +50,12 @@
                 <tr>
                     <td style="font-weight:500;">{{ iso.name }}</td>
                     <td style="color:var(--text-muted);">{{ iso.size_gb }} GB</td>
-                    <td style="font-size:var(--text-xs);color:var(--text-muted);">{{ iso.modified or '-' }}</td>
+                    <td style="font-size:var(--text-xs);color:var(--text-muted);">{{ iso.modified[:10] if iso.modified else '-' }}</td>
                     <td>
-                        <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteISO('{{ iso.filename }}')">Delete</button>
+                        <div class="nx-flex nx-gap-1">
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="viewISO('{{ iso.filename }}')">View</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteISO('{{ iso.filename }}')">Delete</button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -64,26 +67,39 @@
     </div>
 </div>
 
+<!-- ISO Detail Modal -->
+<div class="nx-modal-overlay" id="iso-detail-modal">
+    <div class="nx-modal" style="max-width:560px;">
+        <div class="nx-modal-header">
+            <h3 id="iso-detail-title">ISO Details</h3>
+            <button class="nx-modal-close" onclick="document.getElementById('iso-detail-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body" id="iso-detail-body">Loading...</div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('iso-detail-modal').classList.remove('open')">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Download Modal -->
-<div class="nx-modal" id="download-modal" style="display:none;">
-    <div class="nx-modal-overlay" onclick="hideDownloadModal()"></div>
-    <div class="nx-modal-content" style="max-width:480px;">
+<div class="nx-modal-overlay" id="download-modal">
+    <div class="nx-modal" style="max-width:480px;">
         <div class="nx-modal-header">
             <h3>Download from URL</h3>
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hideDownloadModal()">✕</button>
+            <button class="nx-modal-close" onclick="hideDownloadModal()">✕</button>
         </div>
         <div class="nx-modal-body">
-            <form id="download-form" method="POST" action="/templates/download">
+            <form id="download-form">
                 <div class="nx-input-group">
                     <label class="nx-label">ISO URL</label>
-                    <input type="url" name="url" class="nx-input" placeholder="https://example.com/debian-12.iso" required>
+                    <input type="url" id="download-url" class="nx-input" placeholder="https://example.com/debian-12.iso" required>
                     <span class="nx-hint">Direct link to an ISO image file.</span>
                 </div>
             </form>
         </div>
         <div class="nx-modal-footer">
             <button class="nx-btn nx-btn-secondary" onclick="hideDownloadModal()">Cancel</button>
-            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('download-form').requestSubmit()">Download</button>
+            <button class="nx-btn nx-btn-primary" onclick="submitDownload()">Download</button>
         </div>
     </div>
 </div>
@@ -91,8 +107,60 @@
 
 {% block scripts %}
 <script>
-function showDownloadModal() { document.getElementById('download-modal').style.display = 'flex'; }
-function hideDownloadModal() { document.getElementById('download-modal').style.display = 'none'; }
+// Load ISOs via AJAX for fresh data
+async function loadISOs() {
+    try {
+        const r = await fetch('/templates/api/list');
+        const data = await r.json();
+        const isos = data.isos || [];
+        const list = document.getElementById('iso-list');
+        const count = document.getElementById('iso-count');
+        count.textContent = isos.length + ' files';
+        
+        if (isos.length === 0) {
+            list.innerHTML = '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:48px;">No ISO images found. Upload or download one to get started.</td></tr>';
+            return;
+        }
+        
+        list.innerHTML = isos.map(iso => `
+            <tr>
+                <td style="font-weight:500;">${iso.name}</td>
+                <td style="color:var(--text-muted);">${iso.size_gb} GB</td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${iso.modified ? iso.modified.substring(0, 10) : '-'}</td>
+                <td>
+                    <div class="nx-flex nx-gap-1">
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="viewISO('${iso.filename}')">View</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteISO('${iso.filename}')">Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    } catch(e) { console.error('Failed to load ISOs:', e); }
+}
+
+function showDownloadModal() { document.getElementById('download-modal').classList.add('open'); }
+function hideDownloadModal() { document.getElementById('download-modal').classList.remove('open'); }
+
+async function submitDownload() {
+    const url = document.getElementById('download-url').value.trim();
+    if (!url) { showToast('Please enter a URL', 'error'); return; }
+    
+    hideDownloadModal();
+    showToast('Download started in background...', 'info');
+    
+    try {
+        const fd = new FormData();
+        fd.append('url', url);
+        const r = await fetch('/templates/download', { method: 'POST', body: fd });
+        if (r.redirected || r.ok) {
+            showToast('Download complete', 'success');
+            setTimeout(loadISOs, 1000);
+        } else {
+            const d = await r.json();
+            showToast('Download failed: ' + (d.error || 'unknown'), 'error');
+        }
+    } catch(e) { showToast('Download error', 'error'); }
+}
 
 async function uploadISO(input) {
     const file = input.files[0];
@@ -114,6 +182,7 @@ async function uploadISO(input) {
     try {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/templates/upload');
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
 
         xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
@@ -124,9 +193,11 @@ async function uploadISO(input) {
         };
 
         xhr.onload = () => {
-            if (xhr.status === 200 || xhr.status === 302) {
+            if (xhr.status === 200) {
                 showToast('ISO uploaded successfully', 'success');
-                setTimeout(() => location.reload(), 500);
+                progress.style.display = 'none';
+                // Refresh the list via AJAX instead of page reload
+                loadISOs();
             } else {
                 showToast('Upload failed', 'error');
                 progress.style.display = 'none';
@@ -140,13 +211,48 @@ async function uploadISO(input) {
     input.value = '';
 }
 
+async function viewISO(filename) {
+    document.getElementById('iso-detail-modal').classList.add('open');
+    document.getElementById('iso-detail-title').textContent = filename;
+    document.getElementById('iso-detail-body').innerHTML = '<div style="text-align:center;padding:16px;">Loading...</div>';
+    
+    // Try to get ISO info
+    try {
+        // Show basic info from the filename
+        const ext = filename.split('.').pop().toLowerCase();
+        const sizeMatch = filename.match(/(\d+\.?\d*)\s*(GB|MB|TB)/i);
+        
+        document.getElementById('iso-detail-body').innerHTML = `
+            <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Filename</span>
+                <span style="font-family:var(--font-mono);">${filename}</span>
+                <span style="color:var(--text-muted);">Format</span>
+                <span>${ext.toUpperCase()}</span>
+                <span style="color:var(--text-muted);">Status</span>
+                <span class="nx-badge nx-badge-success"><span class="dot"></span>Available</span>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:8px;">
+                <a href="/templates/serve/${encodeURIComponent(filename)}" class="nx-btn nx-btn-primary nx-btn-sm" download>Download</a>
+                <button class="nx-btn nx-btn-danger nx-btn-sm" onclick="deleteISO('${filename}');document.getElementById('iso-detail-modal').classList.remove('open');">Delete</button>
+            </div>
+        `;
+    } catch(e) {
+        document.getElementById('iso-detail-body').innerHTML = '<div style="color:var(--danger);padding:16px;">Failed to load ISO details</div>';
+    }
+}
+
 async function deleteISO(filename) {
     if (!confirm(`Delete ${filename}?`)) return;
     try {
-        await fetch(`/templates/delete/${encodeURIComponent(filename)}`);
+        await fetch(`/templates/delete/${encodeURIComponent(filename)}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
         showToast('ISO deleted', 'success');
-        setTimeout(() => location.reload(), 500);
-    } catch (e) { showToast('Error', 'error'); }
+        loadISOs();
+    } catch (e) { showToast('Error deleting ISO', 'error'); }
 }
+
+// Load ISOs on page load
+loadISOs();
 </script>
 {% endblock %}

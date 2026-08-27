@@ -19,26 +19,26 @@
 <div class="nx-grid nx-grid-4 nx-mb-6">
     <div class="nx-stat">
         <div class="nx-stat-label">CPU Usage</div>
-        <div class="nx-stat-value" style="color:var(--accent);" id="stat-cpu">{{ cpu }}%</div>
-        <div class="nx-stat-detail" id="cpu-detail">{{ cpu }}% used</div>
+        <div class="nx-stat-value" style="color:var(--accent);" id="stat-cpu">--%</div>
+        <div class="nx-stat-detail" id="cpu-detail">Loading...</div>
         <div class="nx-progress nx-mt-2">
-            <div class="nx-progress-bar accent" style="width:{{ cpu }}%" id="bar-cpu"></div>
+            <div class="nx-progress-bar accent" style="width:0%" id="bar-cpu"></div>
         </div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Memory</div>
-        <div class="nx-stat-value" style="color:var(--info);" id="stat-mem">{{ "%.1f"|format(memory.percent) }}%</div>
-        <div class="nx-stat-detail" id="mem-detail">{{ (memory.used / 1073741824)|round(1) }}G / {{ (memory.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-stat-value" style="color:var(--info);" id="stat-mem">--%</div>
+        <div class="nx-stat-detail" id="mem-detail">Loading...</div>
         <div class="nx-progress nx-mt-2">
-            <div class="nx-progress-bar info" style="width:{{ memory.percent }}%" id="bar-mem"></div>
+            <div class="nx-progress-bar info" style="width:0%" id="bar-mem"></div>
         </div>
     </div>
     <div class="nx-stat">
         <div class="nx-stat-label">Disk</div>
-        <div class="nx-stat-value" style="color:var(--success);" id="stat-disk">{{ "%.1f"|format(disk.percent) }}%</div>
-        <div class="nx-stat-detail" id="disk-detail">{{ (disk.used / 1073741824)|round(0) }}G / {{ (disk.total / 1073741824)|round(0) }}G</div>
+        <div class="nx-stat-value" style="color:var(--success);" id="stat-disk">--%</div>
+        <div class="nx-stat-detail" id="disk-detail">Loading...</div>
         <div class="nx-progress nx-mt-2">
-            <div class="nx-progress-bar success" style="width:{{ disk.percent }}%" id="bar-disk"></div>
+            <div class="nx-progress-bar success" style="width:0%" id="bar-disk"></div>
         </div>
     </div>
     <div class="nx-stat">
@@ -100,26 +100,38 @@
 {% block scripts %}
 <script>
 async function loadDashboard() {
+    // Load monitor stats
     try {
-        // Live CPU from monitor API
         const monRes = await fetch('/api/monitor/current');
         const monData = await monRes.json();
-        document.getElementById('stat-cpu').textContent = monData.cpu_percent + '%';
-        document.getElementById('cpu-detail').textContent = monData.cpu_count + ' cores, ' + (monData.cpu_freq_current || '?') + ' MHz';
-        document.getElementById('bar-cpu').style.width = monData.cpu_percent + '%';
+        
+        // CPU
+        const cpuPct = monData.cpu_percent || 0;
+        document.getElementById('stat-cpu').textContent = cpuPct.toFixed(1) + '%';
+        document.getElementById('cpu-detail').textContent = (monData.cpu_count || 0) + ' cores, ' + (monData.cpu_freq_current || '?') + ' MHz';
+        document.getElementById('bar-cpu').style.width = cpuPct + '%';
 
-        document.getElementById('stat-mem').textContent = monData.memory_percent.toFixed(1) + '%';
-        document.getElementById('mem-detail').textContent = (monData.memory_used_mb / 1024).toFixed(1) + 'G / ' + (monData.memory_total_mb / 1024).toFixed(0) + 'G';
-        document.getElementById('bar-mem').style.width = monData.memory_percent + '%';
+        // Memory
+        const memPct = monData.memory_percent || 0;
+        document.getElementById('stat-mem').textContent = memPct.toFixed(1) + '%';
+        document.getElementById('mem-detail').textContent = ((monData.memory_used_mb || 0) / 1024).toFixed(1) + 'G / ' + ((monData.memory_total_mb || 0) / 1024).toFixed(0) + 'G';
+        document.getElementById('bar-mem').style.width = memPct + '%';
 
-        document.getElementById('stat-disk').textContent = monData.disk_percent + '%';
-        document.getElementById('disk-detail').textContent = monData.disk_used_gb + 'G / ' + monData.disk_total_gb + 'G';
-        document.getElementById('bar-disk').style.width = monData.disk_percent + '%';
+        // Disk
+        const diskPct = monData.disk_percent || 0;
+        document.getElementById('stat-disk').textContent = diskPct.toFixed(1) + '%';
+        document.getElementById('disk-detail').textContent = (monData.disk_used_gb || 0) + 'G / ' + (monData.disk_total_gb || 0) + 'G';
+        document.getElementById('bar-disk').style.width = diskPct + '%';
 
-        const days = Math.floor(monData.uptime / 86400);
-        const hours = Math.floor((monData.uptime % 86400) / 3600);
+        // Uptime
+        const uptime = monData.uptime || 0;
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
         document.getElementById('uptime-info').textContent = 'Uptime: ' + days + 'd ' + hours + 'h';
-    } catch(e) { console.error('Monitor:', e); }
+    } catch(e) {
+        console.error('Monitor:', e);
+        document.getElementById('cpu-detail').textContent = 'Metrics unavailable';
+    }
 
     // Load guests
     try {
@@ -144,43 +156,73 @@ async function loadDashboard() {
         }
     } catch(e) { console.error('Guests:', e); }
 
-    // Load storage - use /api/storage/overview
+    // Load storage with error resilience
     try {
-        const storRes = await fetch('/api/storage/overview');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const storRes = await fetch('/api/storage/overview', { signal: controller.signal });
+        clearTimeout(timeoutId);
         const storData = await storRes.json();
         const storEl = document.getElementById('storage-overview');
+        
         const disks = storData.disks || [];
         const zfs = storData.zfs_pools || [];
         const lvm = storData.lvm_groups || [];
+        const localUsage = storData.local_usage;
 
-        if (disks.length === 0 && zfs.length === 0 && lvm.length === 0) {
-            storEl.innerHTML = '<div class="nx-text-muted nx-text-center" style="padding:16px;">No storage detected</div>';
+        if (disks.length === 0 && zfs.length === 0 && lvm.length === 0 && !localUsage) {
+            storEl.innerHTML = `
+                <div style="text-align:center;padding:16px;">
+                    <div style="color:var(--text-muted);font-size:var(--text-sm);margin-bottom:8px;">No storage backends detected</div>
+                    <div style="color:var(--text-muted);font-size:var(--text-xs);">Storage commands (lsblk, zpool, vgs) may not be available.</div>
+                    <div style="margin-top:12px;">
+                        <a href="/storage" class="nx-btn nx-btn-primary nx-btn-sm">Configure Storage</a>
+                    </div>
+                </div>`;
         } else {
             let html = '';
+            
+            // Show local disk usage if available
+            if (localUsage) {
+                html += `<div style="padding:8px 0;border-bottom:1px solid var(--border-subtle);">
+                    <div style="display:flex;justify-content:space-between;font-size:var(--text-sm);margin-bottom:4px;">
+                        <span style="font-weight:500;">Root Filesystem</span>
+                        <span>${localUsage.percent}%</span>
+                    </div>
+                    <div class="nx-progress"><div class="nx-progress-bar ${localUsage.percent > 90 ? 'danger' : localUsage.percent > 70 ? 'warning' : 'success'}" style="width:${localUsage.percent}%"></div></div>
+                    <div style="font-size:var(--text-2xs);color:var(--text-muted);margin-top:2px;">${localUsage.used_gb}G / ${localUsage.total_gb}G used</div>
+                </div>`;
+            }
+            
             disks.forEach(d => {
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
                     <span style="font-family:var(--font-mono);">/dev/${d.name}</span>
-                    <span>${d.size || '-'}</span>
+                    <span style="color:var(--text-muted);">${d.size || '-'}</span>
                 </div>`;
             });
             zfs.forEach(p => {
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
-                    <span class="nx-badge nx-badge-success">ZFS</span>
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span class="nx-badge nx-badge-success" style="font-size:9px;">ZFS</span>
                     <span>${p.name}</span>
-                    <span>${p.used} / ${p.size}</span>
+                    <span style="color:var(--text-muted);">${p.used} / ${p.size}</span>
                 </div>`;
             });
             lvm.forEach(v => {
-                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
-                    <span class="nx-badge nx-badge-info">LVM</span>
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:var(--text-sm);">
+                    <span class="nx-badge nx-badge-info" style="font-size:9px;">LVM</span>
                     <span>${v.name}</span>
-                    <span>${v.free} free</span>
+                    <span style="color:var(--text-muted);">${v.free} free</span>
                 </div>`;
             });
             storEl.innerHTML = html;
         }
     } catch(e) {
-        document.getElementById('storage-overview').innerHTML = '<div class="nx-text-muted nx-text-center" style="padding:16px;">Storage unavailable</div>';
+        console.error('Storage:', e);
+        document.getElementById('storage-overview').innerHTML = `
+            <div style="text-align:center;padding:16px;">
+                <div style="color:var(--text-muted);font-size:var(--text-sm);">Storage overview unavailable</div>
+                <a href="/storage" class="nx-btn nx-btn-secondary nx-btn-sm" style="margin-top:8px;">Open Storage Manager</a>
+            </div>`;
     }
 
     // Load tasks

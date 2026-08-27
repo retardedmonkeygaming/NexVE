@@ -1,22 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#00d4aa;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#00f5c4;stop-opacity:1" />
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4aa"/>
+      <stop offset="100%" stop-color="#00f5c4"/>
     </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00d4aa"/>
+      <stop offset="50%" stop-color="#00e6b8"/>
+      <stop offset="100%" stop-color="#00f5c4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
   </defs>
-  <!-- Background circle -->
-  <circle cx="20" cy="20" r="18" fill="#111113" stroke="url(#grad)" stroke-width="1.5"/>
-  <!-- N shape - connected nodes -->
-  <path d="M12 28V12l8 16V12" stroke="url(#grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Nodes at vertices -->
-  <circle cx="12" cy="28" r="2.5" fill="#00d4aa"/>
-  <circle cx="12" cy="12" r="2.5" fill="#00d4aa"/>
-  <circle cx="20" cy="28" r="2.5" fill="#00d4aa"/>
-  <circle cx="20" cy="12" r="2.5" fill="#00d4aa"/>
-  <!-- Center node -->
-  <circle cx="28" cy="20" r="2" fill="#00f5c4" opacity="0.7"/>
-  <!-- Connection lines to center -->
-  <line x1="20" y1="12" x2="28" y2="20" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
-  <line x1="20" y1="28" x2="28" y2="20" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <!-- Outer hexagon -->
+  <polygon points="60,5 110,30 110,90 60,115 10,90 10,30" fill="none" stroke="url(#g1)" stroke-width="2.5" opacity="0.3"/>
+  <!-- Middle hexagon -->
+  <polygon points="60,18 98,38 98,82 60,102 22,82 22,38" fill="none" stroke="url(#g2)" stroke-width="2" opacity="0.5"/>
+  <!-- Inner hexagon filled -->
+  <polygon points="60,32 86,47 86,73 60,88 34,73 34,47" fill="url(#g2)" opacity="0.15"/>
+  <!-- Core shape -->
+  <polygon points="60,42 76,52 76,68 60,78 44,68 44,52" fill="url(#g2)" filter="url(#glow)"/>
+  <!-- Center dot -->
+  <circle cx="60" cy="60" r="4" fill="#0a0a0b"/>
+  <circle cx="60" cy="60" r="2" fill="#00d4aa"/>
+  <!-- Subtle accent lines -->
+  <line x1="60" y1="5" x2="60" y2="18" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <line x1="110" y1="30" x2="98" y2="38" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <line x1="110" y1="90" x2="98" y2="82" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <line x1="60" y1="115" x2="60" y2="102" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <line x1="10" y1="90" x2="22" y2="82" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  <line x1="10" y1="30" x2="22" y2="38" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
 </svg>

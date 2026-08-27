@@ -22,7 +22,7 @@ class MonitorService:
         self._last_snapshot = None
 
     def start_collector(self):
-        """Start background metrics collection every 10 seconds."""
+        """Start background metrics collection every 5 seconds."""
         if self._running:
             return
         self._running = True
@@ -38,7 +38,7 @@ class MonitorService:
                     self._append_metric(metric)
                 except Exception:
                     pass
-                time.sleep(10)
+                time.sleep(5)
 
         t = threading.Thread(target=collect, daemon=True)
         t.start()
@@ -47,34 +47,74 @@ class MonitorService:
         self._running = False
 
     def _snapshot(self) -> dict:
-        cpu = psutil.cpu_percent(interval=None)
-        cpu_count = psutil.cpu_count(logical=True)
-        cpu_freq = psutil.cpu_freq()
-        mem = psutil.virtual_memory()
-        disk = psutil.disk_usage("/")
-        net = psutil.net_io_counters()
-        load = os.getloadavg()
-        boot = psutil.boot_time()
-        uptime = int(time.time() - boot)
+        try:
+            cpu = psutil.cpu_percent(interval=0.1)
+        except Exception:
+            cpu = 0.0
+        try:
+            cpu_count = psutil.cpu_count(logical=True) or 1
+        except Exception:
+            cpu_count = 1
+        try:
+            cpu_freq = psutil.cpu_freq()
+        except Exception:
+            cpu_freq = None
+        try:
+            mem = psutil.virtual_memory()
+        except Exception:
+            mem = None
+        try:
+            disk = psutil.disk_usage("/")
+        except Exception:
+            disk = None
+        try:
+            net = psutil.net_io_counters()
+        except Exception:
+            net = None
+        try:
+            load = os.getloadavg()
+        except Exception:
+            load = (0.0, 0.0, 0.0)
+        try:
+            boot = psutil.boot_time()
+            uptime = int(time.time() - boot)
+        except Exception:
+            uptime = 0
+
+        # Calculate network rates
+        net_sent_rate = 0
+        net_recv_rate = 0
+        if net:
+            prev_sent = getattr(self, '_prev_net_sent', 0)
+            prev_recv = getattr(self, '_prev_net_recv', 0)
+            prev_time = getattr(self, '_prev_net_time', 0)
+            now = time.time()
+            dt = now - prev_time if prev_time > 0 else 1.0
+            if dt > 0:
+                net_sent_rate = int((net.bytes_sent - prev_sent) / dt)
+                net_recv_rate = int((net.bytes_recv - prev_recv) / dt)
+            self._prev_net_sent = net.bytes_sent
+            self._prev_net_recv = net.bytes_recv
+            self._prev_net_time = now
 
         return {
             "timestamp": datetime.utcnow().isoformat(),
-            "cpu_percent": cpu,
+            "cpu_percent": round(cpu, 1),
             "cpu_count": cpu_count,
             "cpu_freq_current": round(cpu_freq.current, 0) if cpu_freq else 0,
             "cpu_freq_max": round(cpu_freq.max, 0) if cpu_freq and cpu_freq.max else 0,
-            "memory_percent": mem.percent,
-            "memory_used_mb": mem.used // (1024 * 1024),
-            "memory_total_mb": mem.total // (1024 * 1024),
-            "memory_available_mb": mem.available // (1024 * 1024),
-            "disk_percent": disk.percent,
-            "disk_used_gb": round(disk.used / (1024 ** 3), 1),
-            "disk_total_gb": round(disk.total / (1024 ** 3), 1),
-            "disk_free_gb": round(disk.free / (1024 ** 3), 1),
-            "net_sent_bytes": net.bytes_sent,
-            "net_recv_bytes": net.bytes_recv,
-            "net_sent_rate": getattr(self, '_prev_net_sent', 0),
-            "net_recv_rate": getattr(self, '_prev_net_recv', 0),
+            "memory_percent": round(mem.percent, 1) if mem else 0,
+            "memory_used_mb": (mem.used // (1024 * 1024)) if mem else 0,
+            "memory_total_mb": (mem.total // (1024 * 1024)) if mem else 0,
+            "memory_available_mb": (mem.available // (1024 * 1024)) if mem else 0,
+            "disk_percent": round(disk.percent, 1) if disk else 0,
+            "disk_used_gb": round(disk.used / (1024 ** 3), 1) if disk else 0,
+            "disk_total_gb": round(disk.total / (1024 ** 3), 1) if disk else 0,
+            "disk_free_gb": round(disk.free / (1024 ** 3), 1) if disk else 0,
+            "net_sent_bytes": net.bytes_sent if net else 0,
+            "net_recv_bytes": net.bytes_recv if net else 0,
+            "net_sent_rate": net_sent_rate,
+            "net_recv_rate": net_recv_rate,
             "load_1": round(load[0], 2),
             "load_5": round(load[1], 2),
             "load_15": round(load[2], 2),

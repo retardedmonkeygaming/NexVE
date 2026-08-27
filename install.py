@@ -834,7 +834,7 @@ def main(stdscr):
     ]
     main_menu = Menu(
         tui,
-        "NexVE v2.1 Installer",
+        "NexVE v3.0 Installer",
         main_items,
         description="NexVE Hypervisor Management Platform\n"
                    "Choose an action below.",

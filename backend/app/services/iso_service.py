@@ -5,6 +5,7 @@ Manages ISO images with proper path handling.
 import os
 import subprocess
 from typing import List
+from datetime import datetime
 
 # Use user-writable path for development, system path for production
 ISO_DIR = os.path.expanduser("~/.nexve/iso")
@@ -24,20 +25,18 @@ class ISOService:
         isos = []
         try:
             for f in sorted(os.listdir(ISO_DIR)):
-                if f.endswith((".iso", ".img", ".qcow2", ".raw")):
-                    path = os.path.join(ISO_DIR, f)
-                    if os.path.isfile(path):
-                        size = os.path.getsize(path) / (1024**3)
-                        stat = os.stat(path)
-                        from datetime import datetime
-                        isos.append({
-                            "name": f,
-                            "filename": f,
-                            "size_gb": round(size, 2),
-                            "size_bytes": stat.st_size,
-                            "path": path,
-                            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                        })
+                path = os.path.join(ISO_DIR, f)
+                if os.path.isfile(path) and f.endswith((".iso", ".img", ".qcow2", ".raw")):
+                    size = os.path.getsize(path) / (1024**3)
+                    stat = os.stat(path)
+                    isos.append({
+                        "name": f,
+                        "filename": f,
+                        "size_gb": round(size, 2),
+                        "size_bytes": stat.st_size,
+                        "path": path,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    })
         except Exception:
             pass
         return isos

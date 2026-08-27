@@ -11,7 +11,7 @@
 </div>
 
 <div class="nx-tabs">
-    <button class="nx-tab active" onclick="showTab(this,'general')">General</button>
+    <button class="nx-tab active" onclick="showTab(this,'general')">System</button>
     <button class="nx-tab" onclick="showTab(this,'network')">Network</button>
     <button class="nx-tab" onclick="showTab(this,'security')">Security</button>
     <button class="nx-tab" onclick="showTab(this,'services')">Services</button>
@@ -20,9 +20,9 @@
     <button class="nx-tab" onclick="showTab(this,'about')">About</button>
 </div>
 
-<!-- General -->
+<!-- System Specs -->
 <div class="nx-tab-content active" id="tab-general">
-    <div class="nx-card">
+    <div class="nx-card nx-mb-4">
         <div class="nx-card-header"><span class="nx-card-title">Server Identity</span></div>
         <div class="nx-card-body">
             <div class="nx-form-grid">
@@ -32,6 +32,55 @@
                 <div class="nx-input-group"><label class="nx-label">Architecture</label><div id="set-arch" style="padding:8px 0;color:var(--text-secondary);font-size:var(--text-sm);">-</div></div>
             </div>
             <button class="nx-btn nx-btn-primary nx-mt-4" onclick="saveHostname()">Save Hostname</button>
+        </div>
+    </div>
+
+    <div class="nx-card nx-mb-4">
+        <div class="nx-card-header"><span class="nx-card-title">CPU Information</span></div>
+        <div class="nx-card-body">
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Model</span><span id="cpu-model">-</span>
+                <span style="color:var(--text-muted);">Logical Cores</span><span id="cpu-cores">-</span>
+                <span style="color:var(--text-muted);">Physical Cores</span><span id="cpu-physical">-</span>
+                <span style="color:var(--text-muted);">Current Frequency</span><span id="cpu-freq">-</span>
+                <span style="color:var(--text-muted);">Load Average</span><span id="cpu-load">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="nx-card nx-mb-4">
+        <div class="nx-card-header"><span class="nx-card-title">Memory</span></div>
+        <div class="nx-card-body">
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Total RAM</span><span id="mem-total">-</span>
+                <span style="color:var(--text-muted);">Used RAM</span><span id="mem-used">-</span>
+                <span style="color:var(--text-muted);">Available RAM</span><span id="mem-available">-</span>
+                <span style="color:var(--text-muted);">Swap Total</span><span id="swap-total">-</span>
+                <span style="color:var(--text-muted);">Swap Used</span><span id="swap-used">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="nx-card nx-mb-4">
+        <div class="nx-card-header"><span class="nx-card-title">Disk</span></div>
+        <div class="nx-card-body">
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Total</span><span id="disk-total">-</span>
+                <span style="color:var(--text-muted);">Used</span><span id="disk-used">-</span>
+                <span style="color:var(--text-muted);">Free</span><span id="disk-free">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="nx-card nx-mb-4">
+        <div class="nx-card-header"><span class="nx-card-title">Network Interfaces</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Interface</th><th>IP Address</th><th>MAC</th><th>Speed</th><th>Status</th></tr></thead>
+                <tbody id="net-interfaces">
+                    <tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);">Loading...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -165,7 +214,7 @@
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
-                <span style="color:var(--text-muted);">Version</span><span>NexVE v2.0</span>
+                <span style="color:var(--text-muted);">Version</span><span>NexVE v3.0</span>
                 <span style="color:var(--text-muted);">Hostname</span><span id="ab-host">-</span>
                 <span style="color:var(--text-muted);">OS</span><span id="ab-os">-</span>
                 <span style="color:var(--text-muted);">Kernel</span><span id="ab-kernel">-</span>
@@ -180,6 +229,7 @@
 
 {% block scripts %}
 <script>
+// Tab switching with data loading
 function showTab(btn, name) {
     document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
@@ -190,15 +240,54 @@ function showTab(btn, name) {
     if (name === 'network') { loadDNS(); loadTime(); }
 }
 
-// ── General ──
+// ── System ──
 async function loadGeneral() {
     try {
         const r = await fetch('/api/settings/system');
         const d = await r.json();
+        
+        // Server Identity
         document.getElementById('set-hostname').value = d.hostname || '';
         document.getElementById('set-os').textContent = d.os || '-';
         document.getElementById('set-kernel').textContent = d.kernel || '-';
         document.getElementById('set-arch').textContent = d.arch || '-';
+        
+        // CPU
+        document.getElementById('cpu-model').textContent = d.cpu_model || 'Unknown';
+        document.getElementById('cpu-cores').textContent = (d.cpu_count || 0) + ' cores';
+        document.getElementById('cpu-physical').textContent = (d.cpu_physical || 0) + ' physical';
+        document.getElementById('cpu-freq').textContent = (d.cpu_freq_current || 0) + ' MHz (max: ' + (d.cpu_freq_max || 0) + ' MHz)';
+        document.getElementById('cpu-load').textContent = (d.load_1 || 0) + ' / ' + (d.load_5 || 0) + ' / ' + (d.load_15 || 0);
+        
+        // Memory
+        document.getElementById('mem-total').textContent = (d.mem_total_gb || 0) + ' GB';
+        document.getElementById('mem-used').textContent = (d.mem_used_gb || 0) + ' GB';
+        document.getElementById('mem-available').textContent = (d.mem_available_gb || 0) + ' GB';
+        document.getElementById('swap-total').textContent = (d.swap_total_gb || 0) + ' GB';
+        document.getElementById('swap-used').textContent = (d.swap_used_gb || 0) + ' GB';
+        
+        // Disk
+        document.getElementById('disk-total').textContent = (d.disk_total_gb || 0) + ' GB';
+        document.getElementById('disk-used').textContent = (d.disk_used_gb || 0) + ' GB';
+        document.getElementById('disk-free').textContent = (d.disk_free_gb || 0) + ' GB';
+        
+        // Network
+        const ifaces = d.interfaces || [];
+        const netList = document.getElementById('net-interfaces');
+        if (ifaces.length === 0) {
+            netList.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);">No network interfaces detected</td></tr>';
+        } else {
+            netList.innerHTML = ifaces.map(iface => `
+                <tr>
+                    <td style="font-family:var(--font-mono);font-weight:500;">${iface.name}</td>
+                    <td>${(iface.ips || []).join(', ') || '<span style="color:var(--text-muted);">-</span>'}</td>
+                    <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${iface.mac || '-'}</td>
+                    <td>${iface.speed ? iface.speed + ' Mbps' : '-'}</td>
+                    <td><span class="nx-badge ${iface.is_up ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${iface.is_up ? 'Up' : 'Down'}</span></td>
+                </tr>
+            `).join('');
+        }
+        
         // About
         document.getElementById('ab-host').textContent = d.hostname || '-';
         document.getElementById('ab-os').textContent = d.os || '-';

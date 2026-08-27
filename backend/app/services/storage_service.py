@@ -8,7 +8,8 @@ from datetime import datetime
 class StorageService:
     """Manages local and remote storage backends via CLI commands."""
 
-    def run_cmd(self, cmd: str, timeout: int = 30) -> dict:
+    def run_cmd(self, cmd: str, timeout: int = 10) -> dict:
+        """Run a shell command with safe error handling."""
         try:
             result = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True, timeout=timeout
@@ -20,6 +21,8 @@ class StorageService:
             }
         except subprocess.TimeoutExpired:
             return {"success": False, "stdout": "", "stderr": "Command timed out"}
+        except Exception:
+            return {"success": False, "stdout": "", "stderr": "Command not available"}
 
     # ──────────────────────────────────────────────
     # ZFS
@@ -332,7 +335,7 @@ class StorageService:
         return self.run_cmd(f"umount {mountpoint}")
 
     def nfs_list_mounts(self) -> List[dict]:
-        r = self.run_cmd("mount -t nfs,nfs4 -o noheadless | cat")
+        r = self.run_cmd("mount | grep nfs", timeout=5)
         mounts = []
         for line in r["stdout"].splitlines():
             if "nfs" in line.lower():
@@ -424,17 +427,38 @@ class StorageService:
     # ──────────────────────────────────────────────
 
     def get_storage_overview(self) -> dict:
-        disks = self.list_disks()
-        zfs_pools = self.zfs_list_pools()
-        vgs = self.lvm_list_vgs()
-        nfs = self.nfs_list_mounts()
-        btrfs = self.btrfs_list_pools()
+        """Get storage overview with individual error handling."""
+        try:
+            disks = self.list_disks()
+        except Exception:
+            disks = []
+        try:
+            zfs_pools = self.zfs_list_pools()
+        except Exception:
+            zfs_pools = []
+        try:
+            vgs = self.lvm_list_vgs()
+        except Exception:
+            vgs = []
+        try:
+            nfs = self.nfs_list_mounts()
+        except Exception:
+            nfs = []
+        try:
+            btrfs = self.btrfs_list_pools()
+        except Exception:
+            btrfs = []
+        try:
+            local_usage = self.dir_usage("/")
+        except Exception:
+            local_usage = None
         return {
             "disks": disks,
             "zfs_pools": zfs_pools,
             "lvm_groups": vgs,
             "nfs_mounts": nfs,
             "btrfs_pools": btrfs,
+            "local_usage": local_usage,
         }
 
     # ──────────────────────────────────────────────

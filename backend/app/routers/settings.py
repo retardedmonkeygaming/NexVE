@@ -28,19 +28,83 @@ def run_cmd(cmd, timeout=30):
 
 @router.get("/system")
 async def system_info(request: Request):
+    import psutil
     user, redir = auth_check(request)
     if redir:
         return redir
-    boot = __import__('psutil').boot_time()
+    boot = psutil.boot_time()
     uptime = int(time.time() - boot)
     hostname = run_cmd("hostnamectl hostname 2>/dev/null || hostname")["stdout"] or platform.node()
     os_name = run_cmd("cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'\"' -f2")["stdout"]
     kernel = platform.release()
     arch = platform.machine()
     python_ver = platform.python_version()
-
-    # Read /etc/os-release for more details
     debian_ver = run_cmd("cat /etc/debian_version 2>/dev/null")["stdout"]
+
+    # CPU details
+    try:
+        cpu_model = run_cmd("cat /proc/cpuinfo 2>/dev/null | grep 'model name' | head -1 | cut -d: -f2")["stdout"].strip()
+    except Exception:
+        cpu_model = platform.processor() or 'Unknown'
+    cpu_count = psutil.cpu_count(logical=True) or 0
+    cpu_physical = psutil.cpu_count(logical=False) or 0
+    try:
+        cpu_freq = psutil.cpu_freq()
+        cpu_freq_current = round(cpu_freq.current, 0) if cpu_freq else 0
+        cpu_freq_max = round(cpu_freq.max, 0) if cpu_freq and cpu_freq.max else 0
+    except Exception:
+        cpu_freq_current = 0
+        cpu_freq_max = 0
+
+    # Memory details
+    mem = psutil.virtual_memory()
+    mem_total_gb = round(mem.total / (1024**3), 2)
+    mem_used_gb = round(mem.used / (1024**3), 2)
+    mem_available_gb = round(mem.available / (1024**3), 2)
+
+    # Swap
+    try:
+        swap = psutil.swap_memory()
+        swap_total_gb = round(swap.total / (1024**3), 2)
+        swap_used_gb = round(swap.used / (1024**3), 2)
+    except Exception:
+        swap_total_gb = 0
+        swap_used_gb = 0
+
+    # Disk info
+    try:
+        disk = psutil.disk_usage('/')
+        disk_total_gb = round(disk.total / (1024**3), 2)
+        disk_used_gb = round(disk.used / (1024**3), 2)
+        disk_free_gb = round(disk.free / (1024**3), 2)
+    except Exception:
+        disk_total_gb = 0
+        disk_used_gb = 0
+        disk_free_gb = 0
+
+    # Network interfaces
+    net_ifaces = psutil.net_if_addrs()
+    net_stats = psutil.net_if_stats()
+    interfaces = []
+    for iface, addrs in net_ifaces.items():
+        if iface == 'lo':
+            continue
+        ips = [a.address for a in addrs if a.family.name == 'AF_INET']
+        mac = [a.address for a in addrs if a.family.name == 'AF_PACKET']
+        stats = net_stats.get(iface)
+        interfaces.append({
+            'name': iface,
+            'ips': ips,
+            'mac': mac[0] if mac else '',
+            'speed': stats.speed if stats else 0,
+            'is_up': stats.isup if stats else False,
+        })
+
+    # Load average
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = load5 = load15 = 0
 
     return JSONResponse({
         "hostname": hostname,
@@ -51,6 +115,28 @@ async def system_info(request: Request):
         "python": python_ver,
         "uptime": uptime,
         "timezone": run_cmd("timedatectl show --property=Timezone --value 2>/dev/null")["stdout"],
+        # CPU
+        "cpu_model": cpu_model or 'Unknown',
+        "cpu_count": cpu_count,
+        "cpu_physical": cpu_physical,
+        "cpu_freq_current": cpu_freq_current,
+        "cpu_freq_max": cpu_freq_max,
+        # Memory
+        "mem_total_gb": mem_total_gb,
+        "mem_used_gb": mem_used_gb,
+        "mem_available_gb": mem_available_gb,
+        "swap_total_gb": swap_total_gb,
+        "swap_used_gb": swap_used_gb,
+        # Disk
+        "disk_total_gb": disk_total_gb,
+        "disk_used_gb": disk_used_gb,
+        "disk_free_gb": disk_free_gb,
+        # Network
+        "interfaces": interfaces,
+        # Load
+        "load_1": round(load1, 2),
+        "load_5": round(load5, 2),
+        "load_15": round(load15, 2),
     })
 
 

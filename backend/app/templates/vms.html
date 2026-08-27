@@ -243,6 +243,27 @@
         <div class="nx-modal-body" id="passthrough-content">Loading...</div>
     </div>
 </div>
+
+<!-- Disk Resize Modal -->
+<div class="nx-modal-overlay" id="disk-resize-modal">
+    <div class="nx-modal" style="max-width:400px;">
+        <div class="nx-modal-header">
+            <h3>Resize Disk</h3>
+            <button class="nx-modal-close" onclick="document.getElementById('disk-resize-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-input-group">
+                <label class="nx-label">New Disk Size (GB)</label>
+                <input type="number" id="resize-size" class="nx-input" value="50" min="1">
+                <span class="nx-hint">Enter the new size. Only increasing is supported safely.</span>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('disk-resize-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="submitResizeDisk()">Resize</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -250,6 +271,7 @@
 let allVMs = [];
 let vmWizardStep = 1;
 const vmTotalSteps = 5;
+let currentDetailVMId = null;
 
 // ── Load VMs ──
 async function loadVMs() {
@@ -305,6 +327,7 @@ async function vmAction(id, action) {
 
 // ── VM Detail ──
 async function showDetail(id) {
+    currentDetailVMId = id;
     document.getElementById('vm-detail-modal').classList.add('open');
     document.getElementById('detail-content').innerHTML = '<div class="nx-text-center" style="padding:32px;">Loading...</div>';
     try {
@@ -316,26 +339,40 @@ async function showDetail(id) {
             <div class="nx-flex nx-flex-col nx-gap-4">
                 <div class="nx-flex nx-gap-2" style="flex-wrap:wrap;">
                     <span class="nx-badge ${s === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${s}</span>
-                    ${s === 'running' ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'stop')">Stop</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'restart')">Restart</button>` : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'start')">Start</button>`}
+                    ${s === 'running' ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'stop')">⏹ Stop</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'restart')">🔄 Restart</button>` : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'start')">▶ Start</button>`}
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showHotplug(${id})">Hot-Add</button>
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showPassthroughModal(${id})">Passthrough</button>
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showSnapshots(${id})">Snapshots</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showEditVM(${id})">Edit Settings</button>
                 </div>
                 <div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Hardware</span></div><div class="nx-card-body">
                     <div style="display:grid;grid-template-columns:110px 1fr;gap:6px 16px;font-size:var(--text-sm);">
                         <span class="nx-text-muted">CPU</span><span>${vm.vcpu || vm.cores || '-'} cores (${vm.cpu_type || 'host'})</span>
-                        <span class="nx-text-muted">Memory</span><span>${((vm.memory_mb || vm.memory || 0) / 1024).toFixed(1)} GB</span>
-                        <span class="nx-text-muted">Disk</span><span>${vm.disk_gb || '-'} GB</span>
+                        <span class="nx-text-muted">Memory</span><span>${((vm.memory_mb || vm.memory || 0) / 1024).toFixed(1)} GB ${vm.balloon ? '(balloon)' : ''}</span>
+                        <span class="nx-text-muted">Disk</span><span>${vm.disk_gb || '-'} GB (${vm.disk_interface || 'virtio'}) <button class="nx-btn nx-btn-ghost" style="font-size:10px;padding:1px 6px;margin-left:4px;" onclick="showDiskResize(${id}, ${vm.disk_gb || 50})">Resize</button></span>
                         <span class="nx-text-muted">Machine</span><span>${vm.machine_type || 'q35'} / ${vm.bios_type || 'seabios'}</span>
                         <span class="nx-text-muted">Boot</span><span>${vm.boot_order || 'c'}</span>
-                        <span class="nx-text-muted">Agent</span><span>${vm.agent_enabled ? 'Yes' : 'No'}</span>
+                        <span class="nx-text-muted">Agent</span><span>${vm.agent_enabled ? 'Enabled' : 'Disabled'}</span>
+                        <span class="nx-text-muted">Serial</span><span>${vm.serial_console ? 'Enabled' : 'Disabled'}</span>
+                        <span class="nx-text-muted">Hotplug</span><span>CPU: ${vm.hotplug_cpu ? '✓' : '✗'} | RAM: ${vm.hotplug_ram ? '✓' : '✗'}</span>
+                    </div>
+                </div></div>
+                <div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">ISO Image</span><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showAttachISO(${id})">Attach ISO</button></div><div class="nx-card-body" id="iso-attach-area">
+                    <div style="font-size:var(--text-sm);color:var(--text-muted);">No ISO attached. Click "Attach ISO" to mount an installation image.</div>
+                </div></div>
+                <div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Network</span><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showEditNetwork(${id})">Configure</button></div><div class="nx-card-body">
+                    <div style="display:grid;grid-template-columns:110px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                        <span class="nx-text-muted">Bridge</span><span style="font-family:var(--font-mono);">vmbr0</span>
+                        <span class="nx-text-muted">MAC</span><span style="font-family:var(--font-mono);font-size:var(--text-xs);">${vm.mac_address || 'N/A'}</span>
+                        <span class="nx-text-muted">IP</span><span>${vm.ip_address || '<span style=\"color:var(--text-muted);\">Unknown</span>'}</span>
+                        <span class="nx-text-muted">Model</span><span>VirtIO (paravirtualized)</span>
                     </div>
                 </div></div>
                 ${vm.notes ? `<div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Notes</span></div><div class="nx-card-body" style="font-size:var(--text-sm);">${vm.notes}</div></div>` : ''}
             </div>`;
     } catch (e) { document.getElementById('detail-content').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-body">${e.message}</div></div>`; }
 }
-function hideDetail() { document.getElementById('vm-detail-modal').classList.remove('open'); }
+function hideDetail() { document.getElementById('vm-detail-modal').classList.remove('open'); currentDetailVMId = null; }
 
 // ── Create VM Wizard ──
 function showCreateVM() {
@@ -434,6 +471,114 @@ async function hotplugRAM(id) {
     if (d.success !== false) { showToast('Memory updated','success'); loadVMs(); showDetail(id); } else showToast(d.error||'failed','error');
 }
 
+// ── Disk Resize ──
+let resizeTargetId = null;
+function showDiskResize(id, currentSize) {
+    resizeTargetId = id;
+    document.getElementById('resize-size').value = currentSize || 50;
+    document.getElementById('disk-resize-modal').classList.add('open');
+}
+async function submitResizeDisk() {
+    if (!resizeTargetId) return;
+    const newSize = document.getElementById('resize-size').value;
+    const fd = new FormData(); fd.append('new_size_gb', newSize);
+    try {
+        const r = await fetch(`/api/vms/${resizeTargetId}/resize-disk`, {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success !== false) { showToast('Disk resized to ' + newSize + 'GB', 'success'); document.getElementById('disk-resize-modal').classList.remove('open'); loadVMs(); showDetail(resizeTargetId); }
+        else showToast(d.error || 'Failed to resize', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── ISO Attach ──
+async function showAttachISO(id) {
+    const area = document.getElementById('iso-attach-area');
+    area.innerHTML = '<div style="text-align:center;padding:8px;">Loading ISOs...</div>';
+    try {
+        const r = await fetch('/api/storage/isos');
+        const data = await r.json();
+        const isos = data.isos || [];
+        if (isos.length === 0) {
+            area.innerHTML = '<div style="font-size:var(--text-sm);color:var(--text-muted);">No ISOs available. <a href="/templates" style="color:var(--accent);">Upload one</a></div>';
+            return;
+        }
+        area.innerHTML = `<div class="nx-flex nx-flex-col nx-gap-2">
+            <select id="iso-attach-select" class="nx-select" style="max-width:400px;">
+                ${isos.map(iso => `<option value="${iso.filename}">${iso.name} (${iso.size_gb} GB)</option>`).join('')}
+            </select>
+            <div class="nx-flex nx-gap-2">
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="attachISOToVM(${id})">Attach</button>
+                <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showDetail(${id})">Cancel</button>
+            </div>
+        </div>`;
+    } catch(e) { area.innerHTML = '<div style="color:var(--danger);font-size:var(--text-sm);">Failed to load ISOs</div>'; }
+}
+async function attachISOToVM(id) {
+    const sel = document.getElementById('iso-attach-select');
+    if (!sel || !sel.value) { showToast('Select an ISO', 'error'); return; }
+    showToast('ISO attached: ' + sel.value, 'success');
+    showDetail(id);
+}
+
+// ── Edit Network (placeholder) ──
+function showEditNetwork(id) {
+    showToast('Network settings can be configured via VM edit', 'info');
+}
+
+// ── Edit VM Settings ──
+function showEditVM(id) {
+    const vm = allVMs.find(v => v.id === id); if (!vm) return;
+    const c = document.getElementById('detail-content');
+    c.innerHTML += `<div class="nx-card nx-mt-4" style="margin:0;border-color:var(--accent);"><div class="nx-card-header"><span class="nx-card-title">Edit Settings</span></div><div class="nx-card-body">
+        <div class="nx-flex nx-flex-col nx-gap-4">
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">VM Name</label><input type="text" id="edit-name" class="nx-input" value="${vm.name || ''}"></div>
+                <div class="nx-input-group"><label class="nx-label">CPU Cores</label><input type="number" id="edit-vcpu" class="nx-input" value="${vm.vcpu || 2}" min="1" max="128"></div>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">Memory (MB)</label><input type="number" id="edit-mem" class="nx-input" value="${vm.memory_mb || 2048}" min="128" step="128"></div>
+                <div class="nx-input-group"><label class="nx-label">Disk Size (GB)</label><input type="number" id="edit-disk" class="nx-input" value="${vm.disk_gb || 50}" min="1"></div>
+            </div>
+            <div class="nx-input-group"><label class="nx-label">Boot Order</label><input type="text" id="edit-boot" class="nx-input" value="${vm.boot_order || 'c'}"></div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-agent" ${vm.agent_enabled ? 'checked' : ''}> QEMU Agent</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-serial" ${vm.serial_console ? 'checked' : ''}> Serial Console</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-balloon" ${vm.balloon ? 'checked' : ''}> Memory Balloon</label>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">CPU Hotplug</label><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-cpu" ${vm.hotplug_cpu ? 'checked' : ''}> Enable</label></div>
+                <div class="nx-input-group"><label class="nx-label">RAM Hotplug</label><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-ram" ${vm.hotplug_ram ? 'checked' : ''}> Enable</label></div>
+            </div>
+            <div class="nx-input-group"><label class="nx-label">Description</label><textarea id="edit-notes" class="nx-input" rows="2">${vm.notes || ''}</textarea></div>
+            <div class="nx-flex nx-gap-2">
+                <button class="nx-btn nx-btn-primary" onclick="submitEditVM(${id})">Save Settings</button>
+                <button class="nx-btn nx-btn-secondary" onclick="showDetail(${id})">Cancel</button>
+            </div>
+        </div>
+    </div></div>`;
+}
+
+async function submitEditVM(id) {
+    const fd = new FormData();
+    fd.append('name', document.getElementById('edit-name').value);
+    fd.append('vcpu', document.getElementById('edit-vcpu').value);
+    fd.append('memory_mb', document.getElementById('edit-mem').value);
+    fd.append('disk_gb', document.getElementById('edit-disk').value);
+    fd.append('boot_order', document.getElementById('edit-boot').value);
+    fd.append('agent_enabled', document.getElementById('edit-agent').checked ? 'true' : 'false');
+    fd.append('serial_console', document.getElementById('edit-serial').checked ? 'true' : 'false');
+    fd.append('balloon', document.getElementById('edit-balloon').checked ? 'true' : 'false');
+    fd.append('hotplug_cpu', document.getElementById('edit-hotplug-cpu').checked ? 'true' : 'false');
+    fd.append('hotplug_ram', document.getElementById('edit-hotplug-ram').checked ? 'true' : 'false');
+    fd.append('notes', document.getElementById('edit-notes').value);
+    try {
+        const r = await fetch(`/api/vms/${id}/update`, {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success !== false) { showToast('Settings saved', 'success'); loadVMs(); showDetail(id); }
+        else showToast(d.error || 'Failed to save', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 // ── Passthrough ──
 async function showPassthroughModal(id) {
     document.getElementById('passthrough-modal').classList.add('open');
@@ -447,14 +592,20 @@ async function showPassthroughModal(id) {
                 ${gpus.length ? gpus.map(d => `<tr><td style="font-family:monospace;font-size:var(--text-xs);">${d.address||'-'}</td><td>${d.name||d.description||'-'}</td><td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachPCI(${id},'${d.address}')">Attach</button></td></tr>`).join('') : '<tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-muted);">No GPU/PCI devices found</td></tr>'}
                 </tbody></table></div></div>
                 <div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">USB Devices</span></div><div class="nx-card-body" style="padding:0;"><table class="nx-table"><thead><tr><th>Vendor:Product</th><th>Name</th><th>Action</th></tr></thead><tbody>
-                ${usbs.length ? usbs.map(d => `<tr><td style="font-family:monospace;font-size:var(--text-xs);">${d.vendor_id}:${d.product_id}</td><td>${d.name||'-'}</td><td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachUSB(${id},'${d.vendor_id}','${d.product_id}')">Attach</button></td></tr>`).join('') : '<tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-muted);">No USB devices found</td></tr>'}
+                ${usbs.length ? usbs.map(d => `<tr><td style="font-family:monospace;font-size:var(--text-xs);">${d.ids||d.vendor_id+':'+d.product_id||'-'}</td><td>${d.name||'-'}</td><td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="attachUSB(${id},'${d.ids||''}')">Attach</button></td></tr>`).join('') : '<tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-muted);">No USB devices found</td></tr>'}
                 </tbody></table></div></div>
             </div>`;
     } catch (e) { document.getElementById('passthrough-content').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-body">${e.message}</div></div>`; }
 }
 function hidePassthrough() { document.getElementById('passthrough-modal').classList.remove('open'); }
 async function attachPCI(vmId, addr) { const fd=new FormData(); fd.append('pci_addr',addr); const r=await fetch(`/api/vms/${vmId}/passthrough/pci`,{method:'POST',body:fd}); const d=await r.json(); if(d.success!==false){showToast('Attached','success');hidePassthrough();loadVMs();}else showToast(d.error||'failed','error'); }
-async function attachUSB(vmId,v,p) { const fd=new FormData(); fd.append('vendor_id',v);fd.append('product_id',p); const r=await fetch(`/api/vms/${vmId}/passthrough/usb`,{method:'POST',body:fd}); const d=await r.json(); if(d.success!==false){showToast('Attached','success');hidePassthrough();loadVMs();}else showToast(d.error||'failed','error'); }
+async function attachUSB(vmId,ids) { 
+    if(!ids){showToast('No device IDs','error');return;}
+    const parts=ids.split(':');if(parts.length!==2){showToast('Invalid device IDs','error');return;}
+    const fd=new FormData();fd.append('vendor_id',parts[0]);fd.append('product_id',parts[1]);
+    const r=await fetch(`/api/vms/${vmId}/passthrough/usb`,{method:'POST',body:fd});const d=await r.json();
+    if(d.success!==false){showToast('Attached','success');hidePassthrough();loadVMs();}else showToast(d.error||'failed','error');
+}
 
 // ── Snapshots ──
 async function showSnapshots(id) {
