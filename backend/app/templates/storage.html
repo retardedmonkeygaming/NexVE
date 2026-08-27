@@ -23,6 +23,9 @@
     <button class="nx-tab" onclick="showTab(this,'cifs')">CIFS</button>
     <button class="nx-tab" onclick="showTab(this,'iscsi')">iSCSI</button>
     <button class="nx-tab" onclick="showTab(this,'backends')">Backends</button>
+    <button class="nx-tab" onclick="showTab(this,'thin')">LVM-thin</button>
+    <button class="nx-tab" onclick="showTab(this,'ceph')">Ceph RBD</button>
+    <button class="nx-tab" onclick="showTab(this,'migrate')">Migration</button>
 </div>
 
 <!-- Disks -->
@@ -249,6 +252,182 @@
 {% endblock %}
 
 {% block scripts %}
+
+<!-- LVM-thin -->
+<div class="nx-tab-content" id="tab-thin">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Thin Pools</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showThinPoolModal()">+ Create Pool</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Pool</th><th>VG</th><th>Size</th><th>Data %</th><th>Meta %</th><th>Actions</th></tr></thead>
+                <tbody id="thin-pool-list">
+                    <tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Thin Volumes</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showThinVolModal()">+ Create Volume</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Volume</th><th>Pool</th><th>VG</th><th>Size</th><th>Origin</th><th>Actions</th></tr></thead>
+                <tbody id="thin-vol-list">
+                    <tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Ceph RBD -->
+<div class="nx-tab-content" id="tab-ceph">
+    <div class="nx-card" style="margin-bottom:16px;">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Ceph Cluster Status</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadCephStatus()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" id="ceph-status">Loading...</div>
+    </div>
+    <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <span class="nx-card-title">RBD Pools</span>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showCephPoolModal()">+ Create Pool</button>
+            </div>
+            <div class="nx-card-body" style="padding:0;">
+                <table class="nx-table">
+                    <thead><tr><th>Pool</th><th>Type</th><th>PGs</th><th>Actions</th></tr></thead>
+                    <tbody id="ceph-pool-list"><tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <span class="nx-card-title">RBD Images</span>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showCephImageModal()">+ Create Image</button>
+            </div>
+            <div class="nx-card-body" style="padding:0;">
+                <table class="nx-table">
+                    <thead><tr><th>Image</th><th>Pool</th><th>Size</th><th>Actions</th></tr></thead>
+                    <tbody id="ceph-image-list"><tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Storage Migration -->
+<div class="nx-tab-content" id="tab-migrate">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Migrate Storage Content</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-gap-4" style="align-items:flex-end;">
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Source Storage</label>
+                    <select id="migrate-source" class="nx-select"><option value="">Select source...</option></select>
+                </div>
+                <div class="nx-input-group" style="flex:1;">
+                    <label class="nx-label">Target Storage</label>
+                    <select id="migrate-target" class="nx-select"><option value="">Select target...</option></select>
+                </div>
+                <button class="nx-btn nx-btn-primary" onclick="startMigrate()">Start Migration</button>
+            </div>
+            <div id="migrate-status" style="margin-top:12px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Thin Pool Modal -->
+<div class="nx-modal-overlay" id="thin-pool-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header">
+            <h3>Create Thin Pool</h3>
+            <button class="nx-modal-close" onclick="hideModal('thin-pool-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Volume Group</label><select id="thin-vg" class="nx-select"><option value="">Select VG...</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Pool Name</label><input type="text" id="thin-pool-name" class="nx-input" placeholder="e.g. data"></div>
+                <div class="nx-input-group"><label class="nx-label">Size (GB)</label><input type="number" id="thin-pool-size" class="nx-input" value="100" min="1"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideModal('thin-pool-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createThinPool()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Thin Volume Modal -->
+<div class="nx-modal-overlay" id="thin-vol-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header">
+            <h3>Create Thin Volume</h3>
+            <button class="nx-modal-close" onclick="hideModal('thin-vol-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Volume Group</label><select id="thin-vol-vg" class="nx-select" onchange="loadThinPoolsForVG(this.value)"><option value="">Select VG...</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Thin Pool</label><select id="thin-vol-pool" class="nx-select"><option value="">Select pool...</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Volume Name</label><input type="text" id="thin-vol-name" class="nx-input" placeholder="e.g. vm-disk-1"></div>
+                <div class="nx-input-group"><label class="nx-label">Size (GB)</label><input type="number" id="thin-vol-size" class="nx-input" value="50" min="1"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideModal('thin-vol-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createThinVol()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Ceph Pool Modal -->
+<div class="nx-modal-overlay" id="ceph-pool-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header">
+            <h3>Create Ceph Pool</h3>
+            <button class="nx-modal-close" onclick="hideModal('ceph-pool-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Pool Name</label><input type="text" id="ceph-pool-name" class="nx-input" placeholder="e.g. mypool"></div>
+                <div class="nx-input-group"><label class="nx-label">Pool Type</label><select id="ceph-pool-type" class="nx-select"><option value="replicated">Replicated</option><option value="erasure">Erasure Coded</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">PG Number</label><input type="number" id="ceph-pg-num" class="nx-input" value="128" min="1"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideModal('ceph-pool-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createCephPool()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Ceph Image Modal -->
+<div class="nx-modal-overlay" id="ceph-image-modal">
+    <div class="nx-modal" style="max-width:450px;">
+        <div class="nx-modal-header">
+            <h3>Create RBD Image</h3>
+            <button class="nx-modal-close" onclick="hideModal('ceph-image-modal')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Pool</label><select id="ceph-img-pool" class="nx-select"><option value="rbd">rbd</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Image Name</label><input type="text" id="ceph-img-name" class="nx-input" placeholder="e.g. vm-disk-1"></div>
+                <div class="nx-input-group"><label class="nx-label">Size (GB)</label><input type="number" id="ceph-img-size" class="nx-input" value="50" min="1"></div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideModal('ceph-image-modal')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="createCephImage()">Create</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // Tab switching already handled by base.html showTab function
 // Override to also load tab data
@@ -264,6 +443,9 @@ function showTab(btn, name) {
     if (name === 'cifs') loadCIFS();
     if (name === 'iscsi') loadISCSI();
     if (name === 'backends') loadBackends();
+    if (name === 'thin') { loadThinPools(); loadThinVolumes(); }
+    if (name === 'ceph') { loadCephStatus(); loadCephPools(); loadCephImages(); }
+    if (name === 'migrate') loadMigrationSources();
 }
 
 async function loadDisks() {

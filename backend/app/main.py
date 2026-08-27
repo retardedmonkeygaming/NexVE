@@ -37,7 +37,7 @@ from .routers import (
     tags, resource_pools, ldap,
 )
 from .routers import (
-    migration, ha, cluster, sdn, ceph, acme, notifications,
+    migration, ha, cluster, cluster_mgmt, sdn, ceph, acme, notifications,
 )
 
 # Create all tables
@@ -95,6 +95,7 @@ app.include_router(ldap.router, prefix="/api/ldap", tags=["LDAP"])
 app.include_router(migration.router, prefix="/api/migration", tags=["Migration"])
 app.include_router(ha.router, prefix="/api/ha", tags=["High Availability"])
 app.include_router(cluster.router, prefix="/api/cluster", tags=["Cluster"])
+app.include_router(cluster_mgmt.router, prefix="/api/cluster-mgmt", tags=["Cluster Management"])
 app.include_router(sdn.router, prefix="/api/sdn", tags=["SDN"])
 app.include_router(ceph.router, prefix="/api/ceph", tags=["Ceph"])
 app.include_router(acme.router, prefix="/api/acme", tags=["ACME"])
@@ -243,6 +244,17 @@ async def monitoring_page(request: Request):
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     return templates.TemplateResponse(request=request, name="monitor.html", context={
         "user": user, "csrf_token": csrf, "page": "monitoring", "hostname": os.uname().nodename
+    })
+
+
+@app.get("/cluster", response_class=HTMLResponse)
+async def cluster_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+    return templates.TemplateResponse(request=request, name="cluster.html", context={
+        "user": user, "csrf_token": csrf, "page": "cluster", "hostname": os.uname().nodename
     })
 
 

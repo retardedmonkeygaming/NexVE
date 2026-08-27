@@ -83,3 +83,39 @@ async def destroy_cluster(request: Request):
         return redir
     result = cluster_svc.destroy_cluster()
     return JSONResponse(result)
+
+
+@router.post("/tokens/generate")
+async def generate_token(
+    request: Request,
+    node_name: str = Form(...),
+):
+    """Generate a join token for a new node."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = cluster_svc.generate_join_token(node_name)
+    return JSONResponse(result)
+
+
+@router.post("/tokens/validate")
+async def validate_token(
+    request: Request,
+    token: str = Form(...),
+):
+    """Validate a join token."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = cluster_svc.validate_join_token(token)
+    return JSONResponse(result)
+
+
+@router.get("/config")
+async def get_config(request: Request):
+    """Get cluster configuration."""
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    result = cluster_svc.get_cluster_config()
+    return JSONResponse(result)

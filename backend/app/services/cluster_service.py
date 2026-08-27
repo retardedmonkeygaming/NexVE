@@ -199,3 +199,85 @@ logging {{
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+    def generate_join_token(self, node_name: str) -> dict:
+        """Generate a join token for a new node."""
+        import secrets
+        import hashlib
+        import time
+
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+        # Store token in a temporary file
+        token_dir = "/var/lib/nexve/cluster"
+        os.makedirs(token_dir, exist_ok=True)
+        token_file = f"{token_dir}/join_tokens.json"
+
+        tokens = {}
+        if os.path.exists(token_file):
+            try:
+                with open(token_file) as f:
+                    tokens = json.load(f)
+            except Exception:
+                tokens = {}
+
+        tokens[token_hash] = {
+            "node_name": node_name,
+            "created": time.time(),
+            "expires": time.time() + 3600,  # 1 hour
+            "used": False,
+        }
+
+        with open(token_file, "w") as f:
+            json.dump(tokens, f, indent=2)
+
+        return {
+            "success": True,
+            "token": token,
+            "node_name": node_name,
+            "expires_in": 3600,
+        }
+
+    def validate_join_token(self, token: str) -> dict:
+        """Validate a join token."""
+        import hashlib
+        import time
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_file = "/var/lib/nexve/cluster/join_tokens.json"
+
+        if not os.path.exists(token_file):
+            return {"valid": False, "error": "No tokens found"}
+
+        try:
+            with open(token_file) as f:
+                tokens = json.load(f)
+
+            if token_hash not in tokens:
+                return {"valid": False, "error": "Invalid token"}
+
+            t = tokens[token_hash]
+            if t.get("used", False):
+                return {"valid": False, "error": "Token already used"}
+            if time.time() > t.get("expires", 0):
+                return {"valid": False, "error": "Token expired"}
+
+            return {
+                "valid": True,
+                "node_name": t["node_name"],
+            }
+        except Exception as e:
+            return {"valid": False, "error": str(e)}
+
+    def get_cluster_config(self) -> dict:
+        """Get the current cluster configuration."""
+        conf_path = "/etc/corosync/corosync.conf"
+        if not os.path.exists(conf_path):
+            return {"exists": False}
+
+        try:
+            with open(conf_path) as f:
+                conf = f.read()
+            return {"exists": True, "config": conf}
+        except Exception as e:
+            return {"exists": False, "error": str(e)}

@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}NexVE — Cluster Management{% endblock %}
+{% block breadcrumb %}Cluster Management{% endblock %}
+
+{% block content %}
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">Cluster Management</div>
+        <div class="nx-page-subtitle">Multi-node cluster management and node health</div>
+    </div>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshCluster()">↻ Refresh</button>
+        <button class="nx-btn nx-btn-primary" onclick="showJoinModal()">+ Join Cluster</button>
+    </div>
+</div>
+
+<!-- Cluster Status Overview -->
+<div class="nx-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Cluster Status</div>
+            <div id="cluster-status" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">Checking...</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Online Nodes</div>
+            <div id="online-nodes" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Avg CPU</div>
+            <div id="avg-cpu" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Avg Memory</div>
+            <div id="avg-mem" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Node List -->
+<div class="nx-card" style="margin-bottom:16px;">
+    <div class="nx-card-header">
+        <span class="nx-card-title">Cluster Nodes</span>
+        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="generateToken()">Generate Join Token</button>
+    </div>
+    <div class="nx-card-body" style="padding:0;">
+        <table class="nx-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Node Name</th>
+                    <th>Address</th>
+                    <th>Node ID</th>
+                    <th>CPU</th>
+                    <th>Memory</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="node-list">
+                <tr><td colspan="7" class="nx-text-center" style="padding:32px;color:var(--text-muted);">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- HA Status -->
+<div class="nx-card">
+    <div class="nx-card-header">
+        <span class="nx-card-title">High Availability</span>
+        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="refreshHA()">↻ Refresh</button>
+    </div>
+    <div class="nx-card-body">
+        <div id="ha-status" style="color:var(--text-muted);font-size:var(--text-sm);">Loading HA status...</div>
+    </div>
+</div>
+
+<!-- Join Cluster Modal -->
+<div class="nx-modal-overlay" id="join-modal">
+    <div class="nx-modal" style="max-width:500px;">
+        <div class="nx-modal-header">
+            <h3>Join Cluster</h3>
+            <button class="nx-modal-close" onclick="hideJoinModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-4">
+                <div class="nx-input-group">
+                    <label class="nx-label">Remote Node Address</label>
+                    <input type="text" id="join-host" class="nx-input" placeholder="e.g. 192.168.1.101 or node2.example.com">
+                    <span class="nx-hint">IP or hostname of an existing cluster node.</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Cluster Name</label>
+                    <input type="text" id="join-cluster-name" class="nx-input" value="nexve">
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Join Token (optional)</label>
+                    <input type="text" id="join-token" class="nx-input" placeholder="Paste token from existing node">
+                    <span class="nx-hint">Generate a token on the existing node first.</span>
+                </div>
+            </div>
+            <div id="join-error" style="margin-top:12px;"></div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideJoinModal()">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="submitJoin()">Join Cluster</button>
+        </div>
+    </div>
+</div>
+
+<!-- Token Modal -->
+<div class="nx-modal-overlay" id="token-modal">
+    <div class="nx-modal" style="max-width:500px;">
+        <div class="nx-modal-header">
+            <h3>Generate Join Token</h3>
+            <button class="nx-modal-close" onclick="hideTokenModal()">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <div class="nx-input-group">
+                <label class="nx-label">Node Name (for the joining node)</label>
+                <input type="text" id="token-node-name" class="nx-input" placeholder="e.g. node3">
+            </div>
+            <div id="token-result" style="margin-top:16px;"></div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="hideTokenModal()">Close</button>
+            <button class="nx-btn nx-btn-primary" onclick="submitToken()">Generate Token</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let clusterData = null;
+
+async function refreshCluster() {
+    try {
+        const r = await fetch('/api/cluster-mgmt/status');
+        clusterData = await r.json();
+        renderCluster();
+    } catch(e) {
+        console.error('refreshCluster:', e);
+    }
+}
+
+function renderCluster() {
+    if (!clusterData) return;
+
+    // Status cards
+    const statusEl = document.getElementById('cluster-status');
+    if (clusterData.clustered) {
+        statusEl.innerHTML = '<span style="color:var(--success);">● Clustered</span>';
+    } else {
+        statusEl.innerHTML = '<span style="color:var(--warning);">● Standalone</span>';
+    }
+
+    const nodes = clusterData.nodes || [];
+    document.getElementById('online-nodes').textContent = nodes.filter(n => n.status === 'online').length + '/' + nodes.length;
+
+    const avgCpu = nodes.reduce((s, n) => s + (n.cpu_percent || 0), 0) / (nodes.length || 1);
+    const avgMem = nodes.reduce((s, n) => s + (n.memory_percent || 0), 0) / (nodes.length || 1);
+    document.getElementById('avg-cpu').textContent = avgCpu.toFixed(1) + '%';
+    document.getElementById('avg-mem').textContent = avgMem.toFixed(1) + '%';
+
+    // Node list
+    const list = document.getElementById('node-list');
+    if (nodes.length === 0) {
+        list.innerHTML = '<tr><td colspan="7" class="nx-text-center" style="padding:32px;"><span style="color:var(--text-muted);">No cluster nodes found. Click "Join Cluster" to add nodes.</span></td></tr>';
+    } else {
+        list.innerHTML = nodes.map(n => `
+            <tr>
+                <td><span class="nx-badge ${n.status === 'online' ? 'nx-badge-success' : 'nx-badge-danger'}"><span class="dot"></span>${n.status || 'unknown'}</span></td>
+                <td style="font-weight:500;">${n.name || 'unknown'} ${n.local ? '<span style="color:var(--accent);font-size:var(--text-xs);">(local)</span>' : ''}</td>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${n.address || '-'}</td>
+                <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${n.node_id || '-'}</td>
+                <td>${(n.cpu_percent || 0).toFixed(1)}%</td>
+                <td>${(n.memory_percent || 0).toFixed(1)}%</td>
+                <td>
+                    <div class="nx-flex nx-gap-1">
+                        ${!n.local ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="removeNode('${n.name}')">Remove</button>` : ''}
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Quorum
+    if (clusterData.quorum && Object.keys(clusterData.quorum).length > 0) {
+        const quorumHtml = `<div style="font-size:var(--text-sm);color:var(--text-secondary);">Quorum: ${JSON.stringify(clusterData.quorum)}</div>`;
+        list.innerHTML += `<tr><td colspan="7" style="padding:8px 16px;background:var(--bg-elevated);">${quorumHtml}</td></tr>`;
+    }
+}
+
+async function refreshHA() {
+    try {
+        const r = await fetch('/api/ha/status');
+        const data = await r.json();
+        const el = document.getElementById('ha-status');
+        if (data.active) {
+            el.innerHTML = `<div style="color:var(--success);font-weight:500;">HA Manager: Active</div>
+                <div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px;">${data.status_text || ''}</div>`;
+        } else {
+            el.innerHTML = `<div style="color:var(--text-muted);">HA Manager: Inactive</div>
+                <div style="font-size:var(--text-sm);margin-top:4px;">Clustering not configured or HA not enabled.</div>`;
+        }
+    } catch(e) {
+        document.getElementById('ha-status').textContent = 'Failed to load HA status';
+    }
+}
+
+// Join modal
+function showJoinModal() { document.getElementById('join-modal').classList.add('open'); }
+function hideJoinModal() { document.getElementById('join-modal').classList.remove('open'); }
+
+async function submitJoin() {
+    const host = document.getElementById('join-host').value;
+    const name = document.getElementById('join-cluster-name').value;
+    if (!host) { showToast('Host is required', 'error'); return; }
+
+    try {
+        const fd = new FormData();
+        fd.append('remote_host', host);
+        fd.append('cluster_name', name);
+        const r = await fetch('/api/cluster/join', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            showToast('Joined cluster!', 'success');
+            hideJoinModal();
+            setTimeout(refreshCluster, 2000);
+        } else {
+            document.getElementById('join-error').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-text">${data.error || 'Join failed'}</div></div>`;
+        }
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// Token modal
+function showTokenModal() { document.getElementById('token-modal').classList.add('open'); }
+function hideTokenModal() { document.getElementById('token-modal').classList.remove('open'); }
+
+async function generateToken() { showTokenModal(); }
+
+async function submitToken() {
+    const name = document.getElementById('token-node-name').value;
+    if (!name) { showToast('Node name is required', 'error'); return; }
+
+    try {
+        const fd = new FormData();
+        fd.append('node_name', name);
+        const r = await fetch('/api/cluster/tokens/generate', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('token-result').innerHTML = `
+                <div class="nx-card" style="margin:0;border-color:var(--accent);">
+                    <div class="nx-card-body" style="padding:12px;">
+                        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Join Token (expires in 1 hour):</div>
+                        <code style="font-size:var(--text-sm);word-break:break-all;background:var(--bg-overlay);padding:4px 8px;border-radius:var(--radius);display:block;">${data.token}</code>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${data.token}');showToast('Copied!','success')">Copy to Clipboard</button>
+                    </div>
+                </div>`;
+        } else {
+            document.getElementById('token-result').innerHTML = `<div style="color:var(--danger);">${data.error || 'Failed'}</div>`;
+        }
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function removeNode(name) {
+    if (!confirm(`Remove node "${name}" from the cluster?`)) return;
+    try {
+        const r = await fetch(`/api/cluster/nodes/${name}`, {method: 'DELETE'});
+        const data = await r.json();
+        if (data.success) { showToast('Node removed', 'success'); setTimeout(refreshCluster, 1500); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// Initial load
+refreshCluster();
+refreshHA();
+</script>
+{% endblock %}

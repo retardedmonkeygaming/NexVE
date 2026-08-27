@@ -891,6 +891,7 @@ class VMService:
             <name>{vm.name}</name>
             <memory unit='KiB'>{mem_kb}</memory>
             <vcpu placement='static'>{vm.vcpu}</vcpu>
+            {bios_xml}
             <devices>
                 <disk type='file' device='disk'>
                     <driver name='qemu' type='qcow2'/>
@@ -907,7 +908,6 @@ class VMService:
                 </graphics>
                 {serial_xml}{agent_xml}{balloon_xml}
             </devices>
-            {bios_xml}
         </domain>"""
 
         try:

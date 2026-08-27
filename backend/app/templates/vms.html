@@ -191,6 +191,35 @@
                                 </label>
                             </div>
                         </div>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="tpm_enabled" onchange="toggleTPM(this)"> TPM 2.0 Device
+                                </label>
+                                <span class="nx-hint">Required for Windows 11 and Secure Boot.</span>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="secure_boot" id="secure-boot-cb"> UEFI Secure Boot
+                                </label>
+                                <span class="nx-hint">Requires OVMF BIOS and TPM.</span>
+                            </div>
+                        </div>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="numa"> NUMA
+                                </label>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label">Hugepages</label>
+                                <select name="hugepages" class="nx-select">
+                                    <option value="none">None</option>
+                                    <option value="2">2 MB</option>
+                                    <option value="1024">1 GB</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -340,7 +369,9 @@ async function showDetail(id) {
                 <div class="nx-flex nx-gap-2" style="flex-wrap:wrap;">
                     <span class="nx-badge ${s === 'running' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${s}</span>
                     ${s === 'running' ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'stop')">⏹ Stop</button><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'restart')">🔄 Restart</button>` : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="vmAction(${id},'start')">▶ Start</button>`}
-                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showHotplug(${id})">Hot-Add</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hotplugDisk(${id})">+ Disk</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="hotplugNIC(${id})">+ NIC</button>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyCloudInit(${id})">Cloud-Init</button>
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showPassthroughModal(${id})">Passthrough</button>
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showSnapshots(${id})">Snapshots</button>
                     <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showEditVM(${id})">Edit Settings</button>
@@ -353,6 +384,10 @@ async function showDetail(id) {
                         <span class="nx-text-muted">Machine</span><span>${vm.machine_type || 'q35'} / ${vm.bios_type || 'seabios'}</span>
                         <span class="nx-text-muted">Boot</span><span>${vm.boot_order || 'c'}</span>
                         <span class="nx-text-muted">Agent</span><span>${vm.agent_enabled ? 'Enabled' : 'Disabled'}</span>
+                        <span class="nx-text-muted">TPM</span><span>${vm.tpm_enabled ? '✓ TPM 2.0' : 'Disabled'}</span>
+                        <span class="nx-text-muted">Secure Boot</span><span>${vm.secure_boot ? '✓ Enabled' : 'Disabled'}</span>
+                        <span class="nx-text-muted">NUMA</span><span>${vm.numa ? 'Enabled' : 'Disabled'}</span>
+                        <span class="nx-text-muted">Hugepages</span><span>${vm.hugepages && vm.hugepages !== 'none' ? vm.hugepages + ' MB' : 'None'}</span>
                         <span class="nx-text-muted">Serial</span><span>${vm.serial_console ? 'Enabled' : 'Disabled'}</span>
                         <span class="nx-text-muted">Hotplug</span><span>CPU: ${vm.hotplug_cpu ? '✓' : '✗'} | RAM: ${vm.hotplug_ram ? '✓' : '✗'}</span>
                     </div>
@@ -368,6 +403,14 @@ async function showDetail(id) {
                         <span class="nx-text-muted">Model</span><span>VirtIO (paravirtualized)</span>
                     </div>
                 </div></div>
+                ${vm.agent_enabled ? `<div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Guest Agent</span></div><div class="nx-card-body">
+                    <div class="nx-flex nx-gap-2" style="flex-wrap:wrap;">
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="guestAgent(${id}, 'info')">Agent Info</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="guestAgent(${id}, 'fstrim')">fstrim</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="guestAgent(${id}, 'freeze')">Freeze FS</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="guestAgent(${id}, 'thaw')">Thaw FS</button>
+                    </div>
+                </div></div>` : ''}
                 ${vm.notes ? `<div class="nx-card" style="margin:0;"><div class="nx-card-header"><span class="nx-card-title">Notes</span></div><div class="nx-card-body" style="font-size:var(--text-sm);">${vm.notes}</div></div>` : ''}
             </div>`;
     } catch (e) { document.getElementById('detail-content').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-body">${e.message}</div></div>`; }
@@ -419,6 +462,9 @@ function buildVMSummary() {
             <span class="nx-text-muted">ISO</span><span>${g('iso') || 'None'}</span>
             <span class="nx-text-muted">Machine</span><span>${g('machine_type')} / ${g('bios_type')}</span>
             <span class="nx-text-muted">OS</span><span>${g('os_type')}</span>
+            <span class="nx-text-muted">TPM</span><span>${document.querySelector('[name="tpm_enabled"]')?.checked ? 'Yes' : 'No'}</span>
+            <span class="nx-text-muted">Secure Boot</span><span>${document.querySelector('[name="secure_boot"]')?.checked ? 'Yes' : 'No'}</span>
+            <span class="nx-text-muted">NUMA</span><span>${document.querySelector('[name="numa"]')?.checked ? 'Yes' : 'No'}</span>
         </div>`;
 }
 
@@ -443,6 +489,10 @@ async function submitCreateVM(e) {
     fd.set('serial_console', e.target.querySelector('[name="serial_console"]').checked ? 'true' : 'false');
     fd.set('agent_enabled', e.target.querySelector('[name="agent_enabled"]').checked ? 'true' : 'false');
     fd.set('balloon', e.target.querySelector('[name="balloon"]').checked ? 'true' : 'false');
+    fd.set('tpm_enabled', e.target.querySelector('[name="tpm_enabled"]')?.checked ? 'true' : 'false');
+    fd.set('secure_boot', e.target.querySelector('[name="secure_boot"]')?.checked ? 'true' : 'false');
+    fd.set('numa', e.target.querySelector('[name="numa"]')?.checked ? 'true' : 'false');
+    fd.set('hugepages', e.target.querySelector('[name="hugepages"]')?.value || 'none');
     try {
         const r = await fetch('/api/vms/create', {method: 'POST', body: fd});
         const data = await r.json();

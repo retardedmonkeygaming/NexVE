@@ -195,37 +195,40 @@ class ContainerService:
         """Apply post-creation configuration to a container."""
         config_path = f"/var/lib/lxc/{name}/config"
         try:
-            extra = f"\n# NexVE Configuration\n"
-            extra += f"lxc.uts.name = {hostname}\n"
+            # Read existing config to avoid duplicate keys
+            existing = {}
+            if os.path.exists(config_path):
+                with open(config_path) as f:
+                    for ln in f:
+                        ln = ln.strip()
+                        if ln and not ln.startswith("#") and "=" in ln:
+                            k, v = ln.split("=", 1)
+                            existing[k.strip()] = v.strip()
 
+            # Set NexVE values (overwrites duplicates)
+            existing["lxc.uts.name"] = hostname
             if vcpu:
-                cpu_quota = vcpu * 100000
-                extra += f"lxc.cgroup2.cpu.max = {cpu_quota} 100000\n"
-
+                existing["lxc.cgroup2.cpu.max"] = f"{vcpu * 100000} 100000"
             if memory_mb:
-                mem_bytes = memory_mb * 1024 * 1024
-                extra += f"lxc.cgroup2.memory.max = {mem_bytes}\n"
-
+                existing["lxc.cgroup2.memory.max"] = str(memory_mb * 1024 * 1024)
             if swap_mb:
-                swap_bytes = swap_mb * 1024 * 1024
-                extra += f"lxc.cgroup2.memory.swap.max = {swap_bytes}\n"
-
-            extra += "lxc.net.0.type = veth\n"
-            extra += "lxc.net.0.link = lxcbr0\n"
-            extra += "lxc.net.0.flags = up\n"
+                existing["lxc.cgroup2.memory.swap.max"] = str(swap_mb * 1024 * 1024)
+            existing["lxc.net.0.type"] = "veth"
+            existing["lxc.net.0.link"] = "lxcbr0"
+            existing["lxc.net.0.flags"] = "up"
             if ip_address:
-                extra += f"lxc.net.0.ipv4.address = {ip_address}/24\n"
-
+                existing["lxc.net.0.ipv4.address"] = f"{ip_address}/24"
             if nesting:
-                extra += "lxc.sysctl.kernel.unprivileged_userns_clone = 1\n"
-                extra += "lxc.apparmor.profile = unconfined\n"
+                existing["lxc.sysctl.kernel.unprivileged_userns_clone"] = "1"
+                existing["lxc.apparmor.profile"] = "unconfined"
+            else:
+                existing.setdefault("lxc.apparmor.profile", "lxc-container-default-cgns")
 
-            if not unprivileged:
-                extra += "lxc.idmap = u 0 0 65536\n"
-                extra += "lxc.idmap = g 0 0 65536\n"
+            # Write complete config (no duplicates)
+            with open(config_path, "w") as f:
+                for key, val in existing.items():
+                    f.write(f"{key} = {val}\n")
 
-            with open(config_path, "a") as f:
-                f.write(extra)
         except Exception as e:
             return {
                 "success": True,
@@ -392,11 +395,10 @@ class ContainerService:
         config_path = f"/var/lib/lxc/{ct_id}/config"
         try:
             with open(config_path, "a") as f:
-                f.write(f"\nlxc.mount.entry = {volume} {mp.lstrip('/')} none bind 0 0\n")
+                f.write("lxc.mount.entry = " + volume + " " + mp.lstrip("/") + " none bind 0 0\n")
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
-
     def remove_mount_point(self, ct_id: int, idx: int) -> dict:
         config_path = f"/var/lib/lxc/{ct_id}/config"
         try:

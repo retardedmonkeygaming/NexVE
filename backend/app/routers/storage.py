@@ -476,6 +476,100 @@ async def list_isos(request: Request):
 # ── Registered storage backends ──
 
 @router.get("/backends")
+
+# ── LVM-thin endpoints ──
+
+@router.get("/lvm-thin/pools")
+async def lvm_thin_pools(request: Request, vg: str = ""):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_list_pools(vg))
+
+
+@router.post("/lvm-thin/pools/create")
+async def lvm_thin_create_pool(
+    request: Request,
+    vg_name: str = Form(...),
+    pool_name: str = Form(...),
+    size_gb: int = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_create_pool(vg_name, pool_name, size_gb))
+
+
+@router.delete("/lvm-thin/pools/{vg_name}/{pool_name}")
+async def lvm_thin_delete_pool(request: Request, vg_name: str, pool_name: str):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_remove_pool(vg_name, pool_name))
+
+
+@router.get("/lvm-thin/volumes")
+async def lvm_thin_volumes(request: Request, vg: str = "", pool: str = ""):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_list_volumes(vg, pool))
+
+
+@router.post("/lvm-thin/volumes/create")
+async def lvm_thin_create_volume(
+    request: Request,
+    vg_name: str = Form(...),
+    pool_name: str = Form(...),
+    lv_name: str = Form(...),
+    size_gb: int = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_create_lv(vg_name, pool_name, lv_name, size_gb))
+
+
+@router.delete("/lvm-thin/volumes/{lv_path:path}")
+async def lvm_thin_delete_volume(request: Request, lv_path: str):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_remove_lv(lv_path))
+
+
+@router.post("/lvm-thin/snapshot")
+async def lvm_thin_snapshot_create(
+    request: Request,
+    source_lv: str = Form(...),
+    snap_name: str = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_snapshot(source_lv, snap_name))
+
+
+@router.get("/lvm-thin/snapshots")
+async def lvm_thin_snapshots(request: Request, vg: str = ""):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.lvm_thin_list_snapshots(vg))
+
+
+@router.post("/migrate")
+async def storage_migrate(
+    request: Request,
+    source: str = Form(...),
+    target: str = Form(...),
+):
+    user, redir = auth_check(request)
+    if redir:
+        return redir
+    return JSONResponse(storage_svc.migrate_storage(source, target))
+
+
 async def list_backends(request: Request):
     user, redir = auth_check(request)
     if redir:

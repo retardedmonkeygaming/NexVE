@@ -55,6 +55,10 @@ async def create_vm(
     serial_console: bool = Form(False),
     agent_enabled: bool = Form(True),
     balloon: bool = Form(False),
+    tpm_enabled: bool = Form(False),
+    secure_boot: bool = Form(False),
+    numa: bool = Form(False),
+    hugepages: str = Form("none"),
     notes: str = Form(""),
 ):
     user, redir = auth_check(request)
@@ -77,6 +81,10 @@ async def create_vm(
             "serial_console": serial_console,
             "agent_enabled": agent_enabled,
             "balloon": balloon,
+            "tpm_enabled": tpm_enabled,
+            "secure_boot": secure_boot,
+            "numa": numa,
+            "hugepages": hugepages,
             "notes": notes,
         })
         return JSONResponse(content=result)

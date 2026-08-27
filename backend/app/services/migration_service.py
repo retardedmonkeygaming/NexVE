@@ -112,20 +112,58 @@ class MigrationService:
             return {"success": False, "error": str(e)}
 
     def migrate_container(self, ct_id: int, target_node: str) -> dict:
-        """Migrate a container to another node (requires pct)."""
+        """Migrate a container to another node via rsync + lxc-stop/start."""
         try:
-            # Check if pct is available
-            pct_check = subprocess.run(
-                "which pct", shell=True, capture_output=True, text=True
-            )
-            if pct_check.returncode != 0:
-                return {"success": False, "error": "pct (Proxmox tool) not available"}
+            import socket
+            local_hostname = socket.gethostname()
+            if target_node in ("localhost", "127.0.0.1", local_hostname):
+                return {"success": False, "error": "Cannot migrate to same node"}
 
-            # pct migrate requires cluster setup
-            r = subprocess.run(
-                f"pct migrate {ct_id} {target_node}",
-                shell=True, capture_output=True, text=True, timeout=300
+            # Check container exists
+            check = subprocess.run(
+                f"lxc-info -n {ct_id} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=5
             )
-            return {"success": r.returncode == 0, "error": r.stderr.strip()}
+            if check.returncode != 0:
+                return {"success": False, "error": f"Container {ct_id} not found"}
+
+            # Stop the container first
+            subprocess.run(
+                f"lxc-stop -n {ct_id} -t 30",
+                shell=True, capture_output=True, text=True, timeout=60
+            )
+
+            # Rsync rootfs to target node
+            src = f"/var/lib/lxc/{ct_id}/"
+            dst = f"{target_node}:/var/lib/lxc/{ct_id}/"
+
+            r = subprocess.run(
+                f"rsync -avz --progress {src} {dst}",
+                shell=True, capture_output=True, text=True, timeout=600
+            )
+            if r.returncode != 0:
+                # Try to restart locally on failure
+                subprocess.run(f"lxc-start -n {ct_id}", shell=True, capture_output=True)
+                return {"success": False, "error": f"rsync failed: {r.stderr.strip()}"}
+
+            # Copy config
+            subprocess.run(
+                f"rsync -avz /var/lib/lxc/{ct_id}/config {target_node}:/var/lib/lxc/{ct_id}/config",
+                shell=True, capture_output=True, text=True, timeout=30
+            )
+
+            # Remove local container
+            subprocess.run(
+                f"lxc-destroy -n {ct_id}",
+                shell=True, capture_output=True, text=True, timeout=30
+            )
+
+            # Start on remote
+            subprocess.run(
+                f"ssh {target_node} lxc-start -n {ct_id}",
+                shell=True, capture_output=True, text=True, timeout=30
+            )
+
+            return {"success": True, "message": f"Container {ct_id} migrated to {target_node}"}
         except Exception as e:
             return {"success": False, "error": str(e)}

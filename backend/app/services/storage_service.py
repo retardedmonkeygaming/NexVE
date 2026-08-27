@@ -301,6 +301,183 @@ class StorageService:
     # Directory-based storage
     # ──────────────────────────────────────────────
 
+
+    # ── LVM-thin provisioning ──
+
+    def lvm_thin_create_pool(self, vg_name: str, pool_name: str, size_gb: int) -> dict:
+        """Create a thin pool in a volume group."""
+        # Create the data and metadata LVs for the thin pool
+        data_lv = f"{pool_name}_data"
+        meta_lv = f"{pool_name}_meta"
+        meta_size = max(64, size_gb // 20)  # ~5% for metadata
+
+        # Create data LV
+        r1 = self.run_cmd(f"lvcreate -L {size_gb}G -T {vg_name}/{data_lv}")
+        if not r1["success"]:
+            return r1
+
+        # Create metadata LV
+        r2 = self.run_cmd(f"lvcreate -L {meta_size}G -T {vg_name}/{meta_lv}")
+        if not r2["success"]:
+            return r2
+
+        # Convert data LV to a thin pool with the metadata
+        return self.run_cmd(f"lvconvert --type thin-pool --poolmetadata {vg_name}/{meta_lv} {vg_name}/{data_lv}")
+
+    def lvm_thin_create_lv(self, vg_name: str, pool_name: str, lv_name: str, size_gb: int) -> dict:
+        """Create a thin volume in a thin pool."""
+        return self.run_cmd(f"lvcreate -V {size_gb}G -T {vg_name}/{pool_name} -n {lv_name}")
+
+    def lvm_thin_list_pools(self, vg_name: str = "") -> List[dict]:
+        """List thin pools."""
+        cmd = "lvs --type thin_pool --reportformat json"
+        if vg_name:
+            cmd += f" {vg_name}"
+        r = self.run_cmd(cmd)
+        if not r["success"]:
+            return []
+        try:
+            data = json.loads(r["stdout"])
+            pools = data.get("report", [{}])[0].get("lv", [])
+            return [
+                {
+                    "name": lv.get("lv_name"),
+                    "vg": lv.get("vg_name"),
+                    "size": lv.get("lv_size"),
+                    "data_percent": lv.get("data_percent", "0"),
+                    "metadata_percent": lv.get("metadata_percent", "0"),
+                }
+                for lv in pools
+            ]
+        except (json.JSONDecodeError, IndexError):
+            return []
+
+    def lvm_thin_list_volumes(self, vg_name: str = "", pool_name: str = "") -> List[dict]:
+        """List thin volumes."""
+        cmd = "lvs --type thin --reportformat json"
+        if vg_name:
+            cmd += f" {vg_name}"
+        r = self.run_cmd(cmd)
+        if not r["success"]:
+            return []
+        try:
+            data = json.loads(r["stdout"])
+            vols = data.get("report", [{}])[0].get("lv", [])
+            result = []
+            for lv in vols:
+                if pool_name and lv.get("pool_lv", "") != pool_name:
+                    continue
+                result.append({
+                    "name": lv.get("lv_name"),
+                    "vg": lv.get("vg_name"),
+                    "pool": lv.get("pool_lv", ""),
+                    "size": lv.get("lv_size"),
+                    "origin": lv.get("origin", ""),
+                })
+            return result
+        except (json.JSONDecodeError, IndexError):
+            return []
+
+    def lvm_thin_remove_pool(self, vg_name: str, pool_name: str) -> dict:
+        """Remove a thin pool and its volumes."""
+        return self.run_cmd(f"lvremove -f {vg_name}/{pool_name}")
+
+    def lvm_thin_remove_lv(self, lv_path: str) -> dict:
+        """Remove a thin volume."""
+        return self.run_cmd(f"lvremove -f {lv_path}")
+
+    def lvm_thin_snapshot(self, source_lv: str, snap_name: str) -> dict:
+        """Create a thin snapshot of a thin volume."""
+        return self.run_cmd(f"lvcreate -s -n {snap_name} {source_lv}")
+
+    def lvm_thin_list_snapshots(self, vg_name: str = "") -> List[dict]:
+        """List LVM snapshots."""
+        cmd = "lvs --type snapshot --reportformat json"
+        if vg_name:
+            cmd += f" {vg_name}"
+        r = self.run_cmd(cmd)
+        if not r["success"]:
+            return []
+        try:
+            data = json.loads(r["stdout"])
+            snaps = data.get("report", [{}])[0].get("lv", [])
+            return [
+                {
+                    "name": lv.get("lv_name"),
+                    "vg": lv.get("vg_name"),
+                    "origin": lv.get("origin", ""),
+                    "size": lv.get("lv_size"),
+                    "percent": lv.get("data_percent", "0"),
+                }
+                for lv in snaps
+            ]
+        except (json.JSONDecodeError, IndexError):
+            return []
+
+    def lvm_thin_resize(self, lv_path: str, size_gb: int) -> dict:
+        """Resize a thin volume (logical size, not actual allocation)."""
+        return self.run_cmd(f"lvresize -V {size_gb}G -r {lv_path}")
+
+    def lvm_thin_pool_usage(self, vg_name: str, pool_name: str) -> dict:
+        """Get thin pool usage details."""
+        r = self.run_cmd(f"lvs -o lv_name,data_percent,metadata_percent,lv_size --noheadings --reportformat json {vg_name}/{pool_name}")
+        if not r["success"]:
+            return {}
+        try:
+            data = json.loads(r["stdout"])
+            lv = data.get("report", [{}])[0].get("lv", [{}])[0]
+            return {
+                "name": lv.get("lv_name"),
+                "data_percent": lv.get("data_percent", "0"),
+                "metadata_percent": lv.get("metadata_percent", "0"),
+                "total_size": lv.get("lv_size", "0"),
+            }
+        except (json.JSONDecodeError, IndexError):
+            return {}
+
+    # ── Storage Migration ──
+
+    def migrate_storage(self, source_storage: str, target_storage: str, vm_id: int = 0) -> dict:
+        """Migrate all volumes/images from one storage backend to another."""
+        source_path = self._get_storage_path(source_storage)
+        target_path = self._get_storage_path(target_storage)
+
+        if not source_path or not target_path:
+            return {"success": False, "error": "Invalid storage backends"}
+
+        try:
+            import shutil
+            import os
+
+            if not os.path.isdir(source_path):
+                return {"success": False, "error": f"Source path not found: {source_path}"}
+
+            os.makedirs(target_path, exist_ok=True)
+
+            migrated = []
+            errors = []
+
+            for item in os.listdir(source_path):
+                src = os.path.join(source_path, item)
+                dst = os.path.join(target_path, item)
+
+                if os.path.isfile(src):
+                    try:
+                        shutil.copy2(src, dst)
+                        migrated.append(item)
+                    except Exception as e:
+                        errors.append({"file": item, "error": str(e)})
+
+            return {
+                "success": len(errors) == 0,
+                "migrated": migrated,
+                "errors": errors,
+                "source": source_storage,
+                "target": target_storage,
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def dir_check(self, path: str) -> dict:
         return {
             "exists": os.path.isdir(path),
