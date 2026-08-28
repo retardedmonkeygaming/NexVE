@@ -2,30 +2,24 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 from ..services.dhcp_dns_service import DHCPDNSService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 dhcp_svc = DHCPDNSService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/status")
 async def dhcp_dns_status(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.get_status())
 
 
 @router.get("/dhcp/ranges")
 async def dhcp_ranges(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.list_dhcp_ranges())
 
 
@@ -38,8 +32,8 @@ async def add_dhcp_range(
     lease_time: str = Form("24h"),
     interface: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.add_dhcp_range(start, end, netmask, lease_time, interface))
 
 
@@ -49,15 +43,15 @@ async def remove_dhcp_range(
     start: str = Form(...),
     end: str = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.remove_dhcp_range(start, end))
 
 
 @router.get("/dhcp/leases")
 async def dhcp_leases(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.list_leases())
 
 
@@ -68,15 +62,15 @@ async def add_static_host(
     ip: str = Form(...),
     name: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.add_static_host(mac, ip, name))
 
 
 @router.get("/dns/records")
 async def dns_records(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.list_dns_records())
 
 
@@ -86,15 +80,15 @@ async def add_dns_record(
     domain: str = Form(...),
     ip: str = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.add_dns_record(domain, ip))
 
 
 @router.delete("/dns/records/{domain}")
 async def remove_dns_record(request: Request, domain: str):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.remove_dns_record(domain))
 
 
@@ -103,20 +97,20 @@ async def add_upstream_dns(
     request: Request,
     server: str = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.add_upstream_dns(server))
 
 
 @router.post("/restart")
 async def restart_dnsmasq(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(dhcp_svc.restart())
 
 
 @router.get("/config")
 async def get_config(request: Request):
-    user, redir = auth_check(request)
-    if redir: return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"config": dhcp_svc.get_config_content()})

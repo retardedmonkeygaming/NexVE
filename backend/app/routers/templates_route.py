@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from ..services.iso_service import ISOService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 from ..security import generate_csrf_token
 import os
 
@@ -19,9 +19,8 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 @router.get("/", response_class=HTMLResponse)
 async def templates_page(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     isos = iso_svc.list_local()
     return templates.TemplateResponse(request=request, name="templates_iso.html", context={
@@ -42,9 +41,8 @@ async def api_list_isos(request: Request):
 
 @router.post("/upload")
 async def upload_iso(request: Request, file: UploadFile = File(...)):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     dest = os.path.join(iso_svc.ISO_DIR, file.filename)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -79,9 +77,8 @@ async def api_upload_iso(request: Request, file: UploadFile = File(...)):
 
 @router.post("/download")
 async def download_iso(request: Request, url: str = Form(...), name: str = Form("")):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     result = iso_svc.download(url, name)
     if result.get("success"):
         return RedirectResponse(url="/templates", status_code=303)
@@ -90,9 +87,8 @@ async def download_iso(request: Request, url: str = Form(...), name: str = Form(
 
 @router.get("/delete/{filename:path}")
 async def delete_iso(filename: str, request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     iso_svc.delete(filename)
     # Return JSON for AJAX, redirect for browser
     xreq = request.headers.get("x-requested-with", "")

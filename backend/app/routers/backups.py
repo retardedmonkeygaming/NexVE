@@ -6,7 +6,7 @@ from ..models.vm import VM, Container, BackupSchedule
 from ..services.vm_service import VMService
 from ..services.backup_service import BackupService
 from ..services.container_service import ContainerService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import subprocess
 
 router = APIRouter()
@@ -17,9 +17,8 @@ backup_svc = BackupService()
 
 @router.get("/schedules")
 async def list_schedules(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         schedules = db.query(BackupSchedule).all()
@@ -48,14 +47,26 @@ async def create_schedule(
     name: str = Form(...),
     target_type: str = Form(...),
     target_id: int = Form(...),
-    cron_expr: str = Form("0 2 * * *"),
-    retention_days: int = Form(30),
+    cron_expr: str = Form(""),
+    frequency: str = Form("daily"),
+    time: str = Form("02:00"),
+    retention_days: int = Form(0),
+    retention: int = Form(0),
     max_backups: int = Form(7),
     enabled: bool = Form(True),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    # Convert frequency + time to cron_expr if cron_expr not provided
+    if not cron_expr:
+        hour, minute = (time.split(":") + ["02", "00"])[:2]
+        cron_map = {
+            "hourly": f"{minute} * * * *",
+            "daily": f"{minute} {hour} * * *",
+            "weekly": f"{minute} {hour} * * 0",
+            "monthly": f"{minute} {hour} 1 * *",
+        }
+        cron_expr = cron_map.get(frequency, f"{minute} {hour} * * *")
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -81,9 +92,8 @@ async def create_schedule(
 
 @router.post("/schedules/{schedule_id}/toggle")
 async def toggle_schedule(request: Request, schedule_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -103,9 +113,8 @@ async def toggle_schedule(request: Request, schedule_id: int):
 
 @router.post("/schedules/{schedule_id}/delete")
 async def delete_schedule(request: Request, schedule_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -119,11 +128,63 @@ async def delete_schedule(request: Request, schedule_id: int):
         db.close()
 
 
+@router.post("/create")
+async def create_backup(request: Request):
+    """Generic backup endpoint used by the frontend backup modal."""
+    user, error = api_auth(request)
+    if error: return error
+
+    form = await request.form()
+    target_type = form.get("target_type", "vm")
+    target_id = int(form.get("target_id", 0))
+
+    if not target_id:
+        return JSONResponse(content={"success": False, "error": "Target ID required"}, status_code=400)
+
+    if target_type == "vm":
+        db = SessionLocal()
+        try:
+            vm = db.query(VM).filter(VM.id == target_id).first()
+            if not vm:
+                return JSONResponse(content={"success": False, "error": "VM not found"}, status_code=404)
+
+            backup_dir = "/opt/nexve/data/backups"
+            import os
+            os.makedirs(backup_dir, exist_ok=True)
+
+            disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = f"{backup_dir}/{vm.name}_{timestamp}.qcow2"
+
+            if os.path.exists(disk_path):
+                # Use qemu-img snapshot for consistent backup (quiesces if guest agent available)
+                # First try: create a snapshot-based backup
+                r = subprocess.run(
+                    f"qemu-img convert -f qcow2 -O qcow2 {disk_path} {backup_path}",
+                    shell=True, capture_output=True, text=True, timeout=600
+                )
+                if r.returncode != 0:
+                    # Fallback to simple copy if convert fails
+                    r = subprocess.run(f"cp {disk_path} {backup_path}", shell=True, capture_output=True, text=True)
+                    if r.returncode != 0:
+                        return JSONResponse(content={"success": False, "error": r.stderr})
+                _prune_backups(backup_dir, vm.name, 30, 7)
+                return JSONResponse(content={"success": True, "path": backup_path})
+            else:
+                return JSONResponse(content={"success": False, "error": "Disk not found"})
+        finally:
+            db.close()
+    elif target_type == "container":
+        return JSONResponse(content=container_service.backup_container(target_id))
+    else:
+        return JSONResponse(content={"success": False, "error": "Invalid target type"}, status_code=400)
+
+
+
 @router.post("/vm/{vm_id}/backup")
 async def backup_vm_now(request: Request, vm_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -159,17 +220,15 @@ async def backup_vm_now(request: Request, vm_id: int):
 
 @router.post("/container/{ct_id}/backup")
 async def backup_container_now(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.backup_container(ct_id))
 
 
 @router.get("/list")
 async def list_backups(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     backup_dir = "/opt/nexve/data/backups"
     import os
@@ -242,8 +301,8 @@ async def restore_vm_backup(
     backup_path: str = Form(...),
     vm_name: str = Form(""),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.restore_vm_from_backup(backup_path, vm_name))
 
 
@@ -253,8 +312,8 @@ async def restore_container_backup(
     backup_path: str = Form(...),
     ct_id: int = Form(0),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.restore_container_from_backup(backup_path, ct_id))
 
 
@@ -265,8 +324,8 @@ async def restore_encrypted_backup(
     passphrase: str = Form(...),
     vm_name: str = Form(""),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.restore_vm_encrypted(backup_path, passphrase, vm_name))
 
 
@@ -276,8 +335,8 @@ async def backup_vm_encrypted(
     vm_id: int = Form(...),
     passphrase: str = Form(...),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.backup_vm_encrypted(vm_id, passphrase))
 
 
@@ -286,22 +345,22 @@ async def backup_vm_incremental(
     request: Request,
     vm_id: int = Form(...),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.backup_vm_incremental(vm_id))
 
 
 @router.get("/stats")
 async def backup_stats(request: Request):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.get_backup_stats())
 
 
 @router.get("/pbs/status")
 async def pbs_status(request: Request):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.pbs_status())
 
 
@@ -312,14 +371,14 @@ async def extract_from_backup(
     file_path: str = Form(...),
     output_path: str = Form("/tmp/nexve-restore"),
 ):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.extract_file_from_backup(backup_path, file_path, output_path))
 
 
 @router.delete("/{filename}")
 async def delete_backup_file(request: Request, filename: str):
-    user = get_current_user(request)
-    if not user: return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(backup_svc.delete_backup(filename))
 

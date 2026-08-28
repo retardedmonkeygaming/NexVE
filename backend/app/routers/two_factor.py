@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from ..database import SessionLocal
 from ..models.user import User
-from ..auth import get_current_user, generate_totp_secret, get_totp_uri, verify_totp, create_session
+from ..auth import get_current_user, api_auth, generate_totp_secret, get_totp_uri, verify_totp, create_session
 from ..security import generate_csrf_token
 import pyotp
 try:
@@ -17,9 +17,8 @@ router = APIRouter()
 
 @router.get("/settings/2fa", response_class=HTMLResponse)
 async def two_factor_page(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -41,9 +40,8 @@ async def two_factor_page(request: Request):
 
 @router.post("/settings/2fa/enable")
 async def enable_2fa(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     secret = generate_totp_secret()
 
@@ -82,9 +80,8 @@ async def verify_2fa_setup(
     request: Request,
     totp_code: str = Form(...),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -129,9 +126,8 @@ async def verify_2fa_setup(
 
 @router.post("/settings/2fa/disable")
 async def disable_2fa(request: Request, csrf_token: str = Form(...)):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     from ..security import validate_csrf_token
     session_token = request.cookies.get("nexve_session", "")

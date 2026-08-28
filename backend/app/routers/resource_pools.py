@@ -3,23 +3,16 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.feature_models import ResourcePool, ResourcePoolMember
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 
 
-def auth_check(request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/")
 async def list_pools(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         pools = db.query(ResourcePool).all()
@@ -54,9 +47,8 @@ async def create_pool(
     memory_limit: str = Form(""),
     disk_quota: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         pool = ResourcePool(
@@ -77,9 +69,8 @@ async def create_pool(
 
 @router.delete("/{pool_id}")
 async def delete_pool(request: Request, pool_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(ResourcePoolMember).filter(ResourcePoolMember.pool_id == pool_id).delete()
@@ -92,9 +83,8 @@ async def delete_pool(request: Request, pool_id: int):
 
 @router.post("/{pool_id}/add-member")
 async def add_member(request: Request, pool_id: int, target_type: str = Form(...), target_id: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         existing = db.query(ResourcePoolMember).filter(
@@ -113,9 +103,8 @@ async def add_member(request: Request, pool_id: int, target_type: str = Form(...
 
 @router.post("/{pool_id}/remove-member")
 async def remove_member(request: Request, pool_id: int, target_type: str = Form(...), target_id: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(ResourcePoolMember).filter(
@@ -142,9 +131,8 @@ async def update_pool(
     disk_quota: str = Form(""),
     enabled: bool = Form(True),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         pool = db.query(ResourcePool).filter(ResourcePool.id == pool_id).first()

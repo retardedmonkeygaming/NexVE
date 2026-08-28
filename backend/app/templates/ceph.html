@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}NexVE — Ceph Storage{% endblock %}
+{% block breadcrumb %}Ceph Storage{% endblock %}
+
+{% block content %}
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">Ceph Storage</div>
+        <div class="nx-page-subtitle">Distributed storage cluster management</div>
+    </div>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshCeph()">↻ Refresh</button>
+    </div>
+</div>
+
+<!-- Status Overview -->
+<div class="nx-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;">Cluster Health</div>
+            <div id="ceph-health" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">Checking...</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;">OSDs</div>
+            <div id="ceph-osd-count" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;">Pools</div>
+            <div id="ceph-pool-count" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:16px;">
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;">Total Capacity</div>
+            <div id="ceph-capacity" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab(this,'overview')">Overview</button>
+    <button class="nx-tab" onclick="showTab(this,'osds')">OSDs</button>
+    <button class="nx-tab" onclick="showTab(this,'pools')">Pools</button>
+    <button class="nx-tab" onclick="showTab(this,'images')">RBD Images</button>
+    <button class="nx-tab" onclick="showTab(this,'cephfs')">CephFS</button>
+</div>
+
+<!-- ═══ OVERVIEW ═══ -->
+<div class="nx-tab-content active" id="tab-overview">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Cluster Status</span></div>
+        <div class="nx-card-body" id="ceph-overview-body">
+            <div style="color:var(--text-muted);font-size:var(--text-sm);">Loading Ceph status...</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ OSDs ═══ -->
+<div class="nx-tab-content" id="tab-osds">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Object Storage Daemons</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>OSD ID</th><th>Host</th><th>Size</th><th>Weight</th><th>State</th><th>Actions</th></tr></thead>
+                <tbody id="osd-list">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ POOLS ═══ -->
+<div class="nx-tab-content" id="tab-pools">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">RBD Pools</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showCreatePool()">+ Create Pool</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Pool Name</th><th>PG Number</th><th>Size</th><th>Used</th><th>Actions</th></tr></thead>
+                <tbody id="pool-list">
+                    <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ RBD IMAGES ═══ -->
+<div class="nx-tab-content" id="tab-images">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">RBD Images</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showCreateImage()">+ Create Image</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Image Name</th><th>Pool</th><th>Size</th><th>Actions</th></tr></thead>
+                <tbody id="image-list">
+                    <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ CephFS ═══ -->
+<div class="nx-tab-content" id="tab-cephfs">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">CephFS Filesystems</span></div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Name</th><th>Mount Point</th><th>Size</th><th>Used</th></tr></thead>
+                <tbody id="cephfs-list">
+                    <tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Create Pool Modal -->
+<div class="nx-modal-overlay" id="create-pool-modal">
+    <div class="nx-modal" style="max-width:420px;">
+        <div class="nx-modal-header"><h3>Create RBD Pool</h3><button class="nx-modal-close" onclick="document.getElementById('create-pool-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <form id="pool-form" onsubmit="submitPool(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group"><label class="nx-label">Pool Name *</label><input type="text" name="name" class="nx-input" placeholder="mypool" required></div>
+                    <div class="nx-input-group"><label class="nx-label">PG Number</label><input type="number" name="pg_num" class="nx-input" value="128" min="8" max="8192"><span class="nx-hint">Power of 2. Default 128 is fine for most use cases.</span></div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('create-pool-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('pool-form').requestSubmit()">Create Pool</button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Image Modal -->
+<div class="nx-modal-overlay" id="create-image-modal">
+    <div class="nx-modal" style="max-width:420px;">
+        <div class="nx-modal-header"><h3>Create RBD Image</h3><button class="nx-modal-close" onclick="document.getElementById('create-image-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <form id="image-form" onsubmit="submitImage(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group"><label class="nx-label">Pool</label><select name="pool" class="nx-select" id="image-pool-select"><option value="rbd">rbd</option></select></div>
+                    <div class="nx-input-group"><label class="nx-label">Image Name *</label><input type="text" name="name" class="nx-input" placeholder="vm-disk" required></div>
+                    <div class="nx-input-group"><label class="nx-label">Size (GB) *</label><input type="number" name="size_gb" class="nx-input" value="10" min="1" required></div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('create-image-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('image-form').requestSubmit()">Create Image</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(btn, name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'osds') loadOSDs();
+    if (name === 'pools') loadPools();
+    if (name === 'images') loadImages();
+    if (name === 'cephfs') loadCephFS();
+}
+
+async function refreshCeph() { loadOverview(); loadOSDs(); loadPools(); loadImages(); loadCephFS(); }
+
+// ── Overview ──
+async function loadOverview() {
+    try {
+        const r = await fetch('/api/ceph/status');
+        const data = await r.json();
+        const health = data.health || 'unknown';
+        const healthColor = health === 'HEALTH_OK' ? 'var(--success)' : health === 'HEALTH_WARN' ? 'var(--warning)' : 'var(--danger)';
+        document.getElementById('ceph-health').innerHTML = `<span style="color:${healthColor};">${health}</span>`;
+
+        const osds = data.osds || [];
+        const upOsd = osds.filter(o => o.state === 'up').length;
+        document.getElementById('ceph-osd-count').textContent = `${upOsd}/${osds.length}`;
+
+        document.getElementById('ceph-pool-count').textContent = data.pool_count || '0';
+        document.getElementById('ceph-capacity').textContent = data.total_bytes ? formatBytes(data.total_bytes) : '-';
+
+        const body = document.getElementById('ceph-overview-body');
+        body.innerHTML = `
+            <div style="display:grid;grid-template-columns:140px 1fr;gap:6px 16px;font-size:var(--text-sm);">
+                <span style="color:var(--text-muted);">Health</span><span style="color:${healthColor};font-weight:600;">${health}</span>
+                <span style="color:var(--text-muted);">FSID</span><span style="font-family:monospace;font-size:var(--text-xs);">${data.fsid || '-'}</span>
+                <span style="color:var(--text-muted);">Monitors</span><span>${(data.mons || []).join(', ') || '-'}</span>
+                <span style="color:var(--text-muted);">OSDs</span><span>${upOsd} up / ${osds.length} total</span>
+                <span style="color:var(--text-muted);">Pools</span><span>${data.pool_count || 0}</span>
+                <span style="color:var(--text-muted);">Total Space</span><span>${data.total_bytes ? formatBytes(data.total_bytes) : '-'}</span>
+                <span style="color:var(--text-muted);">Used</span><span>${data.used_bytes ? formatBytes(data.used_bytes) : '-'}</span>
+                <span style="color:var(--text-muted);">Available</span><span>${data.avail_bytes ? formatBytes(data.avail_bytes) : '-'}</span>
+            </div>`;
+    } catch(e) {
+        document.getElementById('ceph-health').innerHTML = '<span style="color:var(--danger);">Not Available</span>';
+        document.getElementById('ceph-overview-body').innerHTML = `
+            <div class="nx-alert nx-alert-warning"><div class="nx-alert-body">
+                <div class="nx-alert-title">Ceph is not installed or configured</div>
+                <div class="nx-alert-text">Install Ceph: <code>apt install ceph-mon ceph-osd ceph-mds</code></div>
+            </div></div>`;
+    }
+}
+
+// ── OSDs ──
+async function loadOSDs() {
+    try {
+        const r = await fetch('/api/ceph/osds');
+        const data = await r.json();
+        const osds = data.osds || [];
+        document.getElementById('osd-list').innerHTML = osds.length ? osds.map(o => `
+            <tr>
+                <td style="font-family:monospace;">osd.${o.id || o.osd_id}</td>
+                <td>${o.host || '-'}</td>
+                <td>${o.size || '-'}</td>
+                <td>${o.weight || '-'}</td>
+                <td><span class="nx-badge ${o.state === 'up' ? 'nx-badge-success' : 'nx-badge-danger'}"><span class="dot"></span>${o.state || 'unknown'}</span></td>
+                <td>${o.state === 'up' ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="osdAction(${o.id || o.osd_id},'out')">Out</button>` : `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="osdAction(${o.id || o.osd_id},'in')">In</button>`}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">No OSDs found</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+// ── Pools ──
+async function loadPools() {
+    try {
+        const r = await fetch('/api/ceph/pools');
+        const data = await r.json();
+        const pools = data.pools || [];
+        document.getElementById('pool-list').innerHTML = pools.length ? pools.map(p => `
+            <tr>
+                <td style="font-weight:500;">${p.name}</td>
+                <td>${p.pg_num || '-'}</td>
+                <td>${p.size || '-'}</td>
+                <td>${p.used || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deletePool('${p.name}')">Delete</button></td>
+            </tr>
+        `).join('') : '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No pools configured</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+function showCreatePool() { document.getElementById('create-pool-modal').classList.add('open'); }
+
+async function submitPool(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/ceph/pools', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) { showToast('Pool created', 'success'); document.getElementById('create-pool-modal').classList.remove('open'); loadPools(); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function deletePool(name) {
+    if (!confirm(`Delete pool "${name}"? This destroys all data in it.`)) return;
+    try {
+        await fetch(`/api/ceph/pools/${name}`, {method: 'DELETE'});
+        showToast('Pool deleted', 'success'); loadPools();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Images ──
+async function loadImages() {
+    try {
+        const r = await fetch('/api/ceph/images');
+        const data = await r.json();
+        const images = data.images || [];
+        document.getElementById('image-list').innerHTML = images.length ? images.map(i => `
+            <tr>
+                <td style="font-weight:500;">${i.name}</td>
+                <td><span class="nx-badge nx-badge-info">${i.pool || 'rbd'}</span></td>
+                <td>${i.size || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteImage('${i.pool || 'rbd'}','${i.name}')">Delete</button></td>
+            </tr>
+        `).join('') : '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No RBD images</td></tr>';
+
+        // Update pool select
+        const sel = document.getElementById('image-pool-select');
+        const poolR = await fetch('/api/ceph/pools');
+        const poolData = await poolR.json();
+        sel.innerHTML = (poolData.pools || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('') || '<option value="rbd">rbd</option>';
+    } catch(e) { console.error(e); }
+}
+
+function showCreateImage() { document.getElementById('create-image-modal').classList.add('open'); }
+
+async function submitImage(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/ceph/images', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) { showToast('Image created', 'success'); document.getElementById('create-image-modal').classList.remove('open'); loadImages(); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function deleteImage(pool, name) {
+    if (!confirm(`Delete image "${name}" from pool "${pool}"?`)) return;
+    try {
+        await fetch(`/api/ceph/images/${pool}/${name}`, {method: 'DELETE'});
+        showToast('Image deleted', 'success'); loadImages();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── CephFS ──
+async function loadCephFS() {
+    try {
+        const r = await fetch('/api/ceph/cephfs');
+        const data = await r.json();
+        const fss = data.filesystems || [];
+        document.getElementById('cephfs-list').innerHTML = fss.length ? fss.map(f => `
+            <tr>
+                <td style="font-weight:500;">${f.name}</td>
+                <td style="font-family:monospace;font-size:var(--text-xs);">${f.mount_point || '-'}</td>
+                <td>${f.size || '-'}</td>
+                <td>${f.used || '-'}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="4" class="nx-text-center nx-text-muted" style="padding:32px;">No CephFS filesystems</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return bytes.toFixed(1) + ' ' + units[i];
+}
+
+// Init
+loadOverview();
+</script>
+{% endblock %}

@@ -3,23 +3,16 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.feature_models import VMTag, VMTagAssignment
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 
 
-def auth_check(request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/")
 async def list_tags(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         tags = db.query(VMTag).all()
@@ -33,9 +26,8 @@ async def list_tags(request: Request):
 
 @router.post("/create")
 async def create_tag(request: Request, name: str = Form(...), color: str = Form("#f97316")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         tag = VMTag(name=name, color=color)
@@ -48,9 +40,8 @@ async def create_tag(request: Request, name: str = Form(...), color: str = Form(
 
 @router.delete("/{tag_id}")
 async def delete_tag(request: Request, tag_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(VMTagAssignment).filter(VMTagAssignment.tag_id == tag_id).delete()
@@ -63,9 +54,8 @@ async def delete_tag(request: Request, tag_id: int):
 
 @router.post("/{tag_id}/assign")
 async def assign_tag(request: Request, tag_id: int, target_type: str = Form(...), target_id: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         existing = db.query(VMTagAssignment).filter(
@@ -84,9 +74,8 @@ async def assign_tag(request: Request, tag_id: int, target_type: str = Form(...)
 
 @router.post("/{tag_id}/unassign")
 async def unassign_tag(request: Request, tag_id: int, target_type: str = Form(...), target_id: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(VMTagAssignment).filter(
@@ -102,9 +91,8 @@ async def unassign_tag(request: Request, tag_id: int, target_type: str = Form(..
 
 @router.get("/for/{target_type}/{target_id}")
 async def tags_for_target(request: Request, target_type: str, target_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         assignments = db.query(VMTagAssignment).filter(

@@ -2,30 +2,16 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 from ..database import SessionLocal
 from ..models.user import User
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 
 
-def require_admin(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    db = SessionLocal()
-    try:
-        db_user = db.query(User).filter(User.id == user["id"]).first()
-        if not db_user or db_user.role != "admin":
-            return None, JSONResponse({"error": "Admin required"}, status_code=403)
-    finally:
-        db.close()
-    return user, None
-
 
 @router.get("/")
 async def list_users(request: Request):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         users = db.query(User).all()
@@ -37,9 +23,8 @@ async def list_users(request: Request):
 @router.post("/create")
 @router.post("/")
 async def create_user(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...), role: str = Form("user")):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         existing = db.query(User).filter((User.username == username) | (User.email == email)).first()
@@ -56,9 +41,8 @@ async def create_user(request: Request, username: str = Form(...), email: str = 
 
 @router.put("/{user_id}")
 async def update_user(request: Request, user_id: int, role: str = Form(...), is_active: bool = Form(True)):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = db.query(User).filter(User.id == user_id).first()
@@ -74,9 +58,8 @@ async def update_user(request: Request, user_id: int, role: str = Form(...), is_
 
 @router.delete("/{user_id}")
 async def delete_user(request: Request, user_id: int):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = db.query(User).filter(User.id == user_id).first()
@@ -91,9 +74,8 @@ async def delete_user(request: Request, user_id: int):
 
 @router.post("/{user_id}/reset-password")
 async def reset_password(request: Request, user_id: int, password: str = Form(...)):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = db.query(User).filter(User.id == user_id).first()
@@ -113,9 +95,8 @@ from ..models.user import Group, Role
 
 @router.get("/groups")
 async def list_groups(request: Request):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         groups = db.query(Group).all()
@@ -126,9 +107,8 @@ async def list_groups(request: Request):
 
 @router.post("/groups/create")
 async def create_group(request: Request, name: str = Form(...), description: str = Form("")):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         existing = db.query(Group).filter(Group.name == name).first()
@@ -144,9 +124,8 @@ async def create_group(request: Request, name: str = Form(...), description: str
 
 @router.delete("/groups/{group_id}")
 async def delete_group(request: Request, group_id: int):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(Group).filter(Group.id == group_id).delete()
@@ -160,9 +139,8 @@ async def delete_group(request: Request, group_id: int):
 
 @router.get("/roles")
 async def list_roles(request: Request):
-    user, redir = require_admin(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         roles = db.query(Role).all()

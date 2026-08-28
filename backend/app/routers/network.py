@@ -6,33 +6,25 @@ from ..models.feature_models import (
     NetworkSecurityGroup, SecurityGroupRule, SecurityGroupAssignment,
     NetworkFirewallAlias, FirewallAliasEntry, NetworkRateLimit,
 )
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import json
 
 router = APIRouter()
 svc = NetworkService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/overview")
 async def network_overview(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(svc.get_network_overview())
 
 
 @router.get("/interfaces")
 async def list_interfaces(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"interfaces": svc.list_interfaces()})
 
 
@@ -40,44 +32,39 @@ async def list_interfaces(request: Request):
 
 @router.get("/bridges")
 async def list_bridges(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"bridges": svc.list_bridges()})
 
 
 @router.post("/bridges")
 async def create_bridge(request: Request, name: str = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.create_bridge(name)
     return JSONResponse(result)
 
 
 @router.delete("/bridges/{name}")
 async def delete_bridge(request: Request, name: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.delete_bridge(name)
     return JSONResponse(result)
 
 
 @router.post("/bridges/{bridge}/ports")
 async def add_port(request: Request, bridge: str, iface: str = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.add_port(bridge, iface)
     return JSONResponse(result)
 
 
 @router.delete("/bridges/{bridge}/ports/{iface}")
 async def remove_port(request: Request, bridge: str, iface: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.remove_port(iface)
     return JSONResponse(result)
 
@@ -86,26 +73,23 @@ async def remove_port(request: Request, bridge: str, iface: str):
 
 @router.get("/vlans")
 async def list_vlans(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"vlans": svc.list_vlans()})
 
 
 @router.post("/vlans")
 async def create_vlan(request: Request, parent: str = Form(...), vlan_id: int = Form(...), name: str = Form("")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.create_vlan(parent, vlan_id, name)
     return JSONResponse(result)
 
 
 @router.delete("/vlans/{name}")
 async def delete_vlan(request: Request, name: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.delete_vlan(name)
     return JSONResponse(result)
 
@@ -114,17 +98,15 @@ async def delete_vlan(request: Request, name: str):
 
 @router.get("/bonds")
 async def list_bonds(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"bonds": svc.list_bonds()})
 
 
 @router.post("/bonds")
 async def create_bond(request: Request, name: str = Form(...), mode: str = Form("balance-rr"), slaves: str = Form("")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     slave_list = [s.strip() for s in slaves.split(",") if s.strip()]
     result = svc.create_bond(name, mode, slave_list)
     return JSONResponse(result)
@@ -132,9 +114,8 @@ async def create_bond(request: Request, name: str = Form(...), mode: str = Form(
 
 @router.delete("/bonds/{name}")
 async def delete_bond(request: Request, name: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = svc.delete_bond(name)
     return JSONResponse(result)
 
@@ -143,34 +124,79 @@ async def delete_bond(request: Request, name: str):
 
 @router.get("/firewall")
 async def firewall_rules(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(svc.firewall_rules())
 
 
 @router.post("/firewall/enable")
 async def firewall_enable(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(svc.firewall_enable())
 
 
 @router.post("/firewall/disable")
 async def firewall_disable(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(svc.firewall_disable())
 
 
 @router.post("/firewall/rules")
 async def add_firewall_rule(request: Request, rule: str = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(svc.firewall_add_rule(rule))
+
+
+
+# ════════════════════════════════════════════════
+# PERSISTENT NETWORK CONFIGURATION
+# ════════════════════════════════════════════════
+
+@router.get("/config")
+async def get_interfaces_config(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.get_interfaces_config())
+
+@router.post("/config")
+async def save_interfaces_config(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    body = await request.json()
+    config = body.get("config", "")
+    return JSONResponse(svc.save_interfaces_config(config))
+
+@router.post("/config/apply")
+async def apply_network_config(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.apply_network_config())
+
+
+# ════════════════════════════════════════════════
+# TRAFFIC MONITORING
+# ════════════════════════════════════════════════
+
+@router.get("/traffic")
+async def traffic_stats(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"interfaces": svc.get_traffic_stats()})
+
+@router.get("/gateway")
+async def get_gateway(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.get_gateway_info())
+
+@router.post("/gateway")
+async def set_gateway(request: Request, gateway: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.set_gateway(gateway))
 
 
 # ════════════════════════════════════════════════
@@ -179,9 +205,8 @@ async def add_firewall_rule(request: Request, rule: str = Form(...)):
 
 @router.get("/security-groups")
 async def list_security_groups(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         groups = db.query(NetworkSecurityGroup).all()
@@ -223,9 +248,8 @@ async def create_security_group(
     name: str = Form(...),
     comment: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         group = NetworkSecurityGroup(name=name, comment=comment)
@@ -238,9 +262,8 @@ async def create_security_group(
 
 @router.delete("/security-groups/{group_id}")
 async def delete_security_group(request: Request, group_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(SecurityGroupRule).filter(SecurityGroupRule.group_id == group_id).delete()
@@ -266,9 +289,8 @@ async def add_security_group_rule(
     comment: str = Form(""),
     enabled: bool = Form(True),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         # Get next position
@@ -297,9 +319,8 @@ async def add_security_group_rule(
 
 @router.delete("/security-groups/{group_id}/rules/{rule_id}")
 async def delete_security_group_rule(request: Request, group_id: int, rule_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(SecurityGroupRule).filter(SecurityGroupRule.id == rule_id).delete()
@@ -317,9 +338,8 @@ async def apply_security_group(
     target_id: int = Form(0),
 ):
     """Apply security group rules via nftables and optionally assign to a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         group = db.query(NetworkSecurityGroup).filter(NetworkSecurityGroup.id == group_id).first()
@@ -375,9 +395,8 @@ async def apply_security_group(
 
 @router.get("/aliases")
 async def list_aliases(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         aliases = db.query(NetworkFirewallAlias).all()
@@ -407,9 +426,8 @@ async def create_alias(
     comment: str = Form(""),
     entries: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         alias = NetworkFirewallAlias(name=name, alias_type=alias_type, comment=comment)
@@ -434,9 +452,8 @@ async def create_alias(
 
 @router.delete("/aliases/{alias_id}")
 async def delete_alias(request: Request, alias_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         alias = db.query(NetworkFirewallAlias).filter(NetworkFirewallAlias.id == alias_id).first()
@@ -456,9 +473,8 @@ async def delete_alias(request: Request, alias_id: int):
 
 @router.get("/rate-limits")
 async def list_rate_limits(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         limits = db.query(NetworkRateLimit).all()
@@ -487,9 +503,8 @@ async def set_rate_limit(
     rx_burst: str = Form(""),
     tx_burst: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     rx = int(rx_bytes) if rx_bytes else None
     tx = int(tx_bytes) if tx_bytes else None
@@ -528,9 +543,8 @@ async def set_rate_limit(
 
 @router.delete("/rate-limits/{interface}")
 async def clear_rate_limit(request: Request, interface: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     svc.clear_interface_rate_limit(interface)
     db = SessionLocal()
     try:

@@ -5,25 +5,18 @@ API endpoints for Ceph distributed storage management.
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from ..services.ceph_service import CephService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 ceph_svc = CephService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/status")
 async def ceph_status(request: Request):
     """Get Ceph cluster status."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     status = ceph_svc.get_ceph_status()
     return JSONResponse(status)
 
@@ -31,9 +24,8 @@ async def ceph_status(request: Request):
 @router.get("/osds")
 async def list_osds(request: Request):
     """List OSDs."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     osds = ceph_svc.get_osd_list()
     return JSONResponse({"osds": osds})
 
@@ -41,9 +33,8 @@ async def list_osds(request: Request):
 @router.get("/pools")
 async def list_pools(request: Request):
     """List RBD pools."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     pools = ceph_svc.list_pools()
     return JSONResponse({"pools": pools})
 
@@ -55,9 +46,8 @@ async def create_pool(
     pg_num: int = Form(128),
 ):
     """Create an RBD pool."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ceph_svc.create_pool(name, pg_num)
     return JSONResponse(result)
 
@@ -65,9 +55,8 @@ async def create_pool(
 @router.delete("/pools/{name}")
 async def delete_pool(name: str, request: Request):
     """Delete an RBD pool."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ceph_svc.delete_pool(name)
     return JSONResponse(result)
 
@@ -75,9 +64,8 @@ async def delete_pool(name: str, request: Request):
 @router.get("/images")
 async def list_images(request: Request, pool: str = "rbd"):
     """List RBD images."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     images = ceph_svc.list_images(pool)
     return JSONResponse({"images": images})
 
@@ -90,9 +78,8 @@ async def create_image(
     size_gb: int = Form(10),
 ):
     """Create an RBD image."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ceph_svc.create_image(pool, name, size_gb)
     return JSONResponse(result)
 
@@ -100,9 +87,8 @@ async def create_image(
 @router.delete("/images/{pool}/{name}")
 async def delete_image(pool: str, name: str, request: Request):
     """Delete an RBD image."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ceph_svc.delete_image(pool, name)
     return JSONResponse(result)
 
@@ -115,9 +101,8 @@ async def resize_image(
     size_gb: int = Form(...),
 ):
     """Resize an RBD image."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ceph_svc.resize_image(pool, name, size_gb)
     return JSONResponse(result)
 
@@ -125,8 +110,7 @@ async def resize_image(
 @router.get("/cephfs")
 async def list_cephfs(request: Request):
     """List CephFS filesystems."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     fs = ceph_svc.list_cephfs()
     return JSONResponse({"filesystems": fs})

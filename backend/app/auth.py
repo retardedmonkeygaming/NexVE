@@ -57,6 +57,20 @@ def get_current_user(request: Request):
         db.close()
 
 
+
+def api_auth(request: Request):
+    """Authentication check for API endpoints. Returns (user, error_response).
+    
+    Use in API routers like:
+        user, error = api_auth(request)
+        if error: return error
+    """
+    from fastapi.responses import JSONResponse
+    user = get_current_user(request)
+    if not user:
+        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return user, None
+
 def require_auth(request: Request) -> dict:
     user = get_current_user(request)
     if not user:

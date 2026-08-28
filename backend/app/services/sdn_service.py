@@ -196,3 +196,170 @@ iface {bridge_name} inet manual
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # ── Open vSwitch (OVS) ──
+
+    def _has_ovs(self) -> bool:
+        """Check if Open vSwitch is installed."""
+        try:
+            r = subprocess.run(
+                "which ovs-vsctl 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    def ovs_status(self) -> dict:
+        """Get Open vSwitch status."""
+        has_ovs = self._has_ovs()
+        ovs_version = ""
+        running = False
+        if has_ovs:
+            r = subprocess.run(
+                "ovs-vsctl --version 2>/dev/null | head -1",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            ovs_version = r.stdout.strip().replace("Open vSwitch", "").strip() if r.success else ""
+            r2 = subprocess.run(
+                "systemctl is-active openvswitch-switch 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=5
+            )
+            running = r2.stdout.strip() == "active"
+        return {"available": has_ovs, "version": ovs_version, "running": running}
+
+    def ovs_list_bridges(self) -> List[dict]:
+        """List OVS bridges."""
+        if not self._has_ovs():
+            return []
+        try:
+            r = subprocess.run(
+                "ovs-vsctl list-br 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            bridges = []
+            for line in r.stdout.strip().splitlines():
+                name = line.strip()
+                if not name:
+                    continue
+                # Get ports on this bridge
+                pr = subprocess.run(
+                    f"ovs-vsctl list-ports {name} 2>/dev/null",
+                    shell=True, capture_output=True, text=True, timeout=5
+                )
+                ports = [p.strip() for p in pr.stdout.strip().splitlines() if p.strip()]
+                # Get bridge options
+                or_ = subprocess.run(
+                    f"ovs-vsctl get bridge {name} other_config 2>/dev/null",
+                    shell=True, capture_output=True, text=True, timeout=5
+                )
+                bridges.append({"name": name, "ports": ports, "options": or_.stdout.strip()})
+            return bridges
+        except Exception:
+            return []
+
+    def ovs_create_bridge(self, name: str) -> dict:
+        """Create an OVS bridge."""
+        if not self._has_ovs():
+            return {"success": False, "error": "Open vSwitch is not installed"}
+        try:
+            r = subprocess.run(
+                f"ovs-vsctl add-br {name} && ip link set {name} up",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr.strip()}
+            return {"success": True, "bridge": name}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def ovs_delete_bridge(self, name: str) -> dict:
+        """Delete an OVS bridge."""
+        if not self._has_ovs():
+            return {"success": False, "error": "Open vSwitch is not installed"}
+        try:
+            r = subprocess.run(
+                f"ovs-vsctl del-br {name} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def ovs_add_port(self, bridge: str, port: str, tag: int = 0, 
+                     trunk: str = "", interface_type: str = "") -> dict:
+        """Add a port to an OVS bridge."""
+        if not self._has_ovs():
+            return {"success": False, "error": "Open vSwitch is not installed"}
+        try:
+            cmd = f"ovs-vsctl add-port {bridge} {port}"
+            if tag:
+                cmd += f" tag={tag}"
+            if trunk:
+                cmd += f" trunk={trunk}"
+            if interface_type:
+                cmd += f" -- set interface {port} type={interface_type}"
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr.strip()}
+            return {"success": True, "bridge": bridge, "port": port}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def ovs_del_port(self, bridge: str, port: str) -> dict:
+        """Remove a port from an OVS bridge."""
+        if not self._has_ovs():
+            return {"success": False, "error": "Open vSwitch is not installed"}
+        try:
+            r = subprocess.run(
+                f"ovs-vsctl del-port {bridge} {port} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def ovs_list_flows(self, bridge: str) -> List[dict]:
+        """List OpenFlow rules on a bridge."""
+        if not self._has_ovs():
+            return []
+        try:
+            r = subprocess.run(
+                f"ovs-ofctl dump-flows {bridge} 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            flows = []
+            for line in r.stdout.strip().splitlines():
+                if "cookie=" in line:
+                    flows.append({"raw": line.strip()})
+            return flows
+        except Exception:
+            return []
+
+    def ovs_add_flow(self, bridge: str, flow: str) -> dict:
+        """Add an OpenFlow rule."""
+        if not self._has_ovs():
+            return {"success": False, "error": "Open vSwitch is not installed"}
+        try:
+            r = subprocess.run(
+                f"ovs-ofctl add-flow {bridge} '{flow}' 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            if r.returncode != 0:
+                return {"success": False, "error": r.stderr.strip()}
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def ovs_show(self) -> dict:
+        """Show full OVS configuration."""
+        if not self._has_ovs():
+            return {"error": "Open vSwitch is not installed"}
+        try:
+            r = subprocess.run(
+                "ovs-vsctl show 2>/dev/null",
+                shell=True, capture_output=True, text=True, timeout=10
+            )
+            return {"output": r.stdout.strip()}
+        except Exception as e:
+            return {"error": str(e)}

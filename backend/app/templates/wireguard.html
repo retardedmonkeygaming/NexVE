@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block title %}NexVE — WireGuard VPN{% endblock %}
+{% block breadcrumb %}WireGuard VPN{% endblock %}
+
+{% block content %}
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">WireGuard VPN</div>
+        <div class="nx-page-subtitle">Configure VPN tunnels and peer connections</div>
+    </div>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshWG()">↻ Refresh</button>
+        <button class="nx-btn nx-btn-primary" onclick="showCreateInterface()">+ Create Interface</button>
+    </div>
+</div>
+
+<!-- Status Banner -->
+<div id="wg-status-banner" class="nx-alert nx-alert-info nx-mb-4" style="display:none;">
+    <div class="nx-alert-body"><div class="nx-alert-text" id="wg-status-text">Loading...</div></div>
+</div>
+
+<!-- Tabs -->
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab(this,'interfaces')">Interfaces</button>
+    <button class="nx-tab" onclick="showTab(this,'peers')">Peers</button>
+    <button class="nx-tab" onclick="showTab(this,'config')">Raw Config</button>
+    <button class="nx-tab" onclick="showTab(this,'keys')">Key Generator</button>
+</div>
+
+<!-- ═══ INTERFACES ═══ -->
+<div class="nx-tab-content active" id="tab-interfaces">
+    <div class="nx-card">
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Interface</th><th>Status</th><th>Listen Port</th><th>Address</th><th>Peers</th><th>Traffic</th><th>Actions</th></tr></thead>
+                <tbody id="wg-iface-list">
+                    <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ PEERS ═══ -->
+<div class="nx-tab-content" id="tab-peers">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">VPN Peers</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showAddPeer()">+ Add Peer</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Public Key</th><th>Endpoint</th><th>Allowed IPs</th><th>Latest Handshake</th><th>Transfer</th><th>Actions</th></tr></thead>
+                <tbody id="wg-peer-list">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ RAW CONFIG ═══ -->
+<div class="nx-tab-content" id="tab-config">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">WireGuard Configuration</span></div>
+        <div class="nx-card-body">
+            <div class="nx-input-group">
+                <label class="nx-label">Interface</label>
+                <select id="config-interface" class="nx-select" onchange="loadRawConfig()" style="max-width:200px;">
+                    <option value="wg0">wg0</option>
+                </select>
+            </div>
+            <pre id="wg-raw-config" style="font-family:var(--font-mono);font-size:12px;padding:16px;margin-top:12px;background:var(--bg-elevated);border-radius:var(--radius-lg);max-height:400px;overflow:auto;color:var(--text-secondary);">Loading...</pre>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ KEY GENERATOR ═══ -->
+<div class="nx-tab-content" id="tab-keys">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Key Generator</span></div>
+        <div class="nx-card-body">
+            <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px;">Generate key pairs for WireGuard interfaces and peers.</p>
+            <button class="nx-btn nx-btn-primary" onclick="generateKeyPair()">Generate Key Pair</button>
+            <div id="key-result" style="margin-top:16px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Create Interface Modal -->
+<div class="nx-modal-overlay" id="create-iface-modal">
+    <div class="nx-modal" style="max-width:480px;">
+        <div class="nx-modal-header"><h3>Create WireGuard Interface</h3><button class="nx-modal-close" onclick="document.getElementById('create-iface-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <form id="iface-form" onsubmit="submitInterface(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group"><label class="nx-label">Interface Name</label><input type="text" name="name" class="nx-input" value="wg0" placeholder="wg0"></div>
+                    <div class="nx-input-group"><label class="nx-label">Listen Port</label><input type="number" name="listen_port" class="nx-input" value="51820"></div>
+                    <div class="nx-input-group"><label class="nx-label">IP Address (CIDR)</label><input type="text" name="address" class="nx-input" placeholder="10.0.0.1/24"><span class="nx-hint">e.g. 10.0.0.1/24 for the server, 10.0.0.2/32 for clients</span></div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('create-iface-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('iface-form').requestSubmit()">Create Interface</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Peer Modal -->
+<div class="nx-modal-overlay" id="add-peer-modal">
+    <div class="nx-modal" style="max-width:520px;">
+        <div class="nx-modal-header"><h3>Add Peer</h3><button class="nx-modal-close" onclick="document.getElementById('add-peer-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <form id="peer-form" onsubmit="submitPeer(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group"><label class="nx-label">Interface</label><select name="interface" class="nx-select" id="peer-interface"><option value="wg0">wg0</option></select></div>
+                    <div class="nx-input-group"><label class="nx-label">Public Key *</label><input type="text" name="public_key" class="nx-input" placeholder="Base64-encoded public key" required></div>
+                    <div class="nx-input-group"><label class="nx-label">Endpoint</label><input type="text" name="endpoint" class="nx-input" placeholder="e.g. 203.0.113.1:51820"></div>
+                    <div class="nx-input-group"><label class="nx-label">Allowed IPs</label><input type="text" name="allowed_ips" class="nx-input" value="0.0.0.0/0"><span class="nx-hint">Comma-separated. Use 0.0.0.0/0 for full tunnel, or specific IPs for split tunnel.</span></div>
+                    <div class="nx-input-group"><label class="nx-label">Keepalive (seconds)</label><input type="number" name="keepalive" class="nx-input" value="0" min="0" max="65535"><span class="nx-hint">0 = disabled, 25 = recommended for NAT traversal</span></div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('add-peer-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('peer-form').requestSubmit()">Add Peer</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(btn, name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'peers') loadPeers();
+    if (name === 'config') loadRawConfig();
+}
+
+let wgData = null;
+
+async function refreshWG() {
+    try {
+        const r = await fetch('/api/wireguard/status');
+        wgData = await r.json();
+        renderWG();
+    } catch(e) { console.error(e); }
+}
+
+function renderWG() {
+    if (!wgData) return;
+    const banner = document.getElementById('wg-status-banner');
+    if (!wgData.available) {
+        banner.style.display = '';
+        banner.className = 'nx-alert nx-alert-warning nx-mb-4';
+        document.getElementById('wg-status-text').innerHTML = '<strong>WireGuard is not installed.</strong> Install with: <code>apt install wireguard</code>';
+    } else {
+        banner.style.display = 'none';
+    }
+
+    const ifaces = wgData.interfaces || [];
+    const list = document.getElementById('wg-iface-list');
+    if (ifaces.length === 0) {
+        list.innerHTML = '<tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No WireGuard interfaces configured. Click "Create Interface" to get started.</td></tr>';
+    } else {
+        list.innerHTML = ifaces.map(i => `
+            <tr>
+                <td style="font-weight:500;font-family:monospace;">${i.name}</td>
+                <td><span class="nx-badge ${i.status === 'up' ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${i.status || 'down'}</span></td>
+                <td style="font-family:monospace;">${i.listen_port || '-'}</td>
+                <td style="font-family:monospace;font-size:var(--text-xs);">${i.address || '-'}</td>
+                <td>${i.peer_count || 0}</td>
+                <td style="font-size:var(--text-xs);">↑${formatBytes(i.tx_bytes || 0)} ↓${formatBytes(i.rx_bytes || 0)}</td>
+                <td>
+                    <div class="nx-flex nx-gap-1">
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="showAddPeerFor('${i.name}')">+ Peer</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteInterface('${i.name}')">Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // Update selects
+        const selects = ['peer-interface', 'config-interface'];
+        selects.forEach(id => {
+            const sel = document.getElementById(id);
+            if (sel) sel.innerHTML = ifaces.map(i => `<option value="${i.name}">${i.name}</option>`).join('');
+        });
+    }
+
+    // Traffic stats
+    const traffic = wgData.traffic || [];
+    if (traffic.length > 0) {
+        const peerList = document.getElementById('wg-peer-list');
+        peerList.innerHTML = traffic.map(t => `
+            <tr>
+                <td style="font-family:monospace;font-size:var(--text-xs);word-break:break-all;">${t.public_key || '-'}</td>
+                <td style="font-family:monospace;font-size:var(--text-xs);">${t.endpoint || '-'}</td>
+                <td style="font-family:monospace;font-size:var(--text-xs);">${t.allowed_ips || '-'}</td>
+                <td style="font-size:var(--text-xs);">${t.latest_handshake || 'Never'}</td>
+                <td style="font-size:var(--text-xs);">↑${formatBytes(t.tx || 0)} ↓${formatBytes(t.rx || 0)}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removePeer('${t.interface || 'wg0'}','${t.public_key}')">Remove</button></td>
+            </tr>
+        `).join('');
+    }
+}
+
+function showCreateInterface() { document.getElementById('create-iface-modal').classList.add('open'); }
+
+async function submitInterface(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/wireguard/interfaces/create', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) { showToast('Interface created', 'success'); document.getElementById('create-iface-modal').classList.remove('open'); refreshWG(); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function deleteInterface(name) {
+    if (!confirm(`Delete interface "${name}"?`)) return;
+    try {
+        await fetch(`/api/wireguard/interfaces/${name}`, {method: 'DELETE'});
+        showToast('Interface deleted', 'success'); refreshWG();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+function showAddPeer() {
+    document.getElementById('add-peer-modal').classList.add('open');
+}
+
+function showAddPeerFor(iface) {
+    document.getElementById('peer-interface').value = iface;
+    document.getElementById('add-peer-modal').classList.add('open');
+}
+
+async function submitPeer(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/wireguard/peers/add', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) { showToast('Peer added', 'success'); document.getElementById('add-peer-modal').classList.remove('open'); refreshWG(); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function removePeer(iface, pubkey) {
+    if (!confirm('Remove this peer?')) return;
+    try {
+        await fetch(`/api/wireguard/peers/${iface}/${encodeURIComponent(pubkey)}`, {method: 'DELETE'});
+        showToast('Peer removed', 'success'); refreshWG();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function loadPeers() { refreshWG(); }
+
+async function loadRawConfig() {
+    const iface = document.getElementById('config-interface').value || 'wg0';
+    try {
+        const r = await fetch(`/api/wireguard/interfaces/${iface}/config`);
+        const data = await r.json();
+        document.getElementById('wg-raw-config').textContent = data.config || 'No configuration found';
+    } catch(e) { document.getElementById('wg-raw-config').textContent = 'Failed to load config'; }
+}
+
+async function generateKeyPair() {
+    try {
+        const r = await fetch('/api/wireguard/generate-key', {method: 'POST'});
+        const data = await r.json();
+        if (data.private_key || data.public_key) {
+            document.getElementById('key-result').innerHTML = `
+                <div class="nx-card" style="margin:0;border-color:var(--accent);">
+                    <div class="nx-card-body" style="padding:16px;">
+                        <div style="margin-bottom:12px;">
+                            <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Private Key:</div>
+                            <code style="font-size:var(--text-sm);word-break:break-all;background:var(--bg-overlay);padding:6px 10px;border-radius:var(--radius);display:block;">${data.private_key}</code>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" style="margin-top:4px;" onclick="navigator.clipboard.writeText('${data.private_key}');showToast('Copied!','success')">Copy</button>
+                        </div>
+                        <div>
+                            <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Public Key:</div>
+                            <code style="font-size:var(--text-sm);word-break:break-all;background:var(--bg-overlay);padding:6px 10px;border-radius:var(--radius);display:block;">${data.public_key}</code>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" style="margin-top:4px;" onclick="navigator.clipboard.writeText('${data.public_key}');showToast('Copied!','success')">Copy</button>
+                        </div>
+                    </div>
+                </div>`;
+        } else {
+            document.getElementById('key-result').innerHTML = `<div style="color:var(--danger);">${data.error || 'Key generation failed. Is WireGuard installed?'}</div>`;
+        }
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return bytes.toFixed(1) + ' ' + units[i];
+}
+
+refreshWG();
+</script>
+{% endblock %}

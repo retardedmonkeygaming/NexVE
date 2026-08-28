@@ -8,26 +8,19 @@ from ..services.console_service import ConsoleService
 from ..services.vm_service import VMService
 from ..database import SessionLocal
 from ..models.vm import VM
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 console_svc = ConsoleService()
 vm_svc = VMService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/types/{vm_id}")
 async def get_console_types(vm_id: int, request: Request):
     """Get available console types for a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -42,9 +35,8 @@ async def get_console_types(vm_id: int, request: Request):
 @router.get("/vnc/{vm_id}")
 async def get_vnc_info(vm_id: int, request: Request):
     """Get VNC connection info for a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -59,9 +51,8 @@ async def get_vnc_info(vm_id: int, request: Request):
 @router.post("/vnc/{vm_id}/start")
 async def start_vnc_proxy(vm_id: int, request: Request):
     """Start VNC websockify proxy."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -79,9 +70,8 @@ async def start_vnc_proxy(vm_id: int, request: Request):
 @router.post("/vnc/{vm_id}/stop")
 async def stop_vnc_proxy(vm_id: int, request: Request):
     """Stop VNC websockify proxy."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -96,9 +86,8 @@ async def stop_vnc_proxy(vm_id: int, request: Request):
 @router.get("/spice/{vm_id}")
 async def get_spice_info(vm_id: int, request: Request):
     """Get SPICE connection info for a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -113,9 +102,8 @@ async def get_spice_info(vm_id: int, request: Request):
 @router.get("/serial/{vm_id}")
 async def get_serial_info(vm_id: int, request: Request):
     """Get serial console info for a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = db.query(VM).filter(VM.id == vm_id).first()
@@ -130,8 +118,7 @@ async def get_serial_info(vm_id: int, request: Request):
 @router.get("/container/{ct_id}")
 async def get_container_console(ct_id: int, request: Request):
     """Get container console info."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     info = console_svc.get_container_console(ct_id)
     return JSONResponse(info)

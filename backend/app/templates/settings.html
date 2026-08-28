@@ -16,6 +16,7 @@
     <button class="nx-tab" onclick="showTab(this,'security')">Security</button>
     <button class="nx-tab" onclick="showTab(this,'services')">Services</button>
     <button class="nx-tab" onclick="showTab(this,'updates')">Updates</button>
+    <button class="nx-tab" onclick="showTab(this,'ssl')">SSL/TLS</button>
     <button class="nx-tab" onclick="showTab(this,'syslog')">Syslog</button>
     <button class="nx-tab" onclick="showTab(this,'about')">About</button>
 </div>
@@ -183,6 +184,48 @@
     </div>
 </div>
 
+<!-- SSL/TLS Certificates -->
+<div class="nx-tab-content" id="tab-ssl">
+    <div class="nx-card nx-mb-4">
+        <div class="nx-card-header"><span class="nx-card-title">ACME / Let's Encrypt</span><button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadSSLCerts()">↻ Refresh</button></div>
+        <div class="nx-card-body">
+            <div id="ssl-status" style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:12px;">Loading...</div>
+            <div id="ssl-certs" style="margin-bottom:16px;"></div>
+            <div class="nx-card" style="border-color:var(--accent);">
+                <div class="nx-card-header"><span class="nx-card-title">Provision Certificate</span></div>
+                <div class="nx-card-body">
+                    <div class="nx-flex nx-flex-col nx-gap-3">
+                        <div class="nx-grid" style="grid-template-columns:2fr 2fr 1fr;">
+                            <div class="nx-input-group"><label class="nx-label">Domain</label><input type="text" id="ssl-domain" class="nx-input" placeholder="nexve.example.com"></div>
+                            <div class="nx-input-group"><label class="nx-label">Email</label><input type="email" id="ssl-email" class="nx-input" placeholder="admin@example.com"></div>
+                            <div class="nx-input-group"><label class="nx-label">Challenge</label><select id="ssl-challenge" class="nx-select"><option value="http">HTTP-01</option><option value="dns">DNS-01</option></select></div>
+                        </div>
+                        <div class="nx-flex nx-gap-2">
+                            <button class="nx-btn nx-btn-primary" onclick="provisionCert()">Provision (Let's Encrypt)</button>
+                            <button class="nx-btn nx-btn-secondary" onclick="renewCerts()">Renew All</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Upload Custom Certificate</span></div>
+        <div class="nx-card-body">
+            <div class="nx-flex nx-flex-col nx-gap-3">
+                <div class="nx-input-group"><label class="nx-label">Domain</label><input type="text" id="ssl-upload-domain" class="nx-input" placeholder="nexve.example.com"></div>
+                <div class="nx-input-group"><label class="nx-label">Certificate (PEM)</label><textarea id="ssl-cert-pem" class="nx-input" rows="4" placeholder="-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----" style="font-family:var(--font-mono);font-size:var(--text-xs);"></textarea></div>
+                <div class="nx-input-group"><label class="nx-label">Private Key (PEM)</label><textarea id="ssl-key-pem" class="nx-input" rows="4" placeholder="-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----" style="font-family:var(--font-mono);font-size:var(--text-xs);"></textarea></div>
+                <button class="nx-btn nx-btn-primary" onclick="uploadCert()">Upload & Apply</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Syslog -->
 <div class="nx-tab-content" id="tab-syslog">
     <div class="nx-card">
@@ -204,26 +247,7 @@
 <!-- About -->
 <div class="nx-tab-content" id="tab-about">
 
-    <div class="nx-card" style="border-color:rgba(239,68,68,0.3);">
-        <div class="nx-card-header"><span class="nx-card-title" style="color:var(--danger);">Danger Zone</span></div>
-        <div class="nx-card-body">
-            <div style="margin-bottom:20px;">
-                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px;">Reset the initial setup wizard. This will delete all user accounts but keep VMs, containers, and storage intact.</p>
-                <a href="/setup/reset" class="nx-btn" style="background:var(--danger);color:white;display:inline-block;text-decoration:none;">Reset Setup Wizard</a>
-            </div>
-            <div style="border-top:1px solid rgba(239,68,68,0.2);padding-top:16px;">
-                <p style="font-size:var(--text-sm);color:var(--danger);font-weight:700;margin-bottom:4px;">⚠ Factory Reset</p>
-                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px;">Permanently destroy ALL data — VMs, containers, ISOs, storage pools, backups, users, firewall rules, cluster configs — and return NexVE to its bare-origin state.</p>
-                <a href="/setup/factory-reset" class="nx-btn" style="background:var(--danger);color:white;display:inline-block;text-decoration:none;padding:10px 24px;font-weight:700;">⚠ Factory Reset — Destroy Everything</a>
-            </div>
-            <div style="border-top:1px solid rgba(239,68,68,0.2);padding-top:16px;margin-top:16px;">
-                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px;">Export a comprehensive HTML report of all system specs, VMs, storage, and network configuration.</p>
-                <a href="/api/settings/system-report" target="_blank" class="nx-btn nx-btn-secondary" style="display:inline-block;text-decoration:none;">📄 Generate System Report</a>
-            </div>
-            </div>
-        </div>
-    </div>
-
+    <!-- About NexVE (FIRST) -->
     <div class="nx-card">
         <div class="nx-card-header"><span class="nx-card-title">About NexVE</span></div>
         <div class="nx-card-body">
@@ -245,6 +269,33 @@
             </div>
         </div>
     </div>
+
+    <!-- System Report -->
+    <div class="nx-card nx-mt-4">
+        <div class="nx-card-header"><span class="nx-card-title">System Report</span></div>
+        <div class="nx-card-body">
+            <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px;">Export a comprehensive HTML report of all system specs, VMs, storage, and network configuration.</p>
+            <a href="/api/settings/system-report" target="_blank" class="nx-btn nx-btn-secondary" style="display:inline-block;text-decoration:none;">📄 Generate System Report</a>
+        </div>
+    </div>
+
+    <!-- Danger Zone (LAST) -->
+    <div class="nx-card nx-mt-4" style="border-color:rgba(239,68,68,0.3);">
+        <div class="nx-card-header"><span class="nx-card-title" style="color:var(--danger);">Danger Zone</span></div>
+        <div class="nx-card-body">
+            <div style="margin-bottom:20px;">
+                <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:8px;">Reset the initial setup wizard. This will delete all user accounts and require re-running setup.</p>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--danger);font-weight:600;">
+                        <input type="checkbox" id="factory-reset-check" class="nx-checkbox"> ⚠ Also perform factory reset (deletes ALL VMs, containers, ISOs, backups, and data)
+                    </label>
+                </div>
+                <div style="margin-top:12px;">
+                    <button class="nx-btn" style="background:var(--danger);color:white;" onclick="doReset()">Reset NexVE</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -259,6 +310,7 @@ function showTab(btn, name) {
     if (name === 'services') loadServices();
     if (name === 'syslog') loadSyslog();
     if (name === 'network') { loadDNS(); loadTime(); }
+    if (name === 'ssl') loadSSLCerts();
 }
 
 // ── System ──
@@ -453,6 +505,86 @@ async function loadSyslog() {
 }
 
 // Load general on page load
+// ── Reset/Factory Reset ──
+async function doReset() {
+    const factoryReset = document.getElementById('factory-reset-check').checked;
+    const endpoint = factoryReset ? '/setup/factory-reset' : '/setup/reset';
+    const msg = factoryReset
+        ? 'FINAL WARNING: This will permanently delete ALL data including VMs, containers, storage, and users. Are you absolutely sure?'
+        : 'This will reset the setup wizard and delete all user accounts. VMs, containers, and storage will be kept. Continue?';
+
+    if (!confirm(msg)) return;
+    if (factoryReset && !confirm('Last chance — there is NO undo. Click OK to proceed.')) return;
+
+    try {
+        const r = await fetch(endpoint, {method: 'POST'});
+        const data = await r.json();
+        if (data.success) {
+            showToast(data.message || 'Reset complete', 'success');
+            setTimeout(() => window.location.href = '/setup/', 2000);
+        } else {
+            showToast('Reset failed: ' + (data.error || 'unknown'), 'error');
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
 loadGeneral();
+
+// SSL/TLS Certificates
+async function loadSSLCerts() {
+    try {
+        const [st, cr] = await Promise.all([
+            fetch('/api/acme/status').then(r => r.json()),
+            fetch('/api/acme/certificates').then(r => r.json())
+        ]);
+        const statusEl = document.getElementById('ssl-status');
+        statusEl.innerHTML = `ACME Client: ${st.installed ? 'Installed' : 'Not installed'} | Certificates: ${(cr.certificates || []).length}`;
+        const certsEl = document.getElementById('ssl-certs');
+        const certs = cr.certificates || [];
+        if (certs.length === 0) {
+            certsEl.innerHTML = '<p style="color:var(--text-muted);font-size:var(--text-sm);">No certificates managed.</p>';
+        } else {
+            certsEl.innerHTML = '<table class="nx-table"><thead><tr><th>Domain</th><th>Issuer</th><th>Expires</th><th>Actions</th></tr></thead><tbody>' + certs.map(c => `<tr><td>${c.domain}</td><td>${c.issuer || '-'}</td><td>${c.expires || '-'}</td><td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyCert('${c.domain}')">Apply</button> <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteCert('${c.domain}')">Delete</button></td></tr>`).join('') + '</tbody></table>';
+        }
+    } catch(e) { document.getElementById('ssl-status').textContent = 'Failed to load SSL info'; }
+}
+async function provisionCert() {
+    const fd = new FormData();
+    fd.append('domain', document.getElementById('ssl-domain').value);
+    fd.append('email', document.getElementById('ssl-email').value);
+    fd.append('challenge_type', document.getElementById('ssl-challenge').value);
+    const r = await fetch('/api/acme/provision', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success !== false) { showToast('Certificate provisioned', 'success'); loadSSLCerts(); }
+    else showToast(d.error || 'Failed', 'error');
+}
+async function uploadCert() {
+    const fd = new FormData();
+    fd.append('domain', document.getElementById('ssl-upload-domain').value);
+    fd.append('cert_content', document.getElementById('ssl-cert-pem').value);
+    fd.append('key_content', document.getElementById('ssl-key-pem').value);
+    const r = await fetch('/api/acme/upload', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success !== false) { showToast('Certificate uploaded', 'success'); loadSSLCerts(); }
+    else showToast(d.error || 'Failed', 'error');
+}
+async function applyCert(domain) {
+    const fd = new FormData(); fd.append('domain', domain);
+    const r = await fetch('/api/acme/apply', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.success !== false) showToast('Applied', 'success');
+    else showToast(d.error || 'Failed', 'error');
+}
+async function renewCerts() {
+    await fetch('/api/acme/renew', {method:'POST'});
+    showToast('Renewal triggered', 'success');
+}
+async function deleteCert(domain) {
+    if (!confirm('Delete certificate for ' + domain + '?')) return;
+    await fetch('/api/acme/' + domain, {method:'DELETE'});
+    showToast('Deleted', 'success'); loadSSLCerts();
+}
 </script>
 {% endblock %}

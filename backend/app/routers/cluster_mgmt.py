@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from ..services.cluster_service import ClusterService
 from ..services.proxy_service import ProxyService
 from ..services.migration_service import MigrationService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 cluster_svc = ClusterService()
@@ -15,19 +15,12 @@ proxy_svc = ProxyService()
 migration_svc = MigrationService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=32)
-    return user, None
-
 
 @router.get("/status")
 async def cluster_overview(request: Request):
     """Get comprehensive cluster status including all node health."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     cluster_status = cluster_svc.get_cluster_status()
     nodes_status = await proxy_svc.get_all_nodes_status()
@@ -43,9 +36,8 @@ async def cluster_overview(request: Request):
 @router.get("/nodes")
 async def list_nodes(request: Request):
     """List all cluster nodes with live status."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     nodes = cluster_svc.get_nodes()
     nodes_status = await proxy_svc.get_all_nodes_status()
@@ -68,9 +60,8 @@ async def migrate_vm_to_node(
     live: bool = Form(True),
 ):
     """Migrate a VM to another cluster node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     from ..database import SessionLocal
     from ..models.vm import VM
@@ -97,9 +88,8 @@ async def migrate_container_to_node(
     ct_id: int = Form(...),
 ):
     """Migrate a container to another cluster node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     if proxy_svc.is_local(node_name):
         return JSONResponse({"error": "Cannot migrate to same node"})
@@ -115,9 +105,8 @@ async def forward_to_node(
     path: str,
 ):
     """Forward an arbitrary API request to another node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     body = None
     if request.method in ("POST", "PUT"):
@@ -135,9 +124,8 @@ async def forward_to_node(
 @router.get("/resources")
 async def cluster_resources(request: Request):
     """Get resource distribution across all nodes."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     nodes_status = await proxy_svc.get_all_nodes_status()
     total_cpu = sum(n.get("cpu_percent", 0) for n in nodes_status)

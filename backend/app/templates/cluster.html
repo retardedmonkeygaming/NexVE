@@ -6,11 +6,10 @@
 <div class="nx-page-header">
     <div>
         <div class="nx-page-title">Cluster Management</div>
-        <div class="nx-page-subtitle">Multi-node cluster management and node health</div>
+        <div class="nx-page-subtitle">Multi-node cluster, live migration, and high availability</div>
     </div>
     <div class="nx-page-actions">
-        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshCluster()">↻ Refresh</button>
-        <button class="nx-btn nx-btn-primary" onclick="showJoinModal()">+ Join Cluster</button>
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="refreshAll()">↻ Refresh</button>
     </div>
 </div>
 
@@ -36,48 +35,153 @@
     </div>
     <div class="nx-card">
         <div class="nx-card-body" style="padding:16px;">
-            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">Avg Memory</div>
-            <div id="avg-mem" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
+            <div style="font-size:var(--text-xs);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">HA Guests</div>
+            <div id="ha-guest-count" style="font-size:var(--text-2xl);font-weight:700;margin-top:4px;">-</div>
         </div>
     </div>
 </div>
 
-<!-- Node List -->
-<div class="nx-card" style="margin-bottom:16px;">
-    <div class="nx-card-header">
-        <span class="nx-card-title">Cluster Nodes</span>
-        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="generateToken()">Generate Join Token</button>
+<!-- Tabs -->
+<div class="nx-tabs">
+    <button class="nx-tab active" onclick="showTab(this,'nodes')">Nodes</button>
+    <button class="nx-tab" onclick="showTab(this,'migration')">Migration</button>
+    <button class="nx-tab" onclick="showTab(this,'ha-groups')">HA Groups</button>
+    <button class="nx-tab" onclick="showTab(this,'ha-guests')">HA Guests</button>
+</div>
+
+<!-- ═══ NODES TAB ═══ -->
+<div class="nx-tab-content active" id="tab-nodes">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Cluster Nodes</span>
+            <div class="nx-flex nx-gap-2">
+                <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="generateToken()">Generate Join Token</button>
+                <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showJoinModal()">+ Join Cluster</button>
+            </div>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead>
+                    <tr><th>Status</th><th>Node Name</th><th>Address</th><th>Node ID</th><th>CPU</th><th>Memory</th><th>VMs</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="node-list">
+                    <tr><td colspan="8" class="nx-text-center" style="padding:32px;color:var(--text-muted);">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="nx-card-body" style="padding:0;">
-        <table class="nx-table">
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Node Name</th>
-                    <th>Address</th>
-                    <th>Node ID</th>
-                    <th>CPU</th>
-                    <th>Memory</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="node-list">
-                <tr><td colspan="7" class="nx-text-center" style="padding:32px;color:var(--text-muted);">Loading...</td></tr>
-            </tbody>
-        </table>
+
+    <div class="nx-card nx-mt-4">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Resource Distribution</span>
+        </div>
+        <div class="nx-card-body" id="resource-dist">
+            <div style="color:var(--text-muted);font-size:var(--text-sm);">Loading...</div>
+        </div>
     </div>
 </div>
 
-<!-- HA Status -->
-<div class="nx-card">
-    <div class="nx-card-header">
-        <span class="nx-card-title">High Availability</span>
-        <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="refreshHA()">↻ Refresh</button>
+<!-- ═══ MIGRATION TAB ═══ -->
+<div class="nx-tab-content" id="tab-migration">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Live Migration</span>
+        </div>
+        <div class="nx-card-body">
+            <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:16px;">Migrate running VMs and containers between cluster nodes without downtime.</p>
+            <div class="nx-flex nx-flex-col nx-gap-4" style="max-width:600px;">
+                <div class="nx-input-group">
+                    <label class="nx-label">Guest Type</label>
+                    <select id="mig-type" class="nx-select" onchange="loadMigrationGuests()">
+                        <option value="vm">Virtual Machine</option>
+                        <option value="container">Container</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Guest to Migrate</label>
+                    <select id="mig-guest" class="nx-select">
+                        <option value="">— Select a guest —</option>
+                    </select>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Target Node</label>
+                    <select id="mig-target" class="nx-select">
+                        <option value="">— Select target node —</option>
+                    </select>
+                </div>
+                <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                    <div class="nx-input-group">
+                        <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="mig-live" class="nx-checkbox" checked> Live Migration
+                        </label>
+                        <span class="nx-hint">Keep the VM running during migration (requires shared storage)</span>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="mig-force" class="nx-checkbox"> Force
+                        </label>
+                        <span class="nx-hint">Force migration even if checks fail</span>
+                    </div>
+                </div>
+                <button class="nx-btn nx-btn-primary" onclick="startMigration()" style="align-self:flex-start;">Migrate</button>
+            </div>
+            <div id="mig-status" style="margin-top:16px;"></div>
+        </div>
     </div>
-    <div class="nx-card-body">
-        <div id="ha-status" style="color:var(--text-muted);font-size:var(--text-sm);">Loading HA status...</div>
+
+    <div class="nx-card nx-mt-4">
+        <div class="nx-card-header">
+            <span class="nx-card-title">Migration History</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadMigrationHistory()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Guest</th><th>Type</th><th>Target</th><th>Live</th><th>Status</th><th>Time</th></tr></thead>
+                <tbody id="mig-history">
+                    <tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">No migration history</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
+
+<!-- ═══ HA GROUPS TAB ═══ -->
+<div class="nx-tab-content" id="tab-ha-groups">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">HA Groups</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showCreateGroup()">+ Create Group</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Name</th><th>Description</th><th>Nodes</th><th>Strategy</th><th>Max Restart</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="ha-group-list">
+                    <tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ HA GUESTS TAB ═══ -->
+<div class="nx-tab-content" id="tab-ha-guests">
+    <div class="nx-card">
+        <div class="nx-card-header">
+            <span class="nx-card-title">HA-Managed Guests</span>
+            <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="showAddHAGuest()">+ Add Guest</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Guest</th><th>Type</th><th>ID</th><th>Group</th><th>Node</th><th>Priority</th><th>State</th><th>Actions</th></tr></thead>
+                <tbody id="ha-guest-list">
+                    <tr><td colspan="8" class="nx-text-center nx-text-muted" style="padding:32px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
 
 <!-- Join Cluster Modal -->
 <div class="nx-modal-overlay" id="join-modal">
@@ -90,8 +194,7 @@
             <div class="nx-flex nx-flex-col nx-gap-4">
                 <div class="nx-input-group">
                     <label class="nx-label">Remote Node Address</label>
-                    <input type="text" id="join-host" class="nx-input" placeholder="e.g. 192.168.1.101 or node2.example.com">
-                    <span class="nx-hint">IP or hostname of an existing cluster node.</span>
+                    <input type="text" id="join-host" class="nx-input" placeholder="e.g. 192.168.1.101">
                 </div>
                 <div class="nx-input-group">
                     <label class="nx-label">Cluster Name</label>
@@ -100,7 +203,6 @@
                 <div class="nx-input-group">
                     <label class="nx-label">Join Token (optional)</label>
                     <input type="text" id="join-token" class="nx-input" placeholder="Paste token from existing node">
-                    <span class="nx-hint">Generate a token on the existing node first.</span>
                 </div>
             </div>
             <div id="join-error" style="margin-top:12px;"></div>
@@ -121,7 +223,7 @@
         </div>
         <div class="nx-modal-body">
             <div class="nx-input-group">
-                <label class="nx-label">Node Name (for the joining node)</label>
+                <label class="nx-label">Node Name</label>
                 <input type="text" id="token-node-name" class="nx-input" placeholder="e.g. node3">
             </div>
             <div id="token-result" style="margin-top:16px;"></div>
@@ -132,32 +234,105 @@
         </div>
     </div>
 </div>
+
+<!-- Create HA Group Modal -->
+<div class="nx-modal-overlay" id="create-group-modal">
+    <div class="nx-modal" style="max-width:480px;">
+        <div class="nx-modal-header">
+            <h3>Create HA Group</h3>
+            <button class="nx-modal-close" onclick="document.getElementById('create-group-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="group-form" onsubmit="submitGroup(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group"><label class="nx-label">Group Name *</label><input type="text" name="name" class="nx-input" placeholder="ha-group-1" required></div>
+                    <div class="nx-input-group"><label class="nx-label">Description</label><input type="text" name="description" class="nx-input" placeholder="Optional description"></div>
+                    <div class="nx-input-group"><label class="nx-label">Nodes (comma-separated)</label><input type="text" name="nodes" class="nx-input" placeholder="node1,node2,node3"></div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">Strategy</label><select name="strategy" class="nx-select"><option value="failover">Failover</option><option value="migrate">Migrate</option><option value="restart">Restart</option></select></div>
+                        <div class="nx-input-group"><label class="nx-label">Max Restart</label><input type="number" name="max_restart" class="nx-input" value="3" min="0" max="10"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('create-group-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('group-form').requestSubmit()">Create Group</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add HA Guest Modal -->
+<div class="nx-modal-overlay" id="add-guest-modal">
+    <div class="nx-modal" style="max-width:480px;">
+        <div class="nx-modal-header">
+            <h3>Add HA Guest</h3>
+            <button class="nx-modal-close" onclick="document.getElementById('add-guest-modal').classList.remove('open')">✕</button>
+        </div>
+        <div class="nx-modal-body">
+            <form id="guest-form" onsubmit="submitHAGuest(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">Guest Type *</label><select name="target_type" class="nx-select" id="ha-guest-type"><option value="vm">Virtual Machine</option><option value="container">Container</option></select></div>
+                        <div class="nx-input-group"><label class="nx-label">Guest ID *</label><input type="number" name="target_id" class="nx-input" placeholder="100" required></div>
+                    </div>
+                    <div class="nx-input-group"><label class="nx-label">Guest Name</label><input type="text" name="target_name" class="nx-input" placeholder="Optional name"></div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">HA Group</label><select name="group_id" class="nx-select" id="ha-guest-group"><option value="0">— None —</option></select></div>
+                        <div class="nx-input-group"><label class="nx-label">Priority</label><input type="number" name="priority" class="nx-input" value="0" min="0" max="1000"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('add-guest-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="document.getElementById('guest-form').requestSubmit()">Add Guest</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let clusterData = null;
+let haGroups = [];
+let haGuests = [];
+let migrationGuests = [];
 
+// ── Tab switching ──
+function showTab(btn, name) {
+    document.querySelectorAll('.nx-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'migration') loadMigrationGuests();
+    if (name === 'ha-groups') loadHAGroups();
+    if (name === 'ha-guests') loadHAGuests();
+}
+
+// ── Refresh all ──
+async function refreshAll() {
+    await refreshCluster();
+    loadMigrationGuests();
+    loadHAGroups();
+    loadHAGuests();
+}
+
+// ── Cluster Status ──
 async function refreshCluster() {
     try {
         const r = await fetch('/api/cluster-mgmt/status');
         clusterData = await r.json();
         renderCluster();
-    } catch(e) {
-        console.error('refreshCluster:', e);
-    }
+    } catch(e) { console.error('refreshCluster:', e); }
 }
 
 function renderCluster() {
     if (!clusterData) return;
-
-    // Status cards
     const statusEl = document.getElementById('cluster-status');
-    if (clusterData.clustered) {
-        statusEl.innerHTML = '<span style="color:var(--success);">● Clustered</span>';
-    } else {
-        statusEl.innerHTML = '<span style="color:var(--warning);">● Standalone</span>';
-    }
+    statusEl.innerHTML = clusterData.clustered
+        ? '<span style="color:var(--success);">● Clustered</span>'
+        : '<span style="color:var(--warning);">● Standalone</span>';
 
     const nodes = clusterData.nodes || [];
     document.getElementById('online-nodes').textContent = nodes.filter(n => n.status === 'online').length + '/' + nodes.length;
@@ -165,21 +340,22 @@ function renderCluster() {
     const avgCpu = nodes.reduce((s, n) => s + (n.cpu_percent || 0), 0) / (nodes.length || 1);
     const avgMem = nodes.reduce((s, n) => s + (n.memory_percent || 0), 0) / (nodes.length || 1);
     document.getElementById('avg-cpu').textContent = avgCpu.toFixed(1) + '%';
-    document.getElementById('avg-mem').textContent = avgMem.toFixed(1) + '%';
+    document.getElementById('ha-guest-count').textContent = haGuests.length || '0';
 
     // Node list
     const list = document.getElementById('node-list');
     if (nodes.length === 0) {
-        list.innerHTML = '<tr><td colspan="7" class="nx-text-center" style="padding:32px;"><span style="color:var(--text-muted);">No cluster nodes found. Click "Join Cluster" to add nodes.</span></td></tr>';
+        list.innerHTML = '<tr><td colspan="8" class="nx-text-center" style="padding:32px;"><span style="color:var(--text-muted);">No cluster nodes. Click "Join Cluster" to add nodes.</span></td></tr>';
     } else {
         list.innerHTML = nodes.map(n => `
             <tr>
                 <td><span class="nx-badge ${n.status === 'online' ? 'nx-badge-success' : 'nx-badge-danger'}"><span class="dot"></span>${n.status || 'unknown'}</span></td>
-                <td style="font-weight:500;">${n.name || 'unknown'} ${n.local ? '<span style="color:var(--accent);font-size:var(--text-xs);">(local)</span>' : ''}</td>
+                <td style="font-weight:500;">${n.name || '?'} ${n.local ? '<span style="color:var(--accent);font-size:var(--text-xs);">(local)</span>' : ''}</td>
                 <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${n.address || '-'}</td>
                 <td style="font-family:var(--font-mono);font-size:var(--text-xs);">${n.node_id || '-'}</td>
                 <td>${(n.cpu_percent || 0).toFixed(1)}%</td>
                 <td>${(n.memory_percent || 0).toFixed(1)}%</td>
+                <td>${n.vm_count || 0}</td>
                 <td>
                     <div class="nx-flex nx-gap-1">
                         ${!n.local ? `<button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="removeNode('${n.name}')">Remove</button>` : ''}
@@ -189,31 +365,219 @@ function renderCluster() {
         `).join('');
     }
 
-    // Quorum
-    if (clusterData.quorum && Object.keys(clusterData.quorum).length > 0) {
-        const quorumHtml = `<div style="font-size:var(--text-sm);color:var(--text-secondary);">Quorum: ${JSON.stringify(clusterData.quorum)}</div>`;
-        list.innerHTML += `<tr><td colspan="7" style="padding:8px 16px;background:var(--bg-elevated);">${quorumHtml}</td></tr>`;
+    // Resource distribution
+    const resEl = document.getElementById('resource-dist');
+    if (nodes.length > 0) {
+        resEl.innerHTML = nodes.map(n => {
+            const cpuW = Math.min(n.cpu_percent || 0, 100);
+            const memW = Math.min(n.memory_percent || 0, 100);
+            return `<div style="margin-bottom:12px;">
+                <div style="font-size:var(--text-sm);font-weight:500;margin-bottom:4px;">${n.name || 'unknown'} ${n.local ? '(local)' : ''}</div>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <div style="flex:1;"><span style="font-size:var(--text-xs);color:var(--text-muted);width:60px;display:inline-block;">CPU</span>
+                        <div class="nx-progress" style="display:inline-block;width:calc(100% - 65px);"><div class="nx-progress-bar accent" style="width:${cpuW}%"></div></div>
+                        <span style="font-size:var(--text-xs);margin-left:4px;">${cpuW.toFixed(1)}%</span></div>
+                    <div style="flex:1;"><span style="font-size:var(--text-xs);color:var(--text-muted);width:60px;display:inline-block;">Memory</span>
+                        <div class="nx-progress" style="display:inline-block;width:calc(100% - 65px);"><div class="nx-progress-bar info" style="width:${memW}%"></div></div>
+                        <span style="font-size:var(--text-xs);margin-left:4px;">${memW.toFixed(1)}%</span></div>
+                </div>
+            </div>`;
+        }).join('');
+    } else {
+        resEl.innerHTML = '<div style="color:var(--text-muted);font-size:var(--text-sm);">No nodes in cluster</div>';
     }
 }
 
-async function refreshHA() {
+// ── Migration ──
+async function loadMigrationGuests() {
+    const type = document.getElementById('mig-type').value;
+    const guestSel = document.getElementById('mig-guest');
+    const targetSel = document.getElementById('mig-target');
+
+    // Load guests
     try {
-        const r = await fetch('/api/ha/status');
+        const url = type === 'vm' ? '/api/vms/' : '/api/containers/';
+        const r = await fetch(url);
         const data = await r.json();
-        const el = document.getElementById('ha-status');
-        if (data.active) {
-            el.innerHTML = `<div style="color:var(--success);font-weight:500;">HA Manager: Active</div>
-                <div style="font-size:var(--text-sm);color:var(--text-muted);margin-top:4px;">${data.status_text || ''}</div>`;
+        const items = type === 'vm' ? (data.vms || []) : (data.containers || []);
+        guestSel.innerHTML = '<option value="">— Select a guest —</option>' +
+            items.map(g => `<option value="${g.id}">${g.name} (${g.status || 'unknown'})</option>`).join('');
+        migrationGuests = items;
+    } catch(e) { console.error(e); }
+
+    // Load target nodes
+    try {
+        const r = await fetch('/api/cluster/nodes');
+        const data = await r.json();
+        const nodes = (data.nodes || []).filter(n => n.status === 'online');
+        targetSel.innerHTML = '<option value="">— Select target node —</option>' +
+            nodes.map(n => `<option value="${n.name}">${n.name} (${n.address || ''})</option>`).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function startMigration() {
+    const type = document.getElementById('mig-type').value;
+    const guestId = document.getElementById('mig-guest').value;
+    const target = document.getElementById('mig-target').value;
+    const live = document.getElementById('mig-live').checked;
+    const force = document.getElementById('mig-force').checked;
+
+    if (!guestId || !target) { showToast('Select a guest and target node', 'error'); return; }
+    if (!confirm(`Migrate ${type} ${guestId} to ${target}?`)) return;
+
+    document.getElementById('mig-status').innerHTML = '<div class="nx-alert nx-alert-info"><div class="nx-alert-text">Migration in progress...</div></div>';
+
+    try {
+        const fd = new FormData();
+        fd.append('target_node', target);
+        fd.append('live', live);
+        fd.append('force', force);
+        const url = type === 'vm' ? `/api/migration/vm/${guestId}/migrate` : `/api/migration/container/${guestId}/migrate`;
+        const r = await fetch(url, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            document.getElementById('mig-status').innerHTML = '<div class="nx-alert nx-alert-success"><div class="nx-alert-text">Migration completed successfully!</div></div>';
+            loadMigrationGuests();
         } else {
-            el.innerHTML = `<div style="color:var(--text-muted);">HA Manager: Inactive</div>
-                <div style="font-size:var(--text-sm);margin-top:4px;">Clustering not configured or HA not enabled.</div>`;
+            document.getElementById('mig-status').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-text">Migration failed: ${data.error || 'unknown error'}</div></div>`;
         }
     } catch(e) {
-        document.getElementById('ha-status').textContent = 'Failed to load HA status';
+        document.getElementById('mig-status').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-text">Error: ${e.message}</div></div>`;
     }
 }
 
-// Join modal
+async function loadMigrationHistory() {
+    // Placeholder - migration history would come from audit log
+    document.getElementById('mig-history').innerHTML = '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">Migration history will appear here after migrations are performed</td></tr>';
+}
+
+// ── HA Groups ──
+async function loadHAGroups() {
+    try {
+        const r = await fetch('/api/ha/groups');
+        const data = await r.json();
+        haGroups = data.groups || [];
+        const list = document.getElementById('ha-group-list');
+        if (haGroups.length === 0) {
+            list.innerHTML = '<tr><td colspan="7" class="nx-text-center nx-text-muted" style="padding:32px;">No HA groups configured. Create one to enable failover.</td></tr>';
+        } else {
+            list.innerHTML = haGroups.map(g => `
+                <tr>
+                    <td style="font-weight:500;">${g.name}</td>
+                    <td style="color:var(--text-muted);font-size:var(--text-sm);">${g.description || '-'}</td>
+                    <td style="font-size:var(--text-sm);">${g.nodes || '-'}</td>
+                    <td><span class="nx-badge nx-badge-info">${g.strategy || 'failover'}</span></td>
+                    <td>${g.max_restart || 3}</td>
+                    <td><span class="nx-badge ${g.enabled ? 'nx-badge-success' : 'nx-badge-neutral'}"><span class="dot"></span>${g.enabled ? 'Active' : 'Disabled'}</span></td>
+                    <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteHAGroup(${g.id})">Delete</button></td>
+                </tr>
+            `).join('');
+        }
+    } catch(e) { console.error(e); }
+}
+
+function showCreateGroup() { document.getElementById('create-group-modal').classList.add('open'); }
+
+async function submitGroup(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/ha/groups', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            showToast('HA group created', 'success');
+            document.getElementById('create-group-modal').classList.remove('open');
+            e.target.reset();
+            loadHAGroups();
+        } else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteHAGroup(id) {
+    if (!confirm('Delete this HA group?')) return;
+    try {
+        await fetch(`/api/ha/groups/${id}`, {method: 'DELETE'});
+        showToast('Group deleted', 'success');
+        loadHAGroups();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── HA Guests ──
+async function loadHAGuests() {
+    try {
+        const r = await fetch('/api/ha/guests');
+        const data = await r.json();
+        haGuests = data.guests || [];
+        document.getElementById('ha-guest-count').textContent = haGuests.length;
+
+        const list = document.getElementById('ha-guest-list');
+        if (haGuests.length === 0) {
+            list.innerHTML = '<tr><td colspan="8" class="nx-text-center nx-text-muted" style="padding:32px;">No HA guests configured. Add a guest to enable high availability.</td></tr>';
+        } else {
+            list.innerHTML = haGuests.map(g => {
+                const stateClass = g.state === 'started' ? 'nx-badge-success' : g.state === 'stopped' ? 'nx-badge-neutral' : 'nx-badge-warning';
+                return `<tr>
+                    <td style="font-weight:500;">${g.target_name || 'Guest ' + g.target_id}</td>
+                    <td><span class="nx-badge nx-badge-accent">${g.target_type}</span></td>
+                    <td style="font-family:monospace;">${g.target_id}</td>
+                    <td>${haGroups.find(gr => gr.id === g.group_id)?.name || '-'}</td>
+                    <td style="font-family:monospace;font-size:var(--text-xs);">${g.current_node || '-'}</td>
+                    <td>${g.priority || 0}</td>
+                    <td><span class="nx-badge ${stateClass}"><span class="dot"></span>${g.state || 'unknown'}</span></td>
+                    <td>
+                        <div class="nx-flex nx-gap-1">
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="haRestart(${g.id})">Restart</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removeHAGuest(${g.id})">Remove</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    } catch(e) { console.error(e); }
+}
+
+function showAddHAGuest() {
+    // Populate group select
+    const sel = document.getElementById('ha-guest-group');
+    sel.innerHTML = '<option value="0">— None —</option>' + haGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+    document.getElementById('add-guest-modal').classList.add('open');
+}
+
+async function submitHAGuest(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+        const r = await fetch('/api/ha/guests', {method: 'POST', body: fd});
+        const data = await r.json();
+        if (data.success) {
+            showToast('HA guest added', 'success');
+            document.getElementById('add-guest-modal').classList.remove('open');
+            e.target.reset();
+            loadHAGuests();
+        } else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function haRestart(guestId) {
+    if (!confirm('Restart this HA guest?')) return;
+    try {
+        const r = await fetch(`/api/ha/guests/${guestId}/restart`, {method: 'POST'});
+        const data = await r.json();
+        if (data.success) { showToast('Restart requested', 'success'); setTimeout(loadHAGuests, 2000); }
+        else showToast(data.error || 'Failed', 'error');
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+async function removeHAGuest(id) {
+    if (!confirm('Remove this guest from HA management?')) return;
+    try {
+        await fetch(`/api/ha/guests/${id}`, {method: 'DELETE'});
+        showToast('Guest removed from HA', 'success');
+        loadHAGuests();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+// ── Join / Token Modals ──
 function showJoinModal() { document.getElementById('join-modal').classList.add('open'); }
 function hideJoinModal() { document.getElementById('join-modal').classList.remove('open'); }
 
@@ -221,65 +585,53 @@ async function submitJoin() {
     const host = document.getElementById('join-host').value;
     const name = document.getElementById('join-cluster-name').value;
     if (!host) { showToast('Host is required', 'error'); return; }
-
     try {
         const fd = new FormData();
         fd.append('remote_host', host);
         fd.append('cluster_name', name);
         const r = await fetch('/api/cluster/join', {method: 'POST', body: fd});
         const data = await r.json();
-        if (data.success) {
-            showToast('Joined cluster!', 'success');
-            hideJoinModal();
-            setTimeout(refreshCluster, 2000);
-        } else {
-            document.getElementById('join-error').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-text">${data.error || 'Join failed'}</div></div>`;
-        }
+        if (data.success) { showToast('Joined cluster!', 'success'); hideJoinModal(); setTimeout(refreshCluster, 2000); }
+        else document.getElementById('join-error').innerHTML = `<div class="nx-alert nx-alert-danger"><div class="nx-alert-text">${data.error || 'Join failed'}</div></div>`;
     } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
-// Token modal
-function showTokenModal() { document.getElementById('token-modal').classList.add('open'); }
 function hideTokenModal() { document.getElementById('token-modal').classList.remove('open'); }
 
-async function generateToken() { showTokenModal(); }
+async function generateToken() { document.getElementById('token-modal').classList.add('open'); }
 
 async function submitToken() {
     const name = document.getElementById('token-node-name').value;
     if (!name) { showToast('Node name is required', 'error'); return; }
-
     try {
-        const fd = new FormData();
-        fd.append('node_name', name);
+        const fd = new FormData(); fd.append('node_name', name);
         const r = await fetch('/api/cluster/tokens/generate', {method: 'POST', body: fd});
         const data = await r.json();
         if (data.success) {
             document.getElementById('token-result').innerHTML = `
                 <div class="nx-card" style="margin:0;border-color:var(--accent);">
                     <div class="nx-card-body" style="padding:12px;">
-                        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Join Token (expires in 1 hour):</div>
+                        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:4px;">Join Token:</div>
                         <code style="font-size:var(--text-sm);word-break:break-all;background:var(--bg-overlay);padding:4px 8px;border-radius:var(--radius);display:block;">${data.token}</code>
-                        <button class="nx-btn nx-btn-ghost nx-btn-sm" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${data.token}');showToast('Copied!','success')">Copy to Clipboard</button>
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${data.token}');showToast('Copied!','success')">Copy</button>
                     </div>
                 </div>`;
-        } else {
-            document.getElementById('token-result').innerHTML = `<div style="color:var(--danger);">${data.error || 'Failed'}</div>`;
-        }
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+        } else document.getElementById('token-result').innerHTML = `<div style="color:var(--danger);">${data.error || 'Failed'}</div>`;
+    } catch(e) { showToast('Error', 'error'); }
 }
 
 async function removeNode(name) {
     if (!confirm(`Remove node "${name}" from the cluster?`)) return;
     try {
-        const r = await fetch(`/api/cluster/nodes/${name}`, {method: 'DELETE'});
-        const data = await r.json();
-        if (data.success) { showToast('Node removed', 'success'); setTimeout(refreshCluster, 1500); }
-        else showToast(data.error || 'Failed', 'error');
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+        await fetch(`/api/cluster/nodes/${name}`, {method: 'DELETE'});
+        showToast('Node removed', 'success'); setTimeout(refreshCluster, 1500);
+    } catch(e) { showToast('Error', 'error'); }
 }
 
-// Initial load
+// ── Init ──
 refreshCluster();
-refreshHA();
+loadHAGroups();
+loadHAGuests();
+setInterval(refreshCluster, 15000);
 </script>
 {% endblock %}

@@ -3,25 +3,18 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.feature_models import LDAPConfig
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 from ..services.ldap_service import LDAPService
 
 router = APIRouter()
 ldap_svc = LDAPService()
 
 
-def auth_check(request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/")
 async def get_ldap_config(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         config = db.query(LDAPConfig).first()
@@ -67,9 +60,8 @@ async def save_ldap_config(
     admin_group: str = Form("Domain Admins"),
     auditor_group: str = Form("Domain Users"),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         config = db.query(LDAPConfig).first()
@@ -99,17 +91,15 @@ async def save_ldap_config(
 
 @router.post("/test")
 async def test_ldap_connection(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = ldap_svc.test_connection()
     return JSONResponse(result)
 
 
 @router.post("/search")
 async def search_ldap_users(request: Request, query: str = Form("")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     users = ldap_svc.search_users(query)
     return JSONResponse({"users": users})

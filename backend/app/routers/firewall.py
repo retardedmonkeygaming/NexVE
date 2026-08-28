@@ -3,26 +3,19 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.firewall import FirewallRule, FirewallGroup
 from ..services.firewall_service import FirewallService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 fw_service = FirewallService()
 
-
-def auth_check(request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
 
 
 # ── Firewall rules API (JSON) ──
 
 @router.get("/rules")
 async def list_rules(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         rules = db.query(FirewallRule).order_by(FirewallRule.position).all()
@@ -73,9 +66,8 @@ async def create_rule(
     enabled: bool = Form(True),
     log: bool = Form(False),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -95,9 +87,8 @@ async def create_rule(
 
 @router.delete("/rules/{rule_id}")
 async def delete_rule(rule_id: int, request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         rule = db.query(FirewallRule).filter(FirewallRule.id == rule_id).first()
@@ -113,9 +104,8 @@ async def delete_rule(rule_id: int, request: Request):
 
 @router.post("/rules/{rule_id}/toggle")
 async def toggle_rule(rule_id: int, request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         rule = db.query(FirewallRule).filter(FirewallRule.id == rule_id).first()
@@ -132,9 +122,8 @@ async def toggle_rule(rule_id: int, request: Request):
 
 @router.get("/groups")
 async def list_groups(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         groups = db.query(FirewallGroup).all()
@@ -154,9 +143,8 @@ async def create_group(
     name: str = Form(...),
     comment: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         group = FirewallGroup(name=name, comment=comment)
@@ -169,9 +157,8 @@ async def create_group(
 
 @router.delete("/groups/{group_id}")
 async def delete_group(group_id: int, request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(FirewallGroup).filter(FirewallGroup.id == group_id).delete()
@@ -185,9 +172,8 @@ async def delete_group(group_id: int, request: Request):
 
 @router.post("/apply")
 async def apply_all_rules(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         fw_service.apply_rules(db, "host", "")
@@ -198,7 +184,6 @@ async def apply_all_rules(request: Request):
 
 @router.get("/stats")
 async def firewall_stats(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(fw_service.get_stats())

@@ -1,7 +1,7 @@
 """Shell: WebSocket-based terminal and command execution."""
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import subprocess
 import os
 import pty
@@ -14,12 +14,6 @@ import asyncio
 
 router = APIRouter()
 
-
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
 
 
 # ─── WebSocket Shell ───
@@ -150,9 +144,8 @@ async def shell_websocket(websocket: WebSocket):
 @router.post("/exec")
 async def shell_exec(request: Request, command: str = "", cwd: str = "/"):
     """Execute a shell command and return the output (fallback if WebSocket unavailable)."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     try:
         r = subprocess.run(
             command,

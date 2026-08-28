@@ -212,6 +212,37 @@ class VMService:
             hotplug_ram=config.get("hotplug_ram", False),
             is_template=config.get("is_template", False),
             linked_from=config.get("linked_from", None),
+            # Phase 1 hardware fields
+            tpm_enabled=config.get("tpm_enabled", False),
+            tpm_version=config.get("tpm_version", "v2.0"),
+            secure_boot=config.get("secure_boot", False),
+            scsi_hw=config.get("scsi_hw", "virtio-scsi-single"),
+            cpu_sockets=config.get("cpu_sockets", 1),
+            cpu_cores=config.get("cpu_cores", None),
+            cpu_threads=config.get("cpu_threads", 1),
+            numa=config.get("numa", False),
+            hugepages=config.get("hugepages", "none"),
+            cloud_init=config.get("cloud_init", False),
+            cloud_init_user=config.get("cloud_init_user", None),
+            cloud_init_sshkey=config.get("cloud_init_sshkey", None),
+            cloud_init_ip=config.get("cloud_init_ip", None),
+            cloud_init_gateway=config.get("cloud_init_gateway", None),
+            cloud_init_dns=config.get("cloud_init_dns", None),
+            extra_disks=json.dumps(config.get("extra_disks", [])) if config.get("extra_disks") else None,
+            extra_nics=json.dumps(config.get("extra_nics", [])) if config.get("extra_nics") else None,
+            # Phase 2 hardware fields
+            cpu_units=config.get("cpu_units", 1024),
+            cpu_limit=config.get("cpu_limit", None),
+            memory_min=config.get("memory_min", None),
+            vga_display=config.get("vga_display", "std"),
+            vga_memory=config.get("vga_memory", None),
+            watchdog_model=config.get("watchdog_model", None),
+            disk_cache=config.get("disk_cache", "none"),
+            disk_discard=config.get("disk_discard", False),
+            disk_iothread=config.get("disk_iothread", False),
+            disk_ssd=config.get("disk_ssd", False),
+            efidisk_size=config.get("efidisk_size", None),
+            cpu_affinity=config.get("cpu_affinity", None),
         )
         db.add(vm)
         db.commit()
@@ -234,7 +265,20 @@ class VMService:
             "disk_interface", "os_type", "machine_type", "bios_type",
             "boot_order", "notes", "serial_console", "agent_enabled",
             "balloon", "hotplug_cpu", "hotplug_ram",
+            # Phase 1 fields
+            "tpm_enabled", "tpm_version", "secure_boot", "scsi_hw",
+            "cpu_sockets", "cpu_cores", "cpu_threads", "numa", "hugepages",
+            "cloud_init", "cloud_init_user", "cloud_init_sshkey",
+            "cloud_init_ip", "cloud_init_gateway", "cloud_init_dns",
+            # Phase 2 fields
+            "cpu_units", "cpu_limit", "memory_min", "vga_display",
+            "vga_memory", "watchdog_model", "disk_cache", "disk_discard",
+            "disk_iothread", "disk_ssd", "efidisk_size", "cpu_affinity",
         ]:
+            # Handle JSON fields specially
+            if key in ("extra_disks", "extra_nics") and key in config:
+                setattr(vm, key, json.dumps(config[key]))
+                continue
             if key in config:
                 setattr(vm, key, config[key])
 
@@ -278,19 +322,45 @@ class VMService:
             db.commit()
         return result
 
-    def stop_vm(self, db, vm_id: int) -> dict:
+    def stop_vm(self, db, vm_id: int, mode: str = "stop") -> dict:
         vm = db.query(VM).filter(VM.id == vm_id).first()
         if not vm:
             return {"success": False, "error": "VM not found"}
-        return self._stop_libvirt_vm(vm.name)
+        return self._stop_libvirt_vm(vm.name, mode)
 
-    def restart_vm(self, db, vm_id: int) -> dict:
+    def restart_vm(self, db, vm_id: int, mode: str = "restart") -> dict:
+        """Restart a VM.
+        
+        Modes:
+            restart — Send reset signal (equivalent to pressing reset button)
+            stop    — Full stop then start (power cycle)
+        """
         vm = db.query(VM).filter(VM.id == vm_id).first()
         if not vm:
             return {"success": False, "error": "VM not found"}
-        self._stop_libvirt_vm(vm.name)
-        result = self._start_libvirt_vm(vm.name)
-        if result["success"]:
+        
+        if mode == "restart":
+            # True reset — send reset signal via libvirt
+            conn = self._ensure_conn()
+            if conn:
+                try:
+                    dom = conn.lookupByName(vm.name)
+                    if dom.state()[0] == libvirt.VIR_DOMAIN_RUNNING:
+                        dom.reset(0)
+                        vm.last_started = datetime.utcnow()
+                        db.commit()
+                        return {"success": True, "message": "VM reset signal sent"}
+                except libvirt.libvirtError:
+                    pass
+            # Fall back to stop+start if reset fails
+            self._stop_libvirt_vm(vm.name, mode="stop")
+            result = self._start_libvirt_vm(vm.name)
+        else:
+            # Full stop then start
+            self._stop_libvirt_vm(vm.name, mode="stop")
+            result = self._start_libvirt_vm(vm.name)
+        
+        if result.get("success"):
             vm.last_started = datetime.utcnow()
             db.commit()
         return result
@@ -310,6 +380,15 @@ class VMService:
             serial_console=vm.serial_console, agent_enabled=vm.agent_enabled,
             balloon=vm.balloon, mac_address=self._generate_mac(),
             linked_from=vm.id if linked else None,
+            tpm_enabled=vm.tpm_enabled, tpm_version=vm.tpm_version,
+            secure_boot=vm.secure_boot, scsi_hw=vm.scsi_hw,
+            cpu_sockets=vm.cpu_sockets, cpu_cores=vm.cpu_cores, cpu_threads=vm.cpu_threads,
+            numa=vm.numa, hugepages=vm.hugepages,
+            cpu_units=vm.cpu_units, cpu_limit=vm.cpu_limit, memory_min=vm.memory_min,
+            vga_display=vm.vga_display, vga_memory=vm.vga_memory,
+            watchdog_model=vm.watchdog_model, disk_cache=vm.disk_cache,
+            disk_discard=vm.disk_discard, disk_iothread=vm.disk_iothread,
+            disk_ssd=vm.disk_ssd, cpu_affinity=vm.cpu_affinity,
         )
         db.add(new_vm)
         db.commit()
@@ -730,7 +809,14 @@ class VMService:
                      machine_type=template.machine_type, bios_type=template.bios_type, boot_order=template.boot_order,
                      mac_address=mac, serial_console=template.serial_console, agent_enabled=template.agent_enabled,
                      balloon=template.balloon, tpm_enabled=template.tpm_enabled, secure_boot=template.secure_boot,
-                     scsi_hw=template.scsi_hw, numa=template.numa, notes=f"From template: {template.name}")
+                     scsi_hw=template.scsi_hw, numa=template.numa, hugepages=template.hugepages,
+                     cpu_sockets=template.cpu_sockets, cpu_cores=template.cpu_cores, cpu_threads=template.cpu_threads,
+                     cpu_units=template.cpu_units, cpu_limit=template.cpu_limit, memory_min=template.memory_min,
+                     vga_display=template.vga_display, vga_memory=template.vga_memory,
+                     watchdog_model=template.watchdog_model, disk_cache=template.disk_cache,
+                     disk_discard=template.disk_discard, disk_iothread=template.disk_iothread,
+                     disk_ssd=template.disk_ssd, cpu_affinity=template.cpu_affinity,
+                     notes=f"From template: {template.name}")
         db.add(new_vm)
         db.commit()
         db.refresh(new_vm)
@@ -871,30 +957,79 @@ class VMService:
             return {"error": error_msg, "diagnostics": diag}
 
         mem_kb = vm.memory_mb * 1024
+        mem_min_kb = (vm.memory_min or vm.memory_mb) * 1024
         disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
 
         if not os.path.exists(disk_path):
             cmd = f"qemu-img create -f qcow2 {disk_path} {vm.disk_gb}G"
             subprocess.run(cmd, shell=True, capture_output=True)
 
-        bios_xml = ""
-        if vm.bios_type == "ovmf":
-            bios_xml = f"<os><type arch='x86_64' machine='pc-q35-8.2'>hvm</type><loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE.fd</loader><nvram>/var/lib/libvirt/qemu/nvram/{vm.name}_VARS.fd</nvram><boot dev='{vm.boot_order[0] if vm.boot_order else 'c'}'/></os>"
-        else:
-            bios_xml = f"<os><type arch='x86_64' machine='{vm.machine_type}'>hvm</type><boot dev='{vm.boot_order[0] if vm.boot_order else 'c'}'/></os>"
+        # CPU topology
+        sockets = vm.cpu_sockets or 1
+        cores = vm.cpu_cores or vm.vcpu
+        threads = vm.cpu_threads or 1
+        cpu_topology = f"<topology sockets='{sockets}' cores='{cores}' threads='{threads}'/>"
+        
+        # CPU tuning (shares, limit)
+        cpu_tuning = ""
+        if vm.cpu_units and vm.cpu_units != 1024:
+            cpu_tuning += f"<shares>{vm.cpu_units}</shares>"
+        if vm.cpu_limit:
+            cpu_tuning += f"<quota>{int(vm.cpu_limit * 1000)}</quota>"
+        cpu_tuning_xml = f"<cputune>{cpu_tuning}</cputune>" if cpu_tuning else ""
 
+        # NUMA
+        numa_xml = "<numatune><memory mode='strict' nodeset='0'/></numatune>" if vm.numa else ""
+
+        # Memory backing (hugepages)
+        membacking_xml = ""
+        if vm.hugepages and vm.hugepages != "none":
+            hp_size = int(vm.hugepages) * 1024  # Convert to KiB
+            membacking_xml = f"<memoryBacking><hugepages><page size='{hp_size}' unit='KiB'/></hugepages></memoryBacking>"
+
+        # BIOS/OS
+        boot_dev = vm.boot_order[0] if vm.boot_order else "c"
+        if vm.bios_type == "ovmf":
+            bios_xml = f"<os><type arch='x86_64' machine='pc-q35-8.2'>hvm</type><loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE.fd</loader><nvram>/var/lib/libvirt/qemu/nvram/{vm.name}_VARS.fd</nvram><boot dev='{boot_dev}'/></os>"
+        else:
+            bios_xml = f"<os><type arch='x86_64' machine='{vm.machine_type}'>hvm</type><boot dev='{boot_dev}'/></os>"
+
+        # Disk driver options
+        cache = vm.disk_cache or "none"
+        discard_attr = " discard='unmap'" if vm.disk_discard else ""
+        iothread_attr = " iothread='1'" if vm.disk_iothread and vm.disk_interface == "scsi" else ""
+        rotation_attr = " rotation='0'" if vm.disk_ssd else ""
+        disk_driver = f"<driver name='qemu' type='qcow2' cache='{cache}'{discard_attr}{rotation_attr}/>"
+
+        # Serial/Agent/Balloon
         serial_xml = "<serial type='pty'><target port='0'/></serial><console type='pty'><target type='serial' port='0'/></console>" if vm.serial_console else ""
         agent_xml = "<channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>" if vm.agent_enabled else ""
         balloon_xml = "<memballoon model='virtio'/>" if vm.balloon else ""
 
+        # Watchdog
+        watchdog_xml = f"<watchdog model='{vm.watchdog_model}' action='reset'/>" if vm.watchdog_model else ""
+
+        # VGA display
+        vga_map = {"std": "std", "vmware": "vmware", "virtio": "virtio", "serial": "none", "none": "none"}
+        vga_type = vga_map.get(vm.vga_display or "std", "std")
+        if vga_type == "none" and vm.vga_display == "serial":
+            graphics_xml = "<serial type='pty'><target port='1'/></serial>"
+        else:
+            graphics_xml = f"<graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'><listen type='address' address='0.0.0.0'/></graphics><video><model type='{vga_type}' vram='16384' heads='1'/></video>"
+
         vm_xml = f"""<domain type='kvm'>
             <name>{vm.name}</name>
             <memory unit='KiB'>{mem_kb}</memory>
+            <maxmemory unit='KiB'>{mem_kb}</maxmemory>
             <vcpu placement='static'>{vm.vcpu}</vcpu>
+            {cpu_topology}
+            {cpu_tuning_xml}
+            {numa_xml}
+            {membacking_xml}
             {bios_xml}
             <devices>
                 <disk type='file' device='disk'>
-                    <driver name='qemu' type='qcow2'/>
+                    {disk_driver}
                     <source file='{disk_path}'/>
                     <target dev='vda' bus='{vm.disk_interface}'/>
                 </disk>
@@ -903,10 +1038,8 @@ class VMService:
                     <mac address='{vm.mac_address}'/>
                     <model type='virtio'/>
                 </interface>
-                <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>
-                    <listen type='address' address='0.0.0.0'/>
-                </graphics>
-                {serial_xml}{agent_xml}{balloon_xml}
+                {graphics_xml}
+                {serial_xml}{agent_xml}{balloon_xml}{watchdog_xml}
             </devices>
         </domain>"""
 
@@ -942,17 +1075,44 @@ class VMService:
         except libvirt.libvirtError as e:
             return {"success": False, "error": str(e)}
 
-    def _stop_libvirt_vm(self, name: str) -> dict:
+    def _stop_libvirt_vm(self, name: str, mode: str = "stop") -> dict:
+        """Stop a VM with different shutdown modes.
+        
+        Modes:
+            acpi  — Send ACPI shutdown signal (graceful, guest OS decides)
+            init  — Use QEMU guest agent to shutdown (if available)
+            stop  — Force power off (destroy)
+        """
         conn = self._ensure_conn()
         if not conn:
             return {"success": False, "error": "libvirt not available"}
         try:
             dom = conn.lookupByName(name)
-            if dom.state()[0] == libvirt.VIR_DOMAIN_RUNNING:
-                dom.destroy()
-            else:
+            state = dom.state()[0]
+            
+            if state != libvirt.VIR_DOMAIN_RUNNING:
+                return {"success": True, "message": "VM is already stopped"}
+            
+            if mode == "acpi":
+                # Send ACPI shutdown signal — guest OS handles gracefully
                 dom.shutdown()
-            return {"success": True}
+                return {"success": True, "message": "ACPI shutdown signal sent"}
+            
+            elif mode == "init":
+                # Try guest agent shutdown first, fall back to ACPI
+                try:
+                    dom.agentCommand("guest-shutdown", 0, 0)
+                    return {"success": True, "message": "Guest agent shutdown initiated"}
+                except Exception:
+                    # Guest agent not available, fall back to ACPI
+                    dom.shutdown()
+                    return {"success": True, "message": "ACPI shutdown sent (guest agent unavailable)"}
+            
+            else:  # mode == "stop" or default
+                # Force power off
+                dom.destroy()
+                return {"success": True, "message": "VM forcefully stopped"}
+                
         except libvirt.libvirtError as e:
             return {"success": False, "error": str(e)}
 

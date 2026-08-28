@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.user import User
 from ..services.totp_service import TOTPService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 totp_service = TOTPService()
@@ -11,15 +11,14 @@ totp_service = TOTPService()
 
 @router.get("/setup")
 async def totp_setup_page(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
         db_user = db.query(User).filter(User.id == user["id"]).first()
         if not db_user:
-            return RedirectResponse(url="/login", status_code=302)
+            return JSONResponse({"error": "User not found"}, status_code=404)
 
         if db_user.totp_enabled:
             return JSONResponse(content={"message": "2FA is already enabled"})
@@ -44,9 +43,8 @@ async def totp_enable(
     secret: str = Form(...),
     code: str = Form(...),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     # Verify the code against the secret
     if not totp_service.verify(secret, code):
@@ -68,9 +66,8 @@ async def totp_disable(
     request: Request,
     code: str = Form(...),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:

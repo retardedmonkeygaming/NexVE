@@ -28,6 +28,46 @@ class StorageService:
     # ZFS
     # ──────────────────────────────────────────────
 
+    def _ensure_zfs_loaded(self) -> dict:
+        """Check if ZFS kernel module is loaded; try to load it if not."""
+        # Check if zfs module is loaded
+        check = self.run_cmd("lsmod | grep -q zfs && echo loaded || echo missing")
+        if check["stdout"].strip() == "loaded":
+            return {"success": True}
+        
+        # Try to load the module
+        load = self.run_cmd("modprobe zfs 2>&1")
+        if load["success"]:
+            return {"success": True}
+        
+        # Try alternative: check if zfs tools exist
+        tools_check = self.run_cmd("which zpool 2>/dev/null")
+        if not tools_check["success"]:
+            return {
+                "success": False,
+                "error": "ZFS tools not installed.",
+                "hint": "Install ZFS: apt install zfsutils-linux\nOn Proxmox: apt install zfsutils-linux"
+            }
+        
+        return {
+            "success": False,
+            "error": f"ZFS kernel module cannot be loaded: {load.get('stderr', 'unknown error')}",
+            "hint": "Try running: modprobe zfs\nIf that fails, ensure ZFS kernel modules are installed:\n  apt install zfsutils-linux linux-headers-$(uname -r)\nThen reboot."
+        }
+
+    def zfs_status(self) -> dict:
+        """Get ZFS system status."""
+        loaded = self.run_cmd("lsmod | grep -q zfs && echo loaded || echo missing")
+        tools = self.run_cmd("which zpool 2>/dev/null && echo available || echo missing")
+        pools = self.zfs_list_pools()
+        return {
+            "module_loaded": loaded["stdout"].strip() == "loaded",
+            "tools_available": tools["stdout"].strip() == "available",
+            "pool_count": len(pools),
+            "pools": pools,
+        }
+
+
     def zfs_list_pools(self) -> List[dict]:
         r = self.run_cmd("zpool list -H -o name,size,used,avail,cap,health -J")
         if not r["success"]:
@@ -49,6 +89,10 @@ class StorageService:
             return []
 
     def zfs_create_pool(self, name: str, device: str, force: bool = False) -> dict:
+        # Ensure ZFS module is loaded
+        check = self._ensure_zfs_loaded()
+        if not check["success"]:
+            return check
         force_flag = "-f" if force else ""
         return self.run_cmd(f"zpool create {force_flag} {name} {device}")
 
@@ -69,9 +113,15 @@ class StorageService:
             return []
 
     def zfs_create_volume(self, pool: str, name: str, size_gb: int) -> dict:
+        check = self._ensure_zfs_loaded()
+        if not check["success"]:
+            return check
         return self.run_cmd(f"zfs create -V {size_gb}G {pool}/{name}")
 
     def zfs_create_dataset(self, pool: str, name: str) -> dict:
+        check = self._ensure_zfs_loaded()
+        if not check["success"]:
+            return check
         return self.run_cmd(f"zfs create {pool}/{name}")
 
     def zfs_destroy(self, volume: str) -> dict:

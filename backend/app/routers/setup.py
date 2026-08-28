@@ -379,132 +379,143 @@ async def factory_reset(request: Request):
     import subprocess
     import shutil
     import os
+    import glob
 
     errors = []
+    warnings = []
+
+    def _run(cmd, timeout=15):
+        """Run a command safely, return (success, stdout, stderr)."""
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+            return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
+        except subprocess.TimeoutExpired:
+            return False, "", "Timeout"
+        except Exception as e:
+            return False, "", str(e)
 
     # 1. Stop and undefine all VMs via virsh
-    try:
-        r = subprocess.run("virsh list --name 2>/dev/null", shell=True, capture_output=True, text=True, timeout=10)
-        for vm_name in r.stdout.strip().splitlines():
-            if vm_name.strip():
-                subprocess.run(f"virsh destroy {vm_name.strip()} 2>/dev/null", shell=True, capture_output=True, timeout=10)
-                subprocess.run(f"virsh undefine {vm_name.strip()} --remove-all-storage 2>/dev/null", shell=True, capture_output=True, timeout=10)
-    except Exception as e:
-        errors.append(f"VM cleanup: {str(e)}")
+    has_virsh, _, _ = _run("which virsh 2>/dev/null")
+    if has_virsh:
+        ok, stdout, _ = _run("virsh list --name 2>/dev/null")
+        if ok and stdout:
+            for vm_name in stdout.splitlines():
+                vm_name = vm_name.strip()
+                if vm_name:
+                    _run(f"virsh destroy {vm_name} 2>/dev/null")
+                    _run(f"virsh undefine {vm_name} --remove-all-storage 2>/dev/null")
+    else:
+        warnings.append("virsh not found, skipping VM undefine")
 
     # 2. Stop and destroy all LXC containers
-    try:
-        r = subprocess.run("lxc-ls 2>/dev/null || true", shell=True, capture_output=True, text=True, timeout=10)
-        for ct_name in r.stdout.strip().splitlines():
-            ct_name = ct_name.strip().strip("*").strip()
-            if ct_name:
-                subprocess.run(f"lxc-stop -n {ct_name} -t 5 2>/dev/null", shell=True, capture_output=True, timeout=15)
-                subprocess.run(f"lxc-destroy -n {ct_name} --force 2>/dev/null", shell=True, capture_output=True, timeout=15)
-    except Exception as e:
-        errors.append(f"Container cleanup: {str(e)}")
+    has_lxc, _, _ = _run("which lxc-ls 2>/dev/null || which lxc-info 2>/dev/null")
+    if has_lxc:
+        ok, stdout, _ = _run("lxc-ls 2>/dev/null || true")
+        if ok and stdout:
+            for ct_name in stdout.splitlines():
+                ct_name = ct_name.strip().strip("*").strip()
+                if ct_name:
+                    _run(f"lxc-stop -n {ct_name} -t 5 2>/dev/null")
+                    _run(f"lxc-destroy -n {ct_name} --force 2>/dev/null")
+    else:
+        warnings.append("LXC tools not found, skipping container destroy")
 
-    # 3. Remove all LXC rootfs directories
+    # 3. Remove all LXC rootfs directories (fallback if lxc-destroy failed)
     lxc_dir = "/var/lib/lxc"
     if os.path.isdir(lxc_dir):
         try:
             for item in os.listdir(lxc_dir):
                 path = os.path.join(lxc_dir, item)
-                if os.path.isdir(path) and item.isdigit():
+                if os.path.isdir(path) and (item.isdigit() or item == "rootfs"):
                     shutil.rmtree(path, ignore_errors=True)
         except Exception as e:
-            errors.append(f"LXC cleanup: {str(e)}")
+            errors.append(f"LXC directory cleanup: {e}")
 
-    # 4. Remove VM disk images
+    # 4. Destroy ZFS datasets for containers
+    _run("zfs destroy -r lxc 2>/dev/null || true")
+
+    # 5. Remove VM disk images
     vm_dirs = ["/var/lib/libvirt/images", "/var/lib/nexve/vms"]
     for vm_dir in vm_dirs:
         if os.path.isdir(vm_dir):
             try:
-                shutil.rmtree(vm_dir, ignore_errors=True)
-                os.makedirs(vm_dir, exist_ok=True)
+                for item in os.listdir(vm_dir):
+                    item_path = os.path.join(vm_dir, item)
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path, ignore_errors=True)
             except Exception as e:
-                errors.append(f"VM disk cleanup: {str(e)}")
+                errors.append(f"VM disk cleanup ({vm_dir}): {e}")
 
-    # 5. Remove ISO images
-    iso_dir = "/var/lib/nexve/iso"
-    if os.path.isdir(iso_dir):
-        try:
-            for f in os.listdir(iso_dir):
-                os.remove(os.path.join(iso_dir, f))
-        except Exception as e:
-            errors.append(f"ISO cleanup: {str(e)}")
+    # 6. Remove ISO images
+    iso_dirs = ["/var/lib/nexve/iso", "/opt/nexve/data/isos"]
+    for iso_dir in iso_dirs:
+        if os.path.isdir(iso_dir):
+            try:
+                for f in os.listdir(iso_dir):
+                    fpath = os.path.join(iso_dir, f)
+                    if os.path.isfile(fpath):
+                        os.remove(fpath)
+            except Exception as e:
+                errors.append(f"ISO cleanup: {e}")
 
-    # 6. Remove backup files
-    backup_dir = "/opt/nexve/data/backups"
-    if os.path.isdir(backup_dir):
-        try:
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        except Exception as e:
-            errors.append(f"Backup cleanup: {str(e)}")
+    # 7. Remove backup files
+    backup_dirs = ["/opt/nexve/data/backups", os.path.expanduser("~/.nexve/backups")]
+    for backup_dir in backup_dirs:
+        if os.path.isdir(backup_dir):
+            try:
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            except Exception as e:
+                errors.append(f"Backup cleanup: {e}")
 
-    # 7. Remove NexVE config files
+    # 8. Remove NexVE config/data directories
     config_dirs = ["/etc/nexve", "/opt/nexve/data", "/var/lib/nexve"]
     for d in config_dirs:
         if os.path.isdir(d):
             try:
                 shutil.rmtree(d, ignore_errors=True)
             except Exception as e:
-                errors.append(f"Config cleanup ({d}): {str(e)}")
+                errors.append(f"Config cleanup ({d}): {e}")
 
-    # 8. Wipe database tables
+    # 9. Wipe ALL database tables
+    from sqlalchemy import text
     db = SessionLocal()
     try:
-        # Delete all data from all NexVE tables
-        db.execute("DELETE FROM tasks")
-        db.execute("DELETE FROM task_log")
-        db.execute("DELETE FROM audit_log")
-        db.execute("DELETE FROM activity_log")
-        db.execute("DELETE FROM notifications")
-        db.execute("DELETE FROM vms")
-        db.execute("DELETE FROM containers")
-        db.execute("DELETE FROM backup_schedules")
-        db.execute("DELETE FROM api_tokens")
-        db.execute("DELETE FROM firewall_rules")
-        db.execute("DELETE FROM firewall_groups")
-        db.execute("DELETE FROM storage")
-        db.execute("DELETE FROM iso_images")
-        db.execute("DELETE FROM sessions")
-        db.execute("DELETE FROM users")
-        db.execute("DELETE FROM groups")
-        db.execute("DELETE FROM roles")
-        # Enhanced tables
-        for table in ["migration_jobs", "ha_groups", "ha_guests", "cluster_nodes",
-                       "cluster_config", "sdn_zones", "sdn_vnets", "ceph_config",
-                       "ssl_certificates", "acme_accounts", "backup_records",
-                       "backup_remotes", "notification_targets", "notification_rules",
-                       "system_settings", "settings_history", "user_ssh_keys",
-                       "user_quotas", "user_sessions", "storage_tiers",
-                       "firewall_stats", "vm_firewall_rules", "firewall_macros"]:
+        # Get all table names
+        from sqlalchemy import inspect as sqla_inspect
+        inspector = sqla_inspect(db.get_bind())
+        tables = inspector.get_table_names()
+
+        for table in tables:
             try:
-                db.execute(f"DELETE FROM {table}")
+                db.execute(text(f"DELETE FROM {table}"))
             except Exception:
                 pass
-        # Feature tables
-        for table in ["vm_tags", "vm_tag_assignments", "resource_pools",
-                       "resource_pool_members", "ldap_config", "client_cert_config",
-                       "network_security_groups", "security_group_rules",
-                       "security_group_assignments", "network_firewall_aliases",
-                       "firewall_alias_entries", "network_rate_limits"]:
-            try:
-                db.execute(f"DELETE FROM {table}")
-            except Exception:
-                pass
+
         db.commit()
     except Exception as e:
-        errors.append(f"Database cleanup: {str(e)}")
+        errors.append(f"Database cleanup: {e}")
     finally:
         db.close()
 
-    # 9. Remove nftables rules
-    subprocess.run("nft flush table inet nexve 2>/dev/null || true", shell=True, capture_output=True)
+    # 10. Remove nftables rules
+    _run("nft flush table inet nexve 2>/dev/null || true")
+    _run("nft delete table inet nexve 2>/dev/null || true")
 
-    if errors:
-        return JSONResponse({"success": True, "warnings": errors, "message": "Factory reset completed with warnings"})
-    return JSONResponse({"success": True, "message": "Factory reset complete. All VMs, containers, storage, users, and configurations have been removed."})
+    # 11. Remove cron jobs
+    _run("crontab -r 2>/dev/null || true")
+
+    msg = "Factory reset complete. All VMs, containers, storage, users, and configurations have been removed."
+    if warnings:
+        msg += f" ({len(warnings)} warnings)"
+
+    return JSONResponse({
+        "success": True,
+        "message": msg,
+        "warnings": warnings if warnings else None,
+        "errors": errors if errors else None,
+    })
 
 
 @router.get("/factory-reset")

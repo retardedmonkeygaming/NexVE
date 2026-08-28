@@ -3,33 +3,25 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.vm import VM
 from ..services.vm_service import VMService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 from ..task_utils import log_task
 
 router = APIRouter()
 vm_service = VMService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/")
 async def list_vms(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content={"vms": vm_service.get_all_vms(SessionLocal())})
 
 
 @router.get("/{vm_id}")
 async def get_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = vm_service.get_vm(db, vm_id)
@@ -45,14 +37,25 @@ async def create_vm(
     request: Request,
     name: str = Form(...),
     vcpu: int = Form(2),
-    memory_mb: int = Form(2048),
-    disk_gb: int = Form(50),
-    os_type: str = Form("linux"),
+    cpu_sockets: int = Form(1),
+    cpu_cores: int = Form(0),
+    cpu_threads: int = Form(1),
     cpu_type: str = Form("host"),
+    cpu_units: int = Form(1024),
+    cpu_limit: float = Form(0),
+    memory_mb: int = Form(2048),
+    memory_min: int = Form(0),
+    disk_gb: int = Form(50),
+    disk_interface: str = Form("virtio"),
+    disk_cache: str = Form("none"),
+    disk_discard: bool = Form(False),
+    disk_iothread: bool = Form(False),
+    disk_ssd: bool = Form(False),
+    os_type: str = Form("linux"),
     machine_type: str = Form("q35"),
     bios_type: str = Form("seabios"),
     boot_order: str = Form("c"),
-    disk_interface: str = Form("virtio"),
+    vga_display: str = Form("std"),
     serial_console: bool = Form(False),
     agent_enabled: bool = Form(True),
     balloon: bool = Form(False),
@@ -60,25 +63,36 @@ async def create_vm(
     secure_boot: bool = Form(False),
     numa: bool = Form(False),
     hugepages: str = Form("none"),
+    watchdog_model: str = Form(""),
     notes: str = Form(""),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
         result = vm_service.create_vm(db, {
             "name": name,
             "vcpu": vcpu,
-            "memory_mb": memory_mb,
-            "disk_gb": disk_gb,
-            "os_type": os_type,
+            "cpu_sockets": cpu_sockets,
+            "cpu_cores": cpu_cores or vcpu,
+            "cpu_threads": cpu_threads,
             "cpu_type": cpu_type,
+            "cpu_units": cpu_units,
+            "cpu_limit": cpu_limit if cpu_limit else None,
+            "memory_mb": memory_mb,
+            "memory_min": memory_min if memory_min else None,
+            "disk_gb": disk_gb,
+            "disk_interface": disk_interface,
+            "disk_cache": disk_cache,
+            "disk_discard": disk_discard,
+            "disk_iothread": disk_iothread,
+            "disk_ssd": disk_ssd,
+            "os_type": os_type,
             "machine_type": machine_type,
             "bios_type": bios_type,
             "boot_order": boot_order,
-            "disk_interface": disk_interface,
+            "vga_display": vga_display,
             "serial_console": serial_console,
             "agent_enabled": agent_enabled,
             "balloon": balloon,
@@ -86,6 +100,7 @@ async def create_vm(
             "secure_boot": secure_boot,
             "numa": numa,
             "hugepages": hugepages,
+            "watchdog_model": watchdog_model or None,
             "notes": notes,
         })
         return JSONResponse(content=result)
@@ -95,17 +110,19 @@ async def create_vm(
 
 @router.post("/{vm_id}/update")
 async def update_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     form = await request.form()
     config = {}
     updatable = [
-        "name", "vcpu", "cpu_type", "memory_mb", "disk_gb",
-        "disk_interface", "os_type", "machine_type", "bios_type",
-        "boot_order", "notes", "serial_console", "agent_enabled",
-        "balloon", "hotplug_cpu", "hotplug_ram",
+        "name", "vcpu", "cpu_sockets", "cpu_cores", "cpu_threads",
+        "cpu_type", "cpu_units", "cpu_limit", "memory_mb", "memory_min",
+        "disk_gb", "disk_interface", "disk_cache", "disk_discard",
+        "disk_iothread", "disk_ssd", "os_type", "machine_type", "bios_type",
+        "boot_order", "vga_display", "watchdog_model",
+        "notes", "serial_console", "agent_enabled",
+        "balloon", "hotplug_cpu", "hotplug_ram", "numa", "hugepages",
     ]
     for key in updatable:
         if key in form:
@@ -131,9 +148,8 @@ async def update_vm(request: Request, vm_id: int):
 
 @router.post("/{vm_id}/delete")
 async def delete_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.delete_vm(db, vm_id)
@@ -144,9 +160,8 @@ async def delete_vm(request: Request, vm_id: int):
 
 @router.post("/{vm_id}/start")
 async def start_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.start_vm(db, vm_id)
@@ -157,27 +172,40 @@ async def start_vm(request: Request, vm_id: int):
 
 
 @router.post("/{vm_id}/stop")
-async def stop_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+async def stop_vm(request: Request, vm_id: int, mode: str = Form("stop")):
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
-        result = vm_service.stop_vm(db, vm_id)
+        result = vm_service.stop_vm(db, vm_id, mode)
         log_task(user.id, user.username, "vm.stop", "vm", str(vm_id), "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
+    finally:
+        db.close()
+
+@router.post("/{vm_id}/shutdown")
+async def shutdown_vm(request: Request, vm_id: int, mode: str = Form("acpi")):
+    """Graceful shutdown via ACPI or guest agent."""
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        result = vm_service.stop_vm(db, vm_id, mode)
+        log_task(user.id, user.username, "vm.shutdown", "vm", str(vm_id), "completed" if result.get("success") else "failed")
         return JSONResponse(content=result)
     finally:
         db.close()
 
 
 @router.post("/{vm_id}/restart")
-async def restart_vm(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+async def restart_vm(request: Request, vm_id: int, mode: str = Form("restart")):
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
-        return JSONResponse(content=vm_service.restart_vm(db, vm_id))
+        result = vm_service.restart_vm(db, vm_id, mode)
+        log_task(user.id, user.username, "vm.restart", "vm", str(vm_id), "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
     finally:
         db.close()
 
@@ -189,9 +217,8 @@ async def clone_vm(
     new_name: str = Form(...),
     linked: bool = Form(False),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.clone_vm(db, vm_id, new_name, linked))
@@ -205,9 +232,8 @@ async def resize_disk(
     vm_id: int,
     new_size_gb: int = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.resize_disk(db, vm_id, new_size_gb))
@@ -217,9 +243,8 @@ async def resize_disk(
 
 @router.get("/{vm_id}/config")
 async def vm_config(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         vm = vm_service.get_vm(db, vm_id)
@@ -237,9 +262,8 @@ async def create_snapshot(
     vm_id: int,
     name: str = Form(...),
 ):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.create_snapshot(db, vm_id, name))
@@ -249,9 +273,8 @@ async def create_snapshot(
 
 @router.get("/{vm_id}/snapshots")
 async def list_snapshots(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content={"snapshots": vm_service.list_snapshots(vm_id, db)})
@@ -261,9 +284,8 @@ async def list_snapshots(request: Request, vm_id: int):
 
 @router.post("/{vm_id}/snapshot/{snap_name}/restore")
 async def restore_snapshot(request: Request, vm_id: int, snap_name: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.restore_snapshot(vm_id, snap_name, db))
@@ -273,9 +295,8 @@ async def restore_snapshot(request: Request, vm_id: int, snap_name: str):
 
 @router.post("/{vm_id}/snapshot/{snap_name}/delete")
 async def delete_snapshot(request: Request, vm_id: int, snap_name: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.delete_snapshot(vm_id, snap_name, db))
@@ -288,9 +309,8 @@ async def delete_snapshot(request: Request, vm_id: int, snap_name: str):
 @router.post("/{vm_id}/hotplug/cpu")
 async def hotplug_cpu(request: Request, vm_id: int, vcpus: int = Form(...)):
     """Hot-add CPU cores to a running VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.hotplug_cpu(db, vm_id, vcpus)
@@ -304,9 +324,8 @@ async def hotplug_cpu(request: Request, vm_id: int, vcpus: int = Form(...)):
 @router.post("/{vm_id}/hotplug/ram")
 async def hotplug_ram(request: Request, vm_id: int, memory_mb: int = Form(...)):
     """Hot-add memory to a running VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.hotplug_ram(db, vm_id, memory_mb)
@@ -320,9 +339,8 @@ async def hotplug_ram(request: Request, vm_id: int, memory_mb: int = Form(...)):
 @router.post("/{vm_id}/balloon")
 async def set_balloon(request: Request, vm_id: int, enabled: bool = Form(True)):
     """Enable/disable memory ballooning."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.update_vm(db, vm_id, {"balloon": enabled})
@@ -336,9 +354,8 @@ async def set_balloon(request: Request, vm_id: int, enabled: bool = Form(True)):
 @router.post("/import")
 async def import_ovf(request: Request, file: UploadFile = File(...)):
     """Import a VM from OVF/OVA file."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     import os
     import tempfile
@@ -365,9 +382,8 @@ async def move_vm_disk(
     target_storage: str = Form(...),
 ):
     """Move a VM disk to a different storage backend."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     from ..services.storage_service import StorageService
     storage_svc = StorageService()
@@ -388,9 +404,8 @@ async def move_vm_disk(
 @router.get("/passthrough/gpu")
 async def list_gpu_passthrough(request: Request):
     """List available GPUs for passthrough."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = vm_service.list_pci_devices(device_class="0300")
     return JSONResponse(content={"devices": result})
 
@@ -398,9 +413,8 @@ async def list_gpu_passthrough(request: Request):
 @router.get("/passthrough/usb")
 async def list_usb_passthrough(request: Request):
     """List available USB devices for passthrough."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = vm_service.list_usb_devices()
     return JSONResponse(content={"devices": result})
 
@@ -412,9 +426,8 @@ async def attach_pci(
     pci_addr: str = Form(...),
 ):
     """Attach a PCI/e device to a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.attach_pci_device(db, vm_id, pci_addr)
@@ -431,9 +444,8 @@ async def attach_usb(
     product_id: str = Form(...),
 ):
     """Attach a USB device to a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.attach_usb_device(db, vm_id, vendor_id, product_id)
@@ -449,9 +461,8 @@ async def detach_passthrough(
     device_addr: str = Form(...),
 ):
     """Detach a passthrough device from a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.detach_pci_device(db, vm_id, device_addr)
@@ -465,9 +476,8 @@ async def detach_passthrough(
 
 @router.post("/{vm_id}/hotplug/disk")
 async def hotplug_disk(request: Request, vm_id: int, size_gb: int = Form(...), interface: str = Form("virtio")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.hotplug_disk(db, vm_id, size_gb, interface))
@@ -476,9 +486,8 @@ async def hotplug_disk(request: Request, vm_id: int, size_gb: int = Form(...), i
 
 @router.post("/{vm_id}/hotplug/detach-disk")
 async def detach_disk(request: Request, vm_id: int, disk_index: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.detach_disk(db, vm_id, disk_index))
@@ -489,9 +498,8 @@ async def detach_disk(request: Request, vm_id: int, disk_index: int = Form(...))
 
 @router.post("/{vm_id}/hotplug/nic")
 async def hotplug_nic_ep(request: Request, vm_id: int, bridge: str = Form("vmbr0"), model: str = Form("virtio")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.hotplug_nic(db, vm_id, bridge, model))
@@ -500,9 +508,8 @@ async def hotplug_nic_ep(request: Request, vm_id: int, bridge: str = Form("vmbr0
 
 @router.post("/{vm_id}/hotplug/detach-nic")
 async def detach_nic_ep(request: Request, vm_id: int, nic_index: int = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.detach_nic(db, vm_id, nic_index))
@@ -513,9 +520,8 @@ async def detach_nic_ep(request: Request, vm_id: int, nic_index: int = Form(...)
 
 @router.post("/{vm_id}/deploy-from-template")
 async def deploy_from_template_ep(request: Request, vm_id: int, new_name: str = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.deploy_from_template(db, vm_id, new_name))
@@ -526,9 +532,8 @@ async def deploy_from_template_ep(request: Request, vm_id: int, new_name: str = 
 
 @router.post("/{vm_id}/cloud-init/apply")
 async def apply_cloud_init_ep(request: Request, vm_id: int):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         return JSONResponse(content=vm_service.apply_cloud_init(db, vm_id))
@@ -539,9 +544,8 @@ async def apply_cloud_init_ep(request: Request, vm_id: int):
 
 @router.post("/{vm_id}/guest-agent/{command}")
 async def guest_agent_cmd(request: Request, vm_id: int, command: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         if command == "info":
@@ -563,9 +567,8 @@ async def guest_agent_cmd(request: Request, vm_id: int, command: str):
 @router.post("/bulk/start")
 async def bulk_start(request: Request):
     """Start multiple VMs."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     form = await request.form()
     vm_ids_str = form.get("vm_ids", "")
     vm_ids = [int(x) for x in vm_ids_str.split(",") if x.strip().isdigit()]
@@ -584,9 +587,8 @@ async def bulk_start(request: Request):
 @router.post("/bulk/stop")
 async def bulk_stop(request: Request):
     """Stop multiple VMs."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     form = await request.form()
     vm_ids_str = form.get("vm_ids", "")
     vm_ids = [int(x) for x in vm_ids_str.split(",") if x.strip().isdigit()]
@@ -605,9 +607,8 @@ async def bulk_stop(request: Request):
 @router.post("/bulk/delete")
 async def bulk_delete(request: Request):
     """Delete multiple VMs."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     form = await request.form()
     vm_ids_str = form.get("vm_ids", "")
     vm_ids = [int(x) for x in vm_ids_str.split(",") if x.strip().isdigit()]
@@ -628,9 +629,8 @@ async def bulk_delete(request: Request):
 @router.post("/{vm_id}/convert-template")
 async def convert_to_template(request: Request, vm_id: int):
     """Convert a VM to a template."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         result = vm_service.convert_to_template(db, vm_id)
@@ -644,9 +644,8 @@ async def convert_to_template(request: Request, vm_id: int):
 @router.get("/{vm_id}/metrics")
 async def vm_metrics(request: Request, vm_id: int):
     """Get per-VM resource usage metrics."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     from ..services.monitor_service import MonitorService
     monitor = MonitorService()
     db = SessionLocal()
@@ -668,9 +667,8 @@ async def vm_metrics(request: Request, vm_id: int):
 @router.get("/diagnostics")
 async def libvirt_diagnostics(request: Request):
     """Get detailed libvirt connection diagnostics for troubleshooting."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     diag = vm_service.get_diagnostics()
     return JSONResponse(content=diag)
 
@@ -679,9 +677,8 @@ async def libvirt_diagnostics(request: Request):
 @router.get("/status")
 async def vm_status(request: Request):
     """Check VM management availability (libvirt connection)."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     
     import shutil
     has_libvirt = shutil.which('virsh') is not None

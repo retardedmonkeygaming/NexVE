@@ -347,6 +347,96 @@ class NetworkService:
                 pass
         return ifaces
 
+
+    # ── Persistent Network Configuration ──
+
+    def get_interfaces_config(self) -> dict:
+        """Read /etc/network/interfaces for persistent config."""
+        interfaces_file = "/etc/network/interfaces"
+        config = {"interfaces": [], "raw": ""}
+        if not os.path.exists(interfaces_file):
+            return config
+        try:
+            with open(interfaces_file) as f:
+                config["raw"] = f.read()
+        except Exception:
+            pass
+        return config
+
+    def save_interfaces_config(self, config: str) -> dict:
+        """Write /etc/network/interfaces."""
+        interfaces_file = "/etc/network/interfaces"
+        backup_file = f"{interfaces_file}.bak"
+        try:
+            # Backup current config
+            if os.path.exists(interfaces_file):
+                import shutil
+                shutil.copy2(interfaces_file, backup_file)
+            with open(interfaces_file, "w") as f:
+                f.write(config)
+            return {"success": True, "message": "Network configuration saved. Run 'systemctl restart networking' to apply."}
+        except PermissionError:
+            return {"success": False, "error": "Permission denied. Run as root."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def apply_network_config(self) -> dict:
+        """Apply network configuration by restarting networking."""
+        r = self.run_cmd("systemctl restart networking 2>&1", timeout=30)
+        if not r["success"]:
+            # Try ifupdown approach
+            r2 = self.run_cmd("ifdown -a 2>/dev/null; ifup -a 2>/dev/null", timeout=30)
+            return {"success": r2["success"], "stdout": r2["stdout"], "stderr": r2["stderr"]}
+        return r
+
+    # ── Traffic Monitoring ──
+
+    def get_traffic_stats(self) -> List[dict]:
+        """Get current traffic stats for all interfaces."""
+        stats = []
+        try:
+            with open("/proc/net/dev") as f:
+                lines = f.readlines()[2:]  # Skip headers
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 10:
+                    iface = parts[0].rstrip(":")
+                    if iface == "lo":
+                        continue
+                    stats.append({
+                        "interface": iface,
+                        "rx_bytes": int(parts[1]),
+                        "rx_packets": int(parts[2]),
+                        "rx_errors": int(parts[3]),
+                        "rx_dropped": int(parts[4]),
+                        "tx_bytes": int(parts[9]),
+                        "tx_packets": int(parts[10]),
+                        "tx_errors": int(parts[11]),
+                        "tx_dropped": int(parts[12]),
+                    })
+        except Exception:
+            pass
+        return stats
+
+    def get_gateway_info(self) -> dict:
+        """Get default gateway info."""
+        r = self.run_cmd("ip route show default")
+        gateway = ""
+        if r["success"] and r["stdout"]:
+            parts = r["stdout"].split()
+            for i, p in enumerate(parts):
+                if p == "via" and i + 1 < len(parts):
+                    gateway = parts[i + 1]
+                    break
+        return {"gateway": gateway}
+
+    def set_gateway(self, gateway: str) -> dict:
+        """Set default gateway."""
+        # Remove existing default
+        self.run_cmd("ip route del default 2>/dev/null || true")
+        r = self.run_cmd(f"ip route add default via {gateway}")
+        return r
+
     def get_network_overview(self) -> dict:
         return {
             "interfaces": self.list_interfaces(),

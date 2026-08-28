@@ -313,7 +313,7 @@ async function loadHistory() {
                     <td style="color:var(--text-muted);font-size:var(--text-xs);">${b.duration || '-'}</td>
                     <td>
                         <div class="nx-flex nx-gap-1">
-                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="deleteBackup('${b.id}')" title="Delete">🗑️</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="deleteBackup('${b.name}')" title="Delete">🗑️</button>
                         </div>
                     </td>
                 </tr>
@@ -357,6 +357,7 @@ async function submitBackup(e) {
         if (data.success !== false) {
             showToast('Backup started', 'success');
             hideBackupModal();
+            loadHistory();
         } else {
             showToast('Failed: ' + (data.error || 'unknown'), 'error');
         }
@@ -369,14 +370,14 @@ async function toggleSchedule(id) {
 }
 async function deleteSchedule(id) {
     if (!confirm('Delete this backup schedule?')) return;
-    try { await fetch('/api/backups/schedules/' + id, {method:'DELETE'}); showToast('Schedule deleted','success'); loadSchedules(); } catch(e) {}
+    try { await fetch('/api/backups/schedules/' + id + '/delete', {method:'POST'}); showToast('Schedule deleted','success'); loadSchedules(); } catch(e) {}
 }
 
 // ── Delete Backup ──
-async function deleteBackup(id) {
+async function deleteBackup(filename) {
     if (!confirm('Delete this backup file?')) return;
     try {
-        const r = await fetch('/api/backups/delete/' + id, {method:'DELETE'});
+        const r = await fetch('/api/backups/' + encodeURIComponent(filename), {method:'DELETE'});
         const d = await r.json();
         if (d.success !== false) { showToast('Backup deleted','success'); loadHistory(); }
         else showToast(d.error || 'Failed', 'error');

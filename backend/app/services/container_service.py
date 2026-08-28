@@ -218,6 +218,38 @@ class ContainerService:
             existing["lxc.net.0.flags"] = "up"
             if ip_address:
                 existing["lxc.net.0.ipv4.address"] = f"{ip_address}/24"
+            # Phase 2: Additional config
+            mac_address = config.get("mac_address", "")
+            if mac_address:
+                existing["lxc.net.0.hwaddr"] = mac_address
+            gateway = config.get("gateway", "")
+            if gateway:
+                existing["lxc.net.0.ipv4.gateway"] = gateway
+            dns_servers = config.get("dns_servers", "")
+            if dns_servers:
+                existing["lxc.net.0.dns.servers"] = dns_servers
+            mtu = config.get("mtu", 1500)
+            if mtu and mtu != 1500:
+                existing["lxc.net.0.mtu"] = str(mtu)
+            cpu_quota = config.get("cpu_quota")
+            if cpu_quota:
+                cpu_period = config.get("cpu_period", 100000)
+                existing["lxc.cgroup2.cpu.max"] = f"{cpu_quota} {cpu_period}"
+            ssh_keys = config.get("ssh_keys", "")
+            if ssh_keys:
+                # Write SSH keys to the container's authorized_keys
+                try:
+                    ct_home = f"/var/lib/lxc/{name}/rootfs/home"
+                    ct_user = config.get("cloud_init_user", "root")
+                    keys_dir = f"{ct_home}/{ct_user}/.ssh"
+                    os.makedirs(keys_dir, exist_ok=True)
+                    with open(f"{keys_dir}/authorized_keys", "w") as f:
+                        f.write(ssh_keys)
+                except Exception:
+                    pass
+            seccomp_profile = config.get("seccomp_profile", "")
+            if seccomp_profile:
+                existing["lxc.seccomp.profile"] = seccomp_profile
             if nesting:
                 existing["lxc.sysctl.kernel.unprivileged_userns_clone"] = "1"
                 existing["lxc.apparmor.profile"] = "unconfined"

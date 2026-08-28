@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse
 from ..services.oidc_service import OIDCService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 oidc_svc = OIDCService()
@@ -25,9 +25,8 @@ async def save_oidc_config(
     redirect_uri: str = Form(""),
     scope: str = Form("openid email profile"),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(oidc_svc.save_config(issuer, client_id, client_secret, redirect_uri, scope))
 
 
@@ -53,7 +52,6 @@ async def oidc_callback(request: Request):
 
 @router.post("/disable")
 async def oidc_disable(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(oidc_svc.disable())

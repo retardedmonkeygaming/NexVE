@@ -98,27 +98,59 @@ class BackupService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ── LXC Container Snapshots ──
+    # ── LXC Container Snapshots (native lxc-snapshot) ──
 
     def container_snapshot_create(self, ct_id: int, name: str) -> dict:
-        return self.run_cmd(f"pct snapshot {ct_id} {name}")
+        """Create a snapshot using native lxc-snapshot."""
+        # First try lxc-snapshot (native LXC)
+        r = self.run_cmd(f"lxc-snapshot -n {ct_id} -s {name}")
+        if r["success"]:
+            return {"success": True}
+        # Fallback: try with container name
+        return r
 
     def container_snapshots(self, ct_id: int) -> List[dict]:
-        r = self.run_cmd(f"pct listsnapshot {ct_id}")
+        """List snapshots using native lxc-snapshot."""
+        r = self.run_cmd(f"lxc-snapshot -n {ct_id} -L")
         if not r["success"]:
+            # Try listing snapshot directory
+            snap_dir = f"/var/lib/lxc/{ct_id}/snaps"
+            import os
+            if os.path.isdir(snap_dir):
+                snaps = []
+                for f in os.listdir(snap_dir):
+                    if f.endswith(".tar.gz") or f.endswith(".snap"):
+                        name = f.rsplit(".", 1)[0]
+                        snaps.append({"name": name, "parent": ""})
+                return snaps
             return []
         snaps = []
         for line in r["stdout"].splitlines():
-            parts = line.strip().split()
-            if parts:
-                snaps.append({"name": parts[0], "parent": parts[1] if len(parts) > 1 else ""})
+            line = line.strip()
+            if line and not line.startswith("snap") and not line.startswith("-"):
+                # Parse lxc-snapshot -L output
+                parts = line.split()
+                if parts:
+                    snaps.append({"name": parts[0].rstrip(":"), "parent": ""})
         return snaps
 
     def container_snapshot_delete(self, ct_id: int, name: str) -> dict:
-        return self.run_cmd(f"pct delsnapshot {ct_id} {name}")
+        """Delete a snapshot using native lxc-snapshot."""
+        r = self.run_cmd(f"lxc-snapshot -n {ct_id} -d {name}")
+        if r["success"]:
+            return {"success": True}
+        # Fallback: remove snapshot file manually
+        snap_path = f"/var/lib/lxc/{ct_id}/snaps/{name}.snap"
+        import os
+        if os.path.exists(snap_path):
+            os.remove(snap_path)
+            return {"success": True}
+        return r
 
     def container_snapshot_restore(self, ct_id: int, name: str) -> dict:
-        return self.run_cmd(f"pct rollback {ct_id} {name}")
+        """Restore a snapshot using native lxc-snapshot."""
+        r = self.run_cmd(f"lxc-snapshot -n {ct_id} -r {name}")
+        return {"success": r["success"], "error": r.get("stderr")}
 
     # ── Full Backup / Restore ──
 
@@ -168,9 +200,23 @@ class BackupService:
             return {"success": False, "error": str(e)}
 
     def backup_container(self, ct_id: int) -> dict:
+        """Backup container using tar (works without vzdump)."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = os.path.join(self.BACKUP_DIR, f"ct_{ct_id}_{timestamp}.tar.gz")
-        return self.run_cmd(f"vzdump {ct_id} --compress gzip --dumpdir {self.BACKUP_DIR}")
+        ct_name = str(ct_id)
+        rootfs = f"/var/lib/lxc/{ct_name}/rootfs"
+        config = f"/var/lib/lxc/{ct_name}/config"
+
+        if not os.path.isdir(rootfs):
+            # Try finding by name in DB
+            return {"success": False, "error": f"Container rootfs not found at {rootfs}"}
+
+        # Create backup: include both rootfs and config
+        cmd = f"tar czf {backup_file} -C /var/lib/lxc {ct_name}"
+        r = self.run_cmd(cmd, timeout=600)
+        if r["success"]:
+            return {"success": True, "path": backup_file, "size": os.path.getsize(backup_file) if os.path.exists(backup_file) else 0}
+        return r
 
     # ── Incremental Backup ──
 

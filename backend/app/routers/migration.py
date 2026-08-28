@@ -5,25 +5,18 @@ API endpoints for live migration of VMs and containers.
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, JSONResponse
 from ..services.migration_service import MigrationService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 migration_svc = MigrationService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/nodes")
 async def list_nodes(request: Request):
     """List available nodes for migration."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     nodes = migration_svc.get_nodes()
     return JSONResponse({"nodes": nodes})
 
@@ -37,9 +30,8 @@ async def migrate_vm(
     force: bool = Form(False),
 ):
     """Migrate a VM to another node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     from ..database import SessionLocal
     from ..models.vm import VM
@@ -65,9 +57,8 @@ async def migrate_container(
     target_node: str = Form(...),
 ):
     """Migrate a container to another node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
 
     result = migration_svc.migrate_container(ct_id, target_node)
     return JSONResponse(result)
@@ -76,9 +67,8 @@ async def migrate_container(
 @router.get("/status/{vm_name}")
 async def migration_status(request: Request, vm_name: str):
     """Get migration status for a VM."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     status = migration_svc.get_migration_status(vm_name)
     return JSONResponse(status)
 
@@ -86,8 +76,7 @@ async def migration_status(request: Request, vm_name: str):
 @router.post("/cancel/{vm_name}")
 async def cancel_migration(request: Request, vm_name: str):
     """Cancel an in-progress migration."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = migration_svc.cancel_migration(vm_name)
     return JSONResponse(result)

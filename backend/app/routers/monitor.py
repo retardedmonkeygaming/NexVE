@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ..services.monitor_service import MonitorService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import psutil
 
 router = APIRouter()
@@ -10,9 +10,8 @@ monitor_svc = MonitorService()
 
 @router.get("/current")
 async def current_stats(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     data = monitor_svc.get_current()
     # Ensure all required fields exist with defaults
     return JSONResponse({
@@ -42,18 +41,16 @@ async def current_stats(request: Request):
 
 @router.get("/history")
 async def history(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(monitor_svc.get_history())
 
 
 @router.get("/collect")
 async def collect(request: Request):
     """Manual trigger for collecting metrics."""
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     metric = monitor_svc._snapshot()
     monitor_svc._last_snapshot = metric
     monitor_svc._append_metric(metric)
@@ -63,9 +60,8 @@ async def collect(request: Request):
 @router.get("/processes")
 async def top_processes(request: Request):
     """Return top processes by CPU usage."""
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     procs = []
     for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status']):
         try:

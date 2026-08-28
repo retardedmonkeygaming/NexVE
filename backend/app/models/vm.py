@@ -53,6 +53,20 @@ class VM(Base):
     extra_nics = Column(Text, nullable=True)  # JSON: [{"index":1,"bridge":"vmbr0","model":"virtio","mac":"..."},...]
     passthrough_pci = Column(Text, nullable=True)  # JSON: ["0000:01:00.0",...]
     passthrough_usb = Column(Text, nullable=True)  # JSON: [{"vendor":"10de","product":"1234"},...]
+    
+    # Phase 2: Additional hardware config
+    cpu_units = Column(Integer, default=1024)  # CPU shares (weighted)
+    cpu_limit = Column(Float, nullable=True)  # CPU limit in percent (null=unlimited)
+    memory_min = Column(Integer, nullable=True)  # Min memory for static allocation (MB)
+    vga_display = Column(String, default="std")  # std, vmware, virtio, serial, none
+    vga_memory = Column(Integer, nullable=True)  # VGA memory in MB
+    watchdog_model = Column(String, nullable=True)  # i6300esb, etc. (null=disabled)
+    disk_cache = Column(String, default="none")  # none, writethrough, writeback, directsync, unsafe
+    disk_discard = Column(Boolean, default=False)  # TRIM/discard support
+    disk_iothread = Column(Boolean, default=False)  # IO thread for SCSI
+    disk_ssd = Column(Boolean, default=False)  # SSD emulation (rotation=0)
+    efidisk_size = Column(Integer, nullable=True)  # EFI disk size in MB (for OVMF)
+    cpu_affinity = Column(String, nullable=True)  # CPU affinity: comma-separated CPU IDs
 
 
 class Container(Base):
@@ -78,6 +92,18 @@ class Container(Base):
     shutdown_order = Column(Integer, default=0)
     notes = Column(Text, nullable=True, default="")
     created_at = Column(DateTime, server_default=func.now())
+    
+    # Phase 2: Additional container config
+    dns_servers = Column(String, nullable=True)  # Comma-separated DNS servers
+    gateway = Column(String, nullable=True)  # Default gateway
+    mac_address = Column(String, nullable=True)  # Static MAC address
+    mtu = Column(Integer, default=1500)  # Network MTU
+    cpu_quota = Column(Integer, nullable=True)  # CPU quota (microseconds per period)
+    cpu_period = Column(Integer, default=100000)  # CPU period in microseconds
+    cpu_nice = Column(Integer, default=0)  # CPU nice priority (-20 to 19)
+    ssh_keys = Column(Text, nullable=True)  # SSH public keys (newline-separated)
+    password_hash = Column(String, nullable=True)  # Password hash
+    seccomp_profile = Column(String, nullable=True)  # Seccomp profile path
 
 
 class BackupSchedule(Base):

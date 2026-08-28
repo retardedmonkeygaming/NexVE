@@ -7,25 +7,18 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.enhanced_models import HAGroup, HAGuest
 from ..services.ha_service import HAService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 ha_svc = HAService()
 
 
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
-
 
 @router.get("/status")
 async def ha_status(request: Request):
     """Get HA cluster status."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     status = ha_svc.get_ha_status()
     resources = ha_svc.get_ha_resources()
     return JSONResponse({**status, "resources": resources})
@@ -34,9 +27,8 @@ async def ha_status(request: Request):
 @router.get("/groups")
 async def list_groups(request: Request):
     """List HA groups."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         groups = db.query(HAGroup).all()
@@ -62,9 +54,8 @@ async def create_group(
     max_restart: int = Form(3),
 ):
     """Create an HA group."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         group = HAGroup(
@@ -81,9 +72,8 @@ async def create_group(
 @router.delete("/groups/{group_id}")
 async def delete_group(group_id: int, request: Request):
     """Delete an HA group."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(HAGroup).filter(HAGroup.id == group_id).delete()
@@ -96,9 +86,8 @@ async def delete_group(group_id: int, request: Request):
 @router.get("/guests")
 async def list_ha_guests(request: Request):
     """List HA-managed guests."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         guests = db.query(HAGuest).all()
@@ -127,9 +116,8 @@ async def add_ha_guest(
     max_restart: int = Form(3),
 ):
     """Add a guest to HA management."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         guest = HAGuest(
@@ -152,9 +140,8 @@ async def add_ha_guest(
 @router.delete("/guests/{guest_id}")
 async def remove_ha_guest(guest_id: int, request: Request):
     """Remove a guest from HA."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         guest = db.query(HAGuest).filter(HAGuest.id == guest_id).first()
@@ -170,9 +157,8 @@ async def remove_ha_guest(guest_id: int, request: Request):
 @router.post("/guests/{guest_id}/restart")
 async def ha_restart_guest(guest_id: int, request: Request):
     """Request HA restart for a guest."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         guest = db.query(HAGuest).filter(HAGuest.id == guest_id).first()
@@ -191,9 +177,8 @@ async def ha_migrate_guest(
     target_node: str = Form(...),
 ):
     """Migrate an HA guest to another node."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         guest = db.query(HAGuest).filter(HAGuest.id == guest_id).first()

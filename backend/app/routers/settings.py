@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import JSONResponse, RedirectResponse
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import subprocess
 import os
 import platform
@@ -8,12 +8,6 @@ import time
 
 router = APIRouter()
 
-
-def auth_check(request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
 
 
 def run_cmd(cmd, timeout=30):
@@ -29,9 +23,8 @@ def run_cmd(cmd, timeout=30):
 @router.get("/system")
 async def system_info(request: Request):
     import psutil
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     boot = psutil.boot_time()
     uptime = int(time.time() - boot)
     hostname = run_cmd("hostnamectl hostname 2>/dev/null || hostname")["stdout"] or platform.node()
@@ -142,18 +135,16 @@ async def system_info(request: Request):
 
 @router.get("/hostname")
 async def get_hostname(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     hostname = run_cmd("hostnamectl hostname 2>/dev/null || hostname")["stdout"]
     return JSONResponse({"hostname": hostname})
 
 
 @router.post("/hostname")
 async def set_hostname(request: Request, hostname: str = Form(...)):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     # Set hostname via hostnamectl
     result = run_cmd(f"hostnamectl set-hostname '{hostname}'")
     if not result["success"]:
@@ -178,9 +169,8 @@ async def set_hostname(request: Request, hostname: str = Form(...)):
 
 @router.get("/dns")
 async def get_dns(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     dns = run_cmd("cat /etc/resolv.conf 2>/dev/null | grep nameserver | awk '{print $2}'")["stdout"]
     search = run_cmd("cat /etc/resolv.conf 2>/dev/null | grep search | awk '{print $2}'")["stdout"]
     servers = [s.strip() for s in dns.splitlines() if s.strip()]
@@ -189,9 +179,8 @@ async def get_dns(request: Request):
 
 @router.post("/dns")
 async def set_dns(request: Request, dns: str = Form(...), search: str = Form("")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     servers = [s.strip() for s in dns.split(",") if s.strip()]
     if not servers:
         return JSONResponse({"success": False, "error": "No DNS servers provided"})
@@ -210,9 +199,8 @@ async def set_dns(request: Request, dns: str = Form(...), search: str = Form("")
 
 @router.get("/time")
 async def get_time(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     tz = run_cmd("timedatectl show --property=Timezone --value 2>/dev/null")["stdout"]
     time_str = run_cmd("date '+%Y-%m-%d %H:%M:%S %Z'")["stdout"]
     ntp = run_cmd("timedatectl show --property=NTP --value 2>/dev/null")["stdout"]
@@ -221,9 +209,8 @@ async def get_time(request: Request):
 
 @router.post("/time")
 async def set_time(request: Request, timezone: str = Form(""), ntp: str = Form("")):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     if timezone:
         run_cmd(f"timedatectl set-timezone '{timezone}'")
     if ntp:
@@ -234,9 +221,8 @@ async def set_time(request: Request, timezone: str = Form(""), ntp: str = Form("
 
 @router.get("/services")
 async def list_services(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     services = ["libvirtd", "nftables", "nexve", "cron", "ssh", "rsyslog", "iscsid", "lxc-net"]
     result = []
     for svc_name in services:
@@ -254,9 +240,8 @@ async def list_services(request: Request):
 
 @router.post("/services/{name}/{action}")
 async def service_action(request: Request, name: str, action: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     if action in ("start", "stop", "restart", "reload"):
         result = run_cmd(f"systemctl {action} {name}")
         return JSONResponse(result)
@@ -265,9 +250,8 @@ async def service_action(request: Request, name: str, action: str):
 
 @router.get("/updates")
 async def check_updates(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     run_cmd("apt update -qq", timeout=60)
     result = run_cmd("apt list --upgradable 2>/dev/null")
     packages = []
@@ -280,18 +264,16 @@ async def check_updates(request: Request):
 
 @router.post("/updates/apply")
 async def apply_updates(request: Request):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = run_cmd("DEBIAN_FRONTEND=noninteractive apt upgrade -y -qq", timeout=300)
     return JSONResponse(result)
 
 
 @router.get("/syslog")
 async def get_syslog(request: Request, level: str = "all", lines: int = 100):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     if level == "error":
         cmd = f"journalctl -p err -n {lines} --no-pager -q 2>/dev/null || tail -n {lines} /var/log/syslog 2>/dev/null"
     elif level == "warning":
@@ -307,9 +289,8 @@ async def get_syslog(request: Request, level: str = "all", lines: int = 100):
 
 @router.post("/host/{action}")
 async def host_power(request: Request, action: str):
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     if user.get("role") != "admin":
         return JSONResponse({"success": False, "error": "Admin required"}, status_code=403)
     if action == "reboot":
@@ -326,9 +307,8 @@ async def host_power(request: Request, action: str):
 @router.get("/export")
 async def export_settings(request: Request):
     """Export all system settings as JSON."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     settings = {
         "hostname": run_cmd("hostnamectl hostname 2>/dev/null || hostname")["stdout"],
         "dns_servers": run_cmd("cat /etc/resolv.conf 2>/dev/null | grep nameserver | awk '{print $2}'")["stdout"].splitlines(),
@@ -342,9 +322,8 @@ async def export_settings(request: Request):
 @router.post("/import")
 async def import_settings(request: Request):
     """Import settings from JSON."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     try:
         body = await request.json()
         settings = body.get("settings", {})
@@ -365,9 +344,8 @@ async def import_settings(request: Request):
 @router.post("/rollback")
 async def rollback_settings(request: Request, key: str = Form(...)):
     """Rollback a specific setting to its previous value."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     # This would use the SettingsHistory model in a full implementation
     return JSONResponse({"success": True, "message": f"Rollback for {key} noted"})
 
@@ -377,9 +355,8 @@ async def rollback_settings(request: Request, key: str = Form(...)):
 @router.post("/install/libvirt")
 async def install_libvirt(request: Request):
     """Install libvirt packages."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = run_cmd(
         "apt-get update -qq && apt-get install -y -qq libvirt-daemon-system libvirt-clients qemu-kvm 2>/dev/null",
         timeout=120
@@ -392,9 +369,8 @@ async def install_libvirt(request: Request):
 @router.post("/install/lxc")
 async def install_lxc(request: Request):
     """Install LXC packages."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     result = run_cmd(
         "apt-get update -qq && apt-get install -y -qq lxc lxc-utils debootstrap 2>/dev/null",
         timeout=120

@@ -2,16 +2,15 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ..database import SessionLocal
 from ..models.activity import ActivityLog
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 
 
 @router.get("/")
 async def list_logs(request: Request, limit: int = 100, offset: int = 0):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         logs = db.query(ActivityLog).order_by(ActivityLog.id.desc()).offset(offset).limit(limit).all()

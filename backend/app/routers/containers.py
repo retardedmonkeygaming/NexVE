@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.vm import Container
 from ..services.container_service import ContainerService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 from ..task_utils import log_task
 from ..security import generate_csrf_token
 import json
@@ -14,9 +14,8 @@ container_service = ContainerService()
 
 @router.get("/create")
 async def create_container_page(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
     from fastapi.templating import Jinja2Templates
     import os
@@ -30,26 +29,23 @@ async def create_container_page(request: Request):
 
 @router.get("/templates")
 async def list_templates(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse({"templates": container_service.list_templates()})
 
 
 @router.get("/system-info")
 async def system_info(request: Request):
     """Get LXC system information for diagnostics."""
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.get_system_info())
 
 
 @router.get("/")
 async def list_containers(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db_containers = db.query(Container).all()
@@ -104,10 +100,18 @@ async def create_container(
     startup_order: int = Form(0),
     shutdown_order: int = Form(0),
     notes: str = Form(""),
+    dns_servers: str = Form(""),
+    gateway: str = Form(""),
+    mac_address: str = Form(""),
+    mtu: int = Form(1500),
+    cpu_quota: str = Form(""),
+    cpu_period: int = Form(100000),
+    cpu_nice: int = Form(0),
+    ssh_keys: str = Form(""),
+    seccomp_profile: str = Form(""),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     config = {
         "name": name,
@@ -127,6 +131,15 @@ async def create_container(
         "net_rate": int(net_rate) if net_rate else None,
         "startup_order": startup_order,
         "shutdown_order": shutdown_order,
+        "dns_servers": dns_servers,
+        "gateway": gateway,
+        "mac_address": mac_address,
+        "mtu": mtu,
+        "cpu_quota": int(cpu_quota) if cpu_quota else None,
+        "cpu_period": cpu_period,
+        "cpu_nice": cpu_nice,
+        "ssh_keys": ssh_keys,
+        "seccomp_profile": seccomp_profile,
     }
 
     result = container_service.create_container(config)
@@ -154,6 +167,15 @@ async def create_container(
             startup_order=startup_order,
             shutdown_order=shutdown_order,
             notes=notes,
+            dns_servers=dns_servers or None,
+            gateway=gateway or None,
+            mac_address=mac_address or None,
+            mtu=mtu,
+            cpu_quota=int(cpu_quota) if cpu_quota else None,
+            cpu_period=cpu_period,
+            cpu_nice=cpu_nice,
+            ssh_keys=ssh_keys or None,
+            seccomp_profile=seccomp_profile or None,
         )
         db.add(ct)
         db.commit()
@@ -165,9 +187,8 @@ async def create_container(
 
 @router.post("/{ct_id}/start")
 async def start_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         ct = db.query(Container).filter(Container.id == ct_id).first()
@@ -181,9 +202,8 @@ async def start_container(request: Request, ct_id: int):
 
 @router.post("/{ct_id}/stop")
 async def stop_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         ct = db.query(Container).filter(Container.id == ct_id).first()
@@ -197,9 +217,8 @@ async def stop_container(request: Request, ct_id: int):
 
 @router.post("/{ct_id}/restart")
 async def restart_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         ct = db.query(Container).filter(Container.id == ct_id).first()
@@ -213,12 +232,21 @@ async def restart_container(request: Request, ct_id: int):
 
 @router.post("/{ct_id}/delete")
 async def delete_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
-    # First, actually destroy the container on the system
-    result = container_service.delete_container(ct_id)
+    # Look up container name from DB first
+    db = SessionLocal()
+    try:
+        ct = db.query(Container).filter(Container.id == ct_id).first()
+        if not ct:
+            return JSONResponse(content={"success": False, "error": "Container not found"}, status_code=404)
+        name = ct.name
+    finally:
+        db.close()
+
+    # Actually destroy the container on the system using its name
+    result = container_service.delete_container_by_name(name)
 
     # Only remove from DB if destruction succeeded
     if result.get("success"):
@@ -233,25 +261,31 @@ async def delete_container(request: Request, ct_id: int):
     else:
         return JSONResponse(content=result, status_code=500)
 
+    log_task(user.id, user.username, "ct.delete", "container", name, "completed" if result.get("success") else "failed")
     return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/update")
 async def update_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     form = await request.form()
     config = {}
-    for key in ["vcpu", "memory_mb", "swap_mb", "cpu_weight", "io_priority", "net_rate", "hostname", "nesting", "unprivileged"]:
+    for key in ["vcpu", "memory_mb", "swap_mb", "cpu_weight", "io_priority", "net_rate", "hostname", "nesting", "unprivileged",
+               "dns_servers", "gateway", "mac_address", "mtu", "cpu_quota", "cpu_period", "cpu_nice", "ssh_keys", "seccomp_profile"]:
         if key in form:
             val = form[key]
             if val in ("on", "true", "True"):
                 val = True
             elif val in ("off", "false", "False", ""):
                 val = False
-            elif key in ("vcpu", "memory_mb", "swap_mb", "cpu_weight", "net_rate"):
+            elif key in ("vcpu", "memory_mb", "swap_mb", "cpu_weight", "net_rate", "mtu", "cpu_period", "cpu_nice"):
+                try:
+                    val = int(val) if val else None
+                except ValueError:
+                    pass
+            elif key == "cpu_quota":
                 try:
                     val = int(val) if val else None
                 except ValueError:
@@ -275,9 +309,8 @@ async def update_container(request: Request, ct_id: int):
 
 @router.get("/{ct_id}/config")
 async def container_config(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.get_container_config(ct_id))
 
 
@@ -289,41 +322,36 @@ async def add_mount_point(
     volume: str = Form(...),
     mp: str = Form(...),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.add_mount_point(ct_id, idx, volume, mp))
 
 
 @router.post("/{ct_id}/mount-point/remove")
 async def remove_mount_point(request: Request, ct_id: int, idx: int = Form(...)):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.remove_mount_point(ct_id, idx))
 
 
 @router.post("/{ct_id}/exec")
 async def container_exec(request: Request, ct_id: int, command: str = Form(...)):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.container_exec(ct_id, command))
 
 
 @router.post("/{ct_id}/backup")
 async def backup_container(request: Request, ct_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     return JSONResponse(content=container_service.backup_container(ct_id))
 
 
 @router.get("/status")
 async def container_status(request: Request):
     """Check LXC container management availability with detailed diagnostics."""
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
     info = container_service.get_system_info()
     return JSONResponse(content=info)

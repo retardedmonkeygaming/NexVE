@@ -245,6 +245,29 @@ async def cluster_page(request: Request):
     })
 
 
+@app.get("/ceph", response_class=HTMLResponse)
+async def ceph_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+    return templates.TemplateResponse(request=request, name="ceph.html", context={
+        "user": user, "csrf_token": csrf, "page": "ceph", "hostname": os.uname().nodename
+    })
+
+
+@app.get("/wireguard", response_class=HTMLResponse)
+async def wireguard_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+    return templates.TemplateResponse(request=request, name="wireguard.html", context={
+        "user": user, "csrf_token": csrf, "page": "wireguard", "hostname": os.uname().nodename
+    })
+
+
+
 @app.get("/shell", response_class=HTMLResponse)
 async def shell_page(request: Request):
     user = get_current_user(request)

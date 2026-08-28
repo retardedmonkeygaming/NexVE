@@ -16,7 +16,9 @@
 
 <div class="nx-tabs">
     <button class="nx-tab active" onclick="showTab(this,'rules')">Rules</button>
+    <button class="nx-tab" onclick="showTab(this,'macros')">Macros</button>
     <button class="nx-tab" onclick="showTab(this,'groups')">Groups</button>
+    <button class="nx-tab" onclick="showTab(this,'connections')">Connections</button>
     <button class="nx-tab" onclick="showTab(this,'options')">Options</button>
 </div>
 
@@ -45,6 +47,34 @@
                 <thead><tr><th>Group</th><th>Rules</th><th>Description</th></tr></thead>
                 <tbody id="fw-group-list"><tr><td colspan="3" class="nx-text-center nx-text-muted" style="padding:32px;">No groups</td></tr></tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+
+<!-- Macros -->
+<div class="nx-tab-content" id="tab-macros">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Firewall Macros</span>
+            <span class="nx-hint" style="margin-left:auto;">Predefined service rules — click to apply</span>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <table class="nx-table">
+                <thead><tr><th>Macro</th><th>Protocol</th><th>Port</th><th>Description</th><th>Action</th></tr></thead>
+                <tbody id="macro-list"><tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">Loading macros...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Connections -->
+<div class="nx-tab-content" id="tab-connections">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">Active Connections</span>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadConnections()">↻ Refresh</button>
+        </div>
+        <div class="nx-card-body" style="padding:0;">
+            <div id="conn-list" style="font-family:var(--font-mono);font-size:11px;padding:12px;max-height:400px;overflow:auto;color:var(--text-secondary);">Loading...</div>
         </div>
     </div>
 </div>
@@ -191,7 +221,55 @@ async function submitRule(e) {
             showToast('Rule added', 'success');
             hideAddRule();
             e.target.reset();
-            loadRules();
+            
+// ── Load Macros ──
+async function loadMacros() {
+    try {
+        const r = await fetch('/api/firewall/macros');
+        const data = await r.json();
+        const macros = data.macros || {};
+        const list = document.getElementById('macro-list');
+        list.innerHTML = Object.entries(macros).map(([name, m]) => `
+            <tr>
+                <td style="font-weight:500;font-family:monospace;">${name}</td>
+                <td><span class="nx-badge nx-badge-info">${m.protocol}</span></td>
+                <td style="font-family:monospace;">${m.dport || '-'}</td>
+                <td style="color:var(--text-muted);">${m.description}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyMacro('${name}')">Apply</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No macros available</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function applyMacro(name) {
+    const fd = new FormData();
+    fd.append('macro', name);
+    fd.append('direction', 'in');
+    fd.append('action', 'accept');
+    try {
+        const r = await fetch('/api/firewall/macros/apply', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Macro applied: ' + name, 'success'); loadRules(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Load Connections ──
+async function loadConnections() {
+    try {
+        const r = await fetch('/api/firewall/connections');
+        const data = await r.json();
+        const conns = data.connections || [];
+        const el = document.getElementById('conn-list');
+        if (conns.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-muted);">No active connections tracked. Connection tracking may not be enabled.</div>';
+        } else {
+            el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
+        }
+    } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
+}
+
+loadRules();
         } else {
             showToast(`Failed: ${data.error || 'unknown'}`, 'error');
         }
@@ -204,13 +282,109 @@ async function deleteRule(id) {
     try {
         await fetch(`/api/firewall/rules/${id}`, {method: 'DELETE'});
         showToast('Rule deleted', 'success');
-        loadRules();
+        
+// ── Load Macros ──
+async function loadMacros() {
+    try {
+        const r = await fetch('/api/firewall/macros');
+        const data = await r.json();
+        const macros = data.macros || {};
+        const list = document.getElementById('macro-list');
+        list.innerHTML = Object.entries(macros).map(([name, m]) => `
+            <tr>
+                <td style="font-weight:500;font-family:monospace;">${name}</td>
+                <td><span class="nx-badge nx-badge-info">${m.protocol}</span></td>
+                <td style="font-family:monospace;">${m.dport || '-'}</td>
+                <td style="color:var(--text-muted);">${m.description}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyMacro('${name}')">Apply</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No macros available</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function applyMacro(name) {
+    const fd = new FormData();
+    fd.append('macro', name);
+    fd.append('direction', 'in');
+    fd.append('action', 'accept');
+    try {
+        const r = await fetch('/api/firewall/macros/apply', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Macro applied: ' + name, 'success'); loadRules(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Load Connections ──
+async function loadConnections() {
+    try {
+        const r = await fetch('/api/firewall/connections');
+        const data = await r.json();
+        const conns = data.connections || [];
+        const el = document.getElementById('conn-list');
+        if (conns.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-muted);">No active connections tracked. Connection tracking may not be enabled.</div>';
+        } else {
+            el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
+        }
+    } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
+}
+
+loadRules();
     } catch (e) { showToast('Error', 'error'); }
 }
 
 // ── Save Options ──
 function saveFWOptions() {
     showToast('Firewall options saved', 'success');
+}
+
+
+// ── Load Macros ──
+async function loadMacros() {
+    try {
+        const r = await fetch('/api/firewall/macros');
+        const data = await r.json();
+        const macros = data.macros || {};
+        const list = document.getElementById('macro-list');
+        list.innerHTML = Object.entries(macros).map(([name, m]) => `
+            <tr>
+                <td style="font-weight:500;font-family:monospace;">${name}</td>
+                <td><span class="nx-badge nx-badge-info">${m.protocol}</span></td>
+                <td style="font-family:monospace;">${m.dport || '-'}</td>
+                <td style="color:var(--text-muted);">${m.description}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyMacro('${name}')">Apply</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No macros available</td></tr>';
+    } catch(e) { console.error(e); }
+}
+
+async function applyMacro(name) {
+    const fd = new FormData();
+    fd.append('macro', name);
+    fd.append('direction', 'in');
+    fd.append('action', 'accept');
+    try {
+        const r = await fetch('/api/firewall/macros/apply', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Macro applied: ' + name, 'success'); loadRules(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Load Connections ──
+async function loadConnections() {
+    try {
+        const r = await fetch('/api/firewall/connections');
+        const data = await r.json();
+        const conns = data.connections || [];
+        const el = document.getElementById('conn-list');
+        if (conns.length === 0) {
+            el.innerHTML = '<div style="color:var(--text-muted);">No active connections tracked. Connection tracking may not be enabled.</div>';
+        } else {
+            el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
+        }
+    } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
 }
 
 loadRules();

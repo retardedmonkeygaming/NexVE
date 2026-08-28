@@ -19,6 +19,7 @@
     <button class="nx-tab" onclick="showTab(this,'groups')">Groups</button>
     <button class="nx-tab" onclick="showTab(this,'roles')">Roles</button>
     <button class="nx-tab" onclick="showTab(this,'tokens')">API Tokens</button>
+    <button class="nx-tab" onclick="showTab(this,'ldap')">LDAP/AD</button>
 </div>
 
 <!-- Users -->
@@ -129,6 +130,53 @@
                     <tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No API tokens</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+
+<!-- LDAP/AD -->
+<div class="nx-tab-content" id="tab-ldap">
+    <div class="nx-card">
+        <div class="nx-card-header"><span class="nx-card-title">LDAP / Active Directory Configuration</span></div>
+        <div class="nx-card-body">
+            <form id="ldap-form" onsubmit="saveLDAP(event)">
+                <div class="nx-flex nx-flex-col nx-gap-4">
+                    <div class="nx-input-group">
+                        <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" name="enabled" id="ldap-enabled" class="nx-checkbox"> Enable LDAP Authentication
+                        </label>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:2fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">LDAP Server Host</label><input type="text" name="host" id="ldap-host" class="nx-input" placeholder="ldap.example.com"></div>
+                        <div class="nx-input-group"><label class="nx-label">Port</label><input type="number" name="port" id="ldap-port" class="nx-input" value="636"></div>
+                    </div>
+                    <div class="nx-input-group">
+                        <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" name="use_tls" id="ldap-tls" class="nx-checkbox" checked> Use TLS/SSL
+                        </label>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">Bind DN</label><input type="text" name="bind_dn" id="ldap-bind-dn" class="nx-input" placeholder="cn=admin,dc=example,dc=com"></div>
+                        <div class="nx-input-group"><label class="nx-label">Bind Password</label><input type="password" name="bind_password" id="ldap-bind-pw" class="nx-input" placeholder="••••••••"></div>
+                    </div>
+                    <div class="nx-input-group"><label class="nx-label">Base DN</label><input type="text" name="base_dn" id="ldap-base-dn" class="nx-input" placeholder="dc=example,dc=com"></div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">User Filter</label><input type="text" name="user_filter" id="ldap-user-filter" class="nx-input" value="(objectClass=person)"></div>
+                        <div class="nx-input-group"><label class="nx-label">Group Filter</label><input type="text" name="group_filter" id="ldap-group-filter" class="nx-input" value="(objectClass=group)"></div>
+                    </div>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                        <div class="nx-input-group"><label class="nx-label">Username Attribute</label><input type="text" name="username_attr" id="ldap-user-attr" class="nx-input" value="sAMAccountName"></div>
+                        <div class="nx-input-group"><label class="nx-label">Email Attribute</label><input type="text" name="email_attr" id="ldap-email-attr" class="nx-input" value="mail"></div>
+                        <div class="nx-input-group"><label class="nx-label">Admin Group</label><input type="text" name="admin_group" id="ldap-admin-group" class="nx-input" value="Domain Admins"></div>
+                    </div>
+                    <div class="nx-flex nx-gap-2">
+                        <button type="submit" class="nx-btn nx-btn-primary">Save LDAP Configuration</button>
+                        <button type="button" class="nx-btn nx-btn-secondary" onclick="testLDAP()">Test Connection</button>
+                    </div>
+                    <div id="ldap-status" style="font-size:var(--text-sm);"></div>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -305,7 +353,55 @@ async function submitUser(e) {
             showToast('User created', 'success');
             hideCreateUser();
             e.target.reset();
-            loadUsers();
+            
+// ── LDAP ──
+async function loadLDAP() {
+    try {
+        const r = await fetch('/api/ldap/');
+        const d = await r.json();
+        document.getElementById('ldap-enabled').checked = d.enabled || false;
+        document.getElementById('ldap-host').value = d.host || '';
+        document.getElementById('ldap-port').value = d.port || 636;
+        document.getElementById('ldap-tls').checked = d.use_tls !== false;
+        document.getElementById('ldap-bind-dn').value = d.bind_dn || '';
+        document.getElementById('ldap-base-dn').value = d.base_dn || '';
+        document.getElementById('ldap-user-filter').value = d.user_filter || '(objectClass=person)';
+        document.getElementById('ldap-group-filter').value = d.group_filter || '(objectClass=group)';
+        document.getElementById('ldap-user-attr').value = d.username_attr || 'sAMAccountName';
+        document.getElementById('ldap-email-attr').value = d.email_attr || 'mail';
+        document.getElementById('ldap-admin-group').value = d.admin_group || 'Domain Admins';
+    } catch(e) { console.error(e); }
+}
+
+async function saveLDAP(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.set('enabled', document.getElementById('ldap-enabled').checked ? 'true' : 'false');
+    fd.set('use_tls', document.getElementById('ldap-tls').checked ? 'true' : 'false');
+    try {
+        const r = await fetch('/api/ldap/save', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('LDAP configuration saved', 'success'); }
+        else { showToast('Failed: ' + (d.error || 'unknown'), 'error'); }
+    } catch(e) { showToast('Error saving LDAP config', 'error'); }
+}
+
+async function testLDAP() {
+    document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent);">Testing connection...</span>';
+    try {
+        const r = await fetch('/api/ldap/test', {method:'POST'});
+        const d = await r.json();
+        if (d.success) {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--success);">✓ Connection successful</span>';
+        } else {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ ' + (d.error || 'Connection failed') + '</span>';
+        }
+    } catch(e) {
+        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ Network error</span>';
+    }
+}
+
+loadUsers();
         } else {
             showToast(`Failed: ${data.error || 'unknown'}`, 'error');
         }
@@ -317,7 +413,55 @@ async function deleteUser(username) {
     try {
         await fetch(`/api/users/${username}`, {method:'DELETE'});
         showToast('User deleted', 'success');
-        loadUsers();
+        
+// ── LDAP ──
+async function loadLDAP() {
+    try {
+        const r = await fetch('/api/ldap/');
+        const d = await r.json();
+        document.getElementById('ldap-enabled').checked = d.enabled || false;
+        document.getElementById('ldap-host').value = d.host || '';
+        document.getElementById('ldap-port').value = d.port || 636;
+        document.getElementById('ldap-tls').checked = d.use_tls !== false;
+        document.getElementById('ldap-bind-dn').value = d.bind_dn || '';
+        document.getElementById('ldap-base-dn').value = d.base_dn || '';
+        document.getElementById('ldap-user-filter').value = d.user_filter || '(objectClass=person)';
+        document.getElementById('ldap-group-filter').value = d.group_filter || '(objectClass=group)';
+        document.getElementById('ldap-user-attr').value = d.username_attr || 'sAMAccountName';
+        document.getElementById('ldap-email-attr').value = d.email_attr || 'mail';
+        document.getElementById('ldap-admin-group').value = d.admin_group || 'Domain Admins';
+    } catch(e) { console.error(e); }
+}
+
+async function saveLDAP(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.set('enabled', document.getElementById('ldap-enabled').checked ? 'true' : 'false');
+    fd.set('use_tls', document.getElementById('ldap-tls').checked ? 'true' : 'false');
+    try {
+        const r = await fetch('/api/ldap/save', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('LDAP configuration saved', 'success'); }
+        else { showToast('Failed: ' + (d.error || 'unknown'), 'error'); }
+    } catch(e) { showToast('Error saving LDAP config', 'error'); }
+}
+
+async function testLDAP() {
+    document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent);">Testing connection...</span>';
+    try {
+        const r = await fetch('/api/ldap/test', {method:'POST'});
+        const d = await r.json();
+        if (d.success) {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--success);">✓ Connection successful</span>';
+        } else {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ ' + (d.error || 'Connection failed') + '</span>';
+        }
+    } catch(e) {
+        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ Network error</span>';
+    }
+}
+
+loadUsers();
     } catch(e) { showToast('Error', 'error'); }
 }
 
@@ -360,6 +504,54 @@ async function deleteToken(id) {
         showToast('Token revoked', 'success');
         loadTokens();
     } catch(e) { showToast('Error', 'error'); }
+}
+
+
+// ── LDAP ──
+async function loadLDAP() {
+    try {
+        const r = await fetch('/api/ldap/');
+        const d = await r.json();
+        document.getElementById('ldap-enabled').checked = d.enabled || false;
+        document.getElementById('ldap-host').value = d.host || '';
+        document.getElementById('ldap-port').value = d.port || 636;
+        document.getElementById('ldap-tls').checked = d.use_tls !== false;
+        document.getElementById('ldap-bind-dn').value = d.bind_dn || '';
+        document.getElementById('ldap-base-dn').value = d.base_dn || '';
+        document.getElementById('ldap-user-filter').value = d.user_filter || '(objectClass=person)';
+        document.getElementById('ldap-group-filter').value = d.group_filter || '(objectClass=group)';
+        document.getElementById('ldap-user-attr').value = d.username_attr || 'sAMAccountName';
+        document.getElementById('ldap-email-attr').value = d.email_attr || 'mail';
+        document.getElementById('ldap-admin-group').value = d.admin_group || 'Domain Admins';
+    } catch(e) { console.error(e); }
+}
+
+async function saveLDAP(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    fd.set('enabled', document.getElementById('ldap-enabled').checked ? 'true' : 'false');
+    fd.set('use_tls', document.getElementById('ldap-tls').checked ? 'true' : 'false');
+    try {
+        const r = await fetch('/api/ldap/save', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('LDAP configuration saved', 'success'); }
+        else { showToast('Failed: ' + (d.error || 'unknown'), 'error'); }
+    } catch(e) { showToast('Error saving LDAP config', 'error'); }
+}
+
+async function testLDAP() {
+    document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent);">Testing connection...</span>';
+    try {
+        const r = await fetch('/api/ldap/test', {method:'POST'});
+        const d = await r.json();
+        if (d.success) {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--success);">✓ Connection successful</span>';
+        } else {
+            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ ' + (d.error || 'Connection failed') + '</span>';
+        }
+    } catch(e) {
+        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ Network error</span>';
+    }
 }
 
 loadUsers();

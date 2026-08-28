@@ -7,17 +7,11 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from ..database import SessionLocal
 from ..models.enhanced_models import NotificationTarget, NotificationRule
 from ..services.notification_service import NotificationService
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 
 router = APIRouter()
 notif_svc = NotificationService()
 
-
-def auth_check(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return None, RedirectResponse(url="/login", status_code=302)
-    return user, None
 
 
 # ── Notification Targets ──
@@ -25,9 +19,8 @@ def auth_check(request: Request):
 @router.get("/targets")
 async def list_targets(request: Request):
     """List notification targets."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         targets = db.query(NotificationTarget).all()
@@ -50,9 +43,8 @@ async def create_target(
     config_json: str = Form("{}"),
 ):
     """Create a notification target."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = NotificationTarget(
@@ -68,9 +60,8 @@ async def create_target(
 @router.delete("/targets/{target_id}")
 async def delete_target(target_id: int, request: Request):
     """Delete a notification target."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(NotificationTarget).filter(NotificationTarget.id == target_id).delete()
@@ -83,9 +74,8 @@ async def delete_target(target_id: int, request: Request):
 @router.post("/targets/{target_id}/toggle")
 async def toggle_target(target_id: int, request: Request):
     """Toggle notification target enabled/disabled."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = db.query(NotificationTarget).filter(NotificationTarget.id == target_id).first()
@@ -103,9 +93,8 @@ async def test_notification(
     target_id: int = Form(...),
 ):
     """Send a test notification."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         target = db.query(NotificationTarget).filter(NotificationTarget.id == target_id).first()
@@ -125,9 +114,8 @@ async def test_notification(
 @router.get("/rules")
 async def list_rules(request: Request):
     """List notification rules."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         rules = db.query(NotificationRule).all()
@@ -152,9 +140,8 @@ async def create_rule(
     severity: str = Form("warning"),
 ):
     """Create a notification rule."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         rule = NotificationRule(
@@ -171,9 +158,8 @@ async def create_rule(
 @router.delete("/rules/{rule_id}")
 async def delete_rule(rule_id: int, request: Request):
     """Delete a notification rule."""
-    user, redir = auth_check(request)
-    if redir:
-        return redir
+    user, error = api_auth(request)
+    if error: return error
     db = SessionLocal()
     try:
         db.query(NotificationRule).filter(NotificationRule.id == rule_id).delete()

@@ -77,7 +77,8 @@
                 <div class="nx-wizard-step" data-step="2"><div class="nx-wizard-step-num">2</div><div class="nx-wizard-step-label">OS</div></div>
                 <div class="nx-wizard-step" data-step="3"><div class="nx-wizard-step-num">3</div><div class="nx-wizard-step-label">System</div></div>
                 <div class="nx-wizard-step" data-step="4"><div class="nx-wizard-step-num">4</div><div class="nx-wizard-step-label">Disk</div></div>
-                <div class="nx-wizard-step" data-step="5"><div class="nx-wizard-step-num">5</div><div class="nx-wizard-step-label">Confirm</div></div>
+                <div class="nx-wizard-step" data-step="5"><div class="nx-wizard-step-num">5</div><div class="nx-wizard-step-label">Advanced</div></div>
+                <div class="nx-wizard-step" data-step="6"><div class="nx-wizard-step-num">6</div><div class="nx-wizard-step-label">Confirm</div></div>
             </div>
 
             <form id="vm-create-form" onsubmit="submitCreateVM(event)">
@@ -234,19 +235,124 @@
                             </select>
                             <span class="nx-hint">Storage where the VM disk will be created.</span>
                         </div>
-                        <div class="nx-input-group">
-                            <label class="nx-label">Cache Mode</label>
-                            <select name="cache" class="nx-select">
-                                <option value="none">None (best performance)</option>
-                                <option value="writethrough">Write Through (safe)</option>
-                                <option value="writeback">Write Back (fast, less safe)</option>
-                            </select>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label">Cache Mode</label>
+                                <select name="disk_cache" class="nx-select">
+                                    <option value="none">None (best performance)</option>
+                                    <option value="writethrough">Write Through (safe)</option>
+                                    <option value="writeback">Write Back (fast, less safe)</option>
+                                    <option value="directsync">Direct Sync</option>
+                                    <option value="unsafe">Unsafe</option>
+                                </select>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="disk_discard"> Enable TRIM/Discard
+                                </label>
+                                <span class="nx-hint">Sends TRIM to guest for SSD thin provisioning.</span>
+                            </div>
+                        </div>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="disk_iothread"> SCSI IO Thread
+                                </label>
+                                <span class="nx-hint">Separate IO thread for better SCSI performance.</span>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="disk_ssd"> SSD Emulation
+                                </label>
+                                <span class="nx-hint">Reports disk as SSD to guest (rotation=0).</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 5: Confirm -->
+                <!-- Step 5: Advanced -->
                 <div class="vm-wizard-page" id="vm-page-5" style="display:none;">
+                    <div class="nx-flex nx-flex-col nx-gap-4">
+                        <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px 0;">CPU Topology</h4>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label">Sockets</label>
+                                <input type="number" name="cpu_sockets" class="nx-input" value="1" min="1" max="256">
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label">Cores</label>
+                                <input type="number" name="cpu_cores" class="nx-input" value="" min="1" max="128" placeholder="auto">
+                                <span class="nx-hint">Leave empty to use total CPU count.</span>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label">Threads</label>
+                                <input type="number" name="cpu_threads" class="nx-input" value="1" min="1" max="128">
+                            </div>
+                        </div>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label">CPU Shares (Weight)</label>
+                                <input type="number" name="cpu_units" class="nx-input" value="1024" min="1" max="262144">
+                                <span class="nx-hint">Relative weight. Default 1024. Higher = more CPU.</span>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label">CPU Limit (%)</label>
+                                <input type="number" name="cpu_limit" class="nx-input" value="" min="1" max="100" placeholder="unlimited">
+                                <span class="nx-hint">Hard cap on CPU usage. Leave empty for unlimited.</span>
+                            </div>
+                        </div>
+
+                        <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 4px 0;">Display &amp; Watchdog</h4>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label">VGA Display</label>
+                                <select name="vga_display" class="nx-select">
+                                    <option value="std">Standard</option>
+                                    <option value="vmware">VMware</option>
+                                    <option value="virtio">VirtIO GPU</option>
+                                    <option value="serial">Serial (headless)</option>
+                                    <option value="none">None</option>
+                                </select>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label">Watchdog</label>
+                                <select name="watchdog_model" class="nx-select">
+                                    <option value="">Disabled</option>
+                                    <option value="i6300esb">i6300ESB (Intel)</option>
+                                    <option value="diag68274">Diag68274</option>
+                                </select>
+                                <span class="nx-hint">Hardware watchdog: reboots VM if unresponsive.</span>
+                            </div>
+                        </div>
+
+                        <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 4px 0;">Memory</h4>
+                        <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="nx-input-group">
+                                <label class="nx-label">Min Memory (MB)</label>
+                                <input type="number" name="memory_min" class="nx-input" value="" min="0" step="128" placeholder="Same as max">
+                                <span class="nx-hint">Minimum guaranteed memory (for static allocation).</span>
+                            </div>
+                            <div class="nx-input-group">
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" name="hotplug_cpu"> Hotplug CPU
+                                </label>
+                                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">
+                                    <input type="checkbox" name="hotplug_ram"> Hotplug RAM
+                                </label>
+                            </div>
+                        </div>
+
+                        <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 4px 0;">CPU Affinity</h4>
+                        <div class="nx-input-group">
+                            <label class="nx-label">CPU Affinity</label>
+                            <input type="text" name="cpu_affinity" class="nx-input" placeholder="e.g. 0,1,4,5">
+                            <span class="nx-hint">Comma-separated host CPU IDs. Leave empty for no restriction.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6: Confirm -->
+                <div class="vm-wizard-page" id="vm-page-6" style="display:none;">
                     <div class="nx-flex nx-flex-col nx-gap-4">
                         <p style="color:var(--text-secondary);font-size:var(--text-sm);">Review your VM configuration before creating.</p>
                         <div id="vm-summary" style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:16px;font-size:var(--text-sm);"></div>
@@ -299,7 +405,7 @@
 <script>
 let allVMs = [];
 let vmWizardStep = 1;
-const vmTotalSteps = 5;
+const vmTotalSteps = 6;
 let currentDetailVMId = null;
 
 // ── Load VMs ──
@@ -453,18 +559,27 @@ function vmPrevStep() { if (vmWizardStep > 1) { vmWizardStep--; showVMStep(vmWiz
 function buildVMSummary() {
     const f = document.getElementById('vm-create-form');
     const g = (n) => f.querySelector(`[name="${n}"]`)?.value || '-';
+    const ck = (n) => f.querySelector(`[name="${n}"]`)?.checked ? 'Yes' : 'No';
     document.getElementById('vm-summary').innerHTML = `
-        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px 12px;">
+        <div style="display:grid;grid-template-columns:130px 1fr;gap:6px 12px;">
             <span class="nx-text-muted">Name</span><span>${g('name')}</span>
-            <span class="nx-text-muted">CPU</span><span>${g('vcpu')} cores (${g('cpu_type')})</span>
-            <span class="nx-text-muted">Memory</span><span>${(parseInt(g('memory_mb'))/1024).toFixed(1)} GB</span>
-            <span class="nx-text-muted">Disk</span><span>${g('disk_gb')} GB (${g('disk_interface')})</span>
+            <span class="nx-text-muted">CPU</span><span>${g('vcpu')} cores (${g('cpu_type')}) — ${g('cpu_sockets')}S / ${g('cpu_cores') || g('vcpu')}C / ${g('cpu_threads')}T</span>
+            <span class="nx-text-muted">CPU Weight</span><span>${g('cpu_units')}${g('cpu_limit') ? ' (limit: ' + g('cpu_limit') + '%)' : ''}</span>
+            <span class="nx-text-muted">Memory</span><span>${(parseInt(g('memory_mb'))/1024).toFixed(1)} GB${g('memory_min') ? ' (min: ' + (parseInt(g('memory_min'))/1024).toFixed(1) + ' GB)' : ''}</span>
+            <span class="nx-text-muted">Disk</span><span>${g('disk_gb')} GB (${g('disk_interface')}) — Cache: ${g('disk_cache')}</span>
             <span class="nx-text-muted">ISO</span><span>${g('iso') || 'None'}</span>
             <span class="nx-text-muted">Machine</span><span>${g('machine_type')} / ${g('bios_type')}</span>
             <span class="nx-text-muted">OS</span><span>${g('os_type')}</span>
-            <span class="nx-text-muted">TPM</span><span>${document.querySelector('[name="tpm_enabled"]')?.checked ? 'Yes' : 'No'}</span>
-            <span class="nx-text-muted">Secure Boot</span><span>${document.querySelector('[name="secure_boot"]')?.checked ? 'Yes' : 'No'}</span>
-            <span class="nx-text-muted">NUMA</span><span>${document.querySelector('[name="numa"]')?.checked ? 'Yes' : 'No'}</span>
+            <span class="nx-text-muted">Display</span><span>${g('vga_display')}</span>
+            <span class="nx-text-muted">Watchdog</span><span>${g('watchdog_model') || 'Disabled'}</span>
+            <span class="nx-text-muted">TPM</span><span>${ck('tpm_enabled')}</span>
+            <span class="nx-text-muted">Secure Boot</span><span>${ck('secure_boot')}</span>
+            <span class="nx-text-muted">NUMA</span><span>${ck('numa')}</span>
+            <span class="nx-text-muted">TRIM</span><span>${ck('disk_discard')}</span>
+            <span class="nx-text-muted">IO Thread</span><span>${ck('disk_iothread')}</span>
+            <span class="nx-text-muted">SSD Emul.</span><span>${ck('disk_ssd')}</span>
+            <span class="nx-text-muted">Hotplug</span><span>CPU: ${ck('hotplug_cpu')} | RAM: ${ck('hotplug_ram')}</span>
+            <span class="nx-text-muted">CPU Affinity</span><span>${g('cpu_affinity') || 'None'}</span>
         </div>`;
 }
 
@@ -493,6 +608,11 @@ async function submitCreateVM(e) {
     fd.set('secure_boot', e.target.querySelector('[name="secure_boot"]')?.checked ? 'true' : 'false');
     fd.set('numa', e.target.querySelector('[name="numa"]')?.checked ? 'true' : 'false');
     fd.set('hugepages', e.target.querySelector('[name="hugepages"]')?.value || 'none');
+    fd.set('disk_discard', e.target.querySelector('[name="disk_discard"]')?.checked ? 'true' : 'false');
+    fd.set('disk_iothread', e.target.querySelector('[name="disk_iothread"]')?.checked ? 'true' : 'false');
+    fd.set('disk_ssd', e.target.querySelector('[name="disk_ssd"]')?.checked ? 'true' : 'false');
+    fd.set('hotplug_cpu', e.target.querySelector('[name="hotplug_cpu"]')?.checked ? 'true' : 'false');
+    fd.set('hotplug_ram', e.target.querySelector('[name="hotplug_ram"]')?.checked ? 'true' : 'false');
     try {
         const r = await fetch('/api/vms/create', {method: 'POST', body: fd});
         const data = await r.json();
@@ -579,25 +699,46 @@ function showEditNetwork(id) {
 function showEditVM(id) {
     const vm = allVMs.find(v => v.id === id); if (!vm) return;
     const c = document.getElementById('detail-content');
+    const ck = (v) => v ? 'checked' : '';
+    const sel = (field, val) => { return `id="edit-${field}"`; };
     c.innerHTML += `<div class="nx-card nx-mt-4" style="margin:0;border-color:var(--accent);"><div class="nx-card-header"><span class="nx-card-title">Edit Settings</span></div><div class="nx-card-body">
         <div class="nx-flex nx-flex-col nx-gap-4">
             <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
                 <div class="nx-input-group"><label class="nx-label">VM Name</label><input type="text" id="edit-name" class="nx-input" value="${vm.name || ''}"></div>
+                <div class="nx-input-group"><label class="nx-label">CPU Type</label><select id="edit-cpu-type" class="nx-select"><option value="host" ${vm.cpu_type==='host'?'selected':''}>Host</option><option value="qemu64" ${vm.cpu_type==='qemu64'?'selected':''}>QEMU64</option><option value="kvm64" ${vm.cpu_type==='kvm64'?'selected':''}>KVM64</option><option value="max" ${vm.cpu_type==='max'?'selected':''}>Max</option></select></div>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">CPU Sockets</label><input type="number" id="edit-sockets" class="nx-input" value="${vm.cpu_sockets || 1}" min="1"></div>
                 <div class="nx-input-group"><label class="nx-label">CPU Cores</label><input type="number" id="edit-vcpu" class="nx-input" value="${vm.vcpu || 2}" min="1" max="128"></div>
+                <div class="nx-input-group"><label class="nx-label">CPU Threads</label><input type="number" id="edit-threads" class="nx-input" value="${vm.cpu_threads || 1}" min="1"></div>
             </div>
             <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
                 <div class="nx-input-group"><label class="nx-label">Memory (MB)</label><input type="number" id="edit-mem" class="nx-input" value="${vm.memory_mb || 2048}" min="128" step="128"></div>
-                <div class="nx-input-group"><label class="nx-label">Disk Size (GB)</label><input type="number" id="edit-disk" class="nx-input" value="${vm.disk_gb || 50}" min="1"></div>
-            </div>
-            <div class="nx-input-group"><label class="nx-label">Boot Order</label><input type="text" id="edit-boot" class="nx-input" value="${vm.boot_order || 'c'}"></div>
-            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
-                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-agent" ${vm.agent_enabled ? 'checked' : ''}> QEMU Agent</label>
-                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-serial" ${vm.serial_console ? 'checked' : ''}> Serial Console</label>
-                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-balloon" ${vm.balloon ? 'checked' : ''}> Memory Balloon</label>
+                <div class="nx-input-group"><label class="nx-label">Min Memory (MB)</label><input type="number" id="edit-mem-min" class="nx-input" value="${vm.memory_min || ''}" min="0" step="128" placeholder="Same as max"></div>
             </div>
             <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
-                <div class="nx-input-group"><label class="nx-label">CPU Hotplug</label><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-cpu" ${vm.hotplug_cpu ? 'checked' : ''}> Enable</label></div>
-                <div class="nx-input-group"><label class="nx-label">RAM Hotplug</label><label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-ram" ${vm.hotplug_ram ? 'checked' : ''}> Enable</label></div>
+                <div class="nx-input-group"><label class="nx-label">Disk Size (GB)</label><input type="number" id="edit-disk" class="nx-input" value="${vm.disk_gb || 50}" min="1"></div>
+                <div class="nx-input-group"><label class="nx-label">Boot Order</label><input type="text" id="edit-boot" class="nx-input" value="${vm.boot_order || 'c'}"></div>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">VGA Display</label><select id="edit-vga" class="nx-select"><option value="std" ${vm.vga_display==='std'?'selected':''}>Standard</option><option value="vmware" ${vm.vga_display==='vmware'?'selected':''}>VMware</option><option value="virtio" ${vm.vga_display==='virtio'?'selected':''}>VirtIO</option><option value="serial" ${vm.vga_display==='serial'?'selected':''}>Serial</option><option value="none" ${vm.vga_display==='none'?'selected':''}>None</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Watchdog</label><select id="edit-watchdog" class="nx-select"><option value="" ${!vm.watchdog_model?'selected':''}>Disabled</option><option value="i6300esb" ${vm.watchdog_model==='i6300esb'?'selected':''}>i6300ESB</option></select></div>
+                <div class="nx-input-group"><label class="nx-label">Disk Cache</label><select id="edit-disk-cache" class="nx-select"><option value="none" ${vm.disk_cache==='none'?'selected':''}>None</option><option value="writethrough" ${vm.disk_cache==='writethrough'?'selected':''}>Write Through</option><option value="writeback" ${vm.disk_cache==='writeback'?'selected':''}>Write Back</option></select></div>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-agent" ${ck(vm.agent_enabled)}> QEMU Agent</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-serial" ${ck(vm.serial_console)}> Serial Console</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-balloon" ${ck(vm.balloon)}> Memory Balloon</label>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-numa" ${ck(vm.numa)}> NUMA</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-cpu" ${ck(vm.hotplug_cpu)}> CPU Hotplug</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-hotplug-ram" ${ck(vm.hotplug_ram)}> RAM Hotplug</label>
+                <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="edit-disk-discard" ${ck(vm.disk_discard)}> TRIM</label>
+            </div>
+            <div class="nx-grid" style="grid-template-columns:1fr 1fr;">
+                <div class="nx-input-group"><label class="nx-label">CPU Shares</label><input type="number" id="edit-cpu-units" class="nx-input" value="${vm.cpu_units || 1024}" min="1" max="262144"></div>
+                <div class="nx-input-group"><label class="nx-label">CPU Limit %</label><input type="number" id="edit-cpu-limit" class="nx-input" value="${vm.cpu_limit || ''}" min="1" max="100" placeholder="unlimited"></div>
             </div>
             <div class="nx-input-group"><label class="nx-label">Description</label><textarea id="edit-notes" class="nx-input" rows="2">${vm.notes || ''}</textarea></div>
             <div class="nx-flex nx-gap-2">
@@ -612,14 +753,25 @@ async function submitEditVM(id) {
     const fd = new FormData();
     fd.append('name', document.getElementById('edit-name').value);
     fd.append('vcpu', document.getElementById('edit-vcpu').value);
+    fd.append('cpu_type', document.getElementById('edit-cpu-type').value);
+    fd.append('cpu_sockets', document.getElementById('edit-sockets').value);
+    fd.append('cpu_threads', document.getElementById('edit-threads').value);
     fd.append('memory_mb', document.getElementById('edit-mem').value);
+    fd.append('memory_min', document.getElementById('edit-mem-min').value || '0');
     fd.append('disk_gb', document.getElementById('edit-disk').value);
     fd.append('boot_order', document.getElementById('edit-boot').value);
+    fd.append('vga_display', document.getElementById('edit-vga').value);
+    fd.append('watchdog_model', document.getElementById('edit-watchdog').value);
+    fd.append('disk_cache', document.getElementById('edit-disk-cache').value);
+    fd.append('cpu_units', document.getElementById('edit-cpu-units').value);
+    fd.append('cpu_limit', document.getElementById('edit-cpu-limit').value || '0');
     fd.append('agent_enabled', document.getElementById('edit-agent').checked ? 'true' : 'false');
     fd.append('serial_console', document.getElementById('edit-serial').checked ? 'true' : 'false');
     fd.append('balloon', document.getElementById('edit-balloon').checked ? 'true' : 'false');
+    fd.append('numa', document.getElementById('edit-numa').checked ? 'true' : 'false');
     fd.append('hotplug_cpu', document.getElementById('edit-hotplug-cpu').checked ? 'true' : 'false');
     fd.append('hotplug_ram', document.getElementById('edit-hotplug-ram').checked ? 'true' : 'false');
+    fd.append('disk_discard', document.getElementById('edit-disk-discard').checked ? 'true' : 'false');
     fd.append('notes', document.getElementById('edit-notes').value);
     try {
         const r = await fetch(`/api/vms/${id}/update`, {method:'POST', body:fd});

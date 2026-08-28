@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from ..database import SessionLocal
 from ..models.user import User
 from ..models.vm import ApiToken
-from ..auth import get_current_user
+from ..auth import get_current_user, api_auth
 import secrets
 import hashlib
 
@@ -17,9 +17,8 @@ def hash_token(token: str) -> str:
 
 @router.get("/")
 async def list_tokens(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -47,9 +46,8 @@ async def create_token(
     permissions: str = Form("read"),
     expires_days: int = Form(0),
 ):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     # Generate raw token (shown once only)
     raw_token = f"nxt_{secrets.token_urlsafe(32)}"
@@ -76,9 +74,8 @@ async def create_token(
 
 @router.post("/{token_id}/delete")
 async def delete_token(request: Request, token_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
@@ -96,9 +93,8 @@ async def delete_token(request: Request, token_id: int):
 
 @router.post("/{token_id}/toggle")
 async def toggle_token(request: Request, token_id: int):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    user, error = api_auth(request)
+    if error: return error
 
     db = SessionLocal()
     try:
