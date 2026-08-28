@@ -361,11 +361,14 @@ async function doReset() {
 
 @router.post("/reset")
 async def reset_setup(request: Request):
-    """Reset all users and re-run setup."""
+    """Reset all users and re-run setup. Requires admin password confirmation."""
+    from ..auth import get_current_user
+    user = get_current_user(request)
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin authentication required"}, status_code=403)
     db = SessionLocal()
     try:
         from ..models.user import User
-        from ..models.vm import VM, Container
         db.query(User).delete()
         db.commit()
     finally:
@@ -375,7 +378,11 @@ async def reset_setup(request: Request):
 
 @router.post("/factory-reset")
 async def factory_reset(request: Request):
-    """Completely wipe everything: VMs, containers, storage configs, users, and database."""
+    """Completely wipe everything. Requires admin authentication."""
+    from ..auth import get_current_user
+    user = get_current_user(request)
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin authentication required"}, status_code=403)
     import subprocess
     import shutil
     import os

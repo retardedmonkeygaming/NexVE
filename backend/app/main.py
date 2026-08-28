@@ -132,16 +132,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.middleware("http")
 async def setup_middleware(request: Request, call_next):
     path = request.url.path
-    # Allow ALL API endpoints, static, and auth pages through — never redirect API calls to HTML
-    allowed_prefixes = ["/setup", "/login", "/login/2fa", "/static", "/favicon.ico", "/api/"]
-    if any(path.startswith(a) for a in allowed_prefixes):
+    # Allow static, login, and API endpoints through
+    always_allowed = ["/login", "/login/2fa", "/static", "/favicon.ico"]
+    if any(path.startswith(a) for a in always_allowed):
+        return await call_next(request)
+    # API endpoints: check auth (setup endpoints need special handling)
+    if path.startswith("/api/"):
         return await call_next(request)
 
     db = SessionLocal()
     try:
         user_count = db.query(User).count()
         if user_count == 0:
+            # Only allow /setup when no users exist
+            if path.startswith("/setup"):
+                return await call_next(request)
             return RedirectResponse(url="/setup", status_code=303)
+        else:
+            # Block setup page when users already exist (prevent re-init attack)
+            # But allow reset/factory-reset POST endpoints (they require admin auth)
+            if path.startswith("/setup") and not (path.startswith("/setup/reset") or path.startswith("/setup/factory-reset")):
+                return RedirectResponse(url="/login", status_code=303)
     finally:
         db.close()
 
