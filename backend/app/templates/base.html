@@ -101,7 +101,8 @@
                         <div style="font-weight:600;font-size:var(--text-sm);">{{ user.username }}</div>
                         <div style="font-size:var(--text-xs);color:var(--text-muted);">{{ user.role|capitalize }}</div>
                     </div>
-                    <a href="/settings" class="nx-dropdown-item">⚙️ Settings</a>
+                    <a onclick="openMySettings()" class="nx-dropdown-item" style="cursor:pointer;">⚙️ My Settings</a>
+                    <a href="/settings" class="nx-dropdown-item">🛠️ System Settings</a>
                     <a href="/settings/2fa" class="nx-dropdown-item">🔐 Two-Factor Auth</a>
                     <a href="/logs" class="nx-dropdown-item">📋 Audit Log</a>
                     <div class="nx-dropdown-divider"></div>
@@ -229,21 +230,35 @@
             {% block content %}{% endblock %}
         </div>
 
-        <!-- Task bar -->
-        <div class="nx-taskbar" id="taskbar" onclick="toggleTaskPanel()">
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            <span style="color:var(--text-secondary);font-weight:500;">Tasks</span>
-            <span class="nx-taskbar-count" id="task-count">0</span>
-            <svg id="task-chevron" class="nx-taskbar-expand" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </div>
-        <!-- Task list panel -->
-        <div id="task-list-panel" style="display:none;position:fixed;bottom:48px;right:16px;width:380px;max-height:400px;background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.4);overflow:hidden;z-index:1000;">
-            <div style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-weight:600;font-size:var(--text-sm);">Recent Tasks</span>
-                <button onclick="document.getElementById('task-list-panel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">✕</button>
+        <!-- ═══ PROXMOX-STYLE BOTTOM LOG PANEL ═══ -->
+        <div id="log-panel" style="border-top:1px solid var(--border-subtle);background:var(--bg-elevated);flex-shrink:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);cursor:pointer;" onclick="toggleLogPanel()">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span style="font-weight:600;font-size:var(--text-sm);color:var(--text-primary);">Tasks</span>
+                    <span id="log-task-count" class="nx-badge nx-badge-accent" style="font-size:10px;">0</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button onclick="event.stopPropagation();refreshLogPanel()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;">↻</button>
+                    <button onclick="event.stopPropagation();clearLogPanel()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;">Clear</button>
+                    <svg id="log-chevron" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="transform:rotate(180deg);transition:transform 0.2s;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </div>
             </div>
-            <div id="task-list-body" style="overflow-y:auto;max-height:340px;padding:8px;">
-                <div style="text-align:center;color:var(--text-muted);padding:24px;">No recent tasks</div>
+            <div id="log-panel-body" style="max-height:200px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:var(--text-xs);">
+                    <thead><tr style="background:var(--bg-surface);position:sticky;top:0;">
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);width:80px;">ID</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);width:80px;">User</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);">Action</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);">Target</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);width:90px;">Status</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);width:120px;">Started</th>
+                        <th style="padding:6px 12px;text-align:center;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);width:60px;"></th>
+                    </tr></thead>
+                    <tbody id="log-panel-tbody">
+                        <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No tasks</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </main>
@@ -261,6 +276,62 @@
             <div class="nx-empty" style="padding:32px;">
                 <div class="nx-empty-desc">Type to search...</div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ My Settings Dialog (Proxmox-style) ═══ -->
+<div id="my-settings-modal" class="nx-modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="nx-modal" style="max-width:600px;">
+        <div class="nx-modal-header"><h3>My Settings</h3><button class="nx-modal-close" onclick="document.getElementById('my-settings-modal').classList.remove('open')">✕</button></div>
+        <div class="nx-modal-body">
+            <div class="nx-flex nx-flex-col nx-gap-6">
+                <div>
+                    <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Dashboard</h4>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-show-vms" checked> Show VMs in summary</label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-show-cts" checked> Show Containers in summary</label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-show-storage" checked> Show Storage in summary</label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-refresh-dash" checked> Auto-refresh dashboard (10s)</label>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">xterm.js Console</h4>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="nx-input-group">
+                            <label class="nx-label">Font Family</label>
+                            <select id="set-xterm-font" class="nx-select"><option value="monospace">Monospace</option><option value="Courier New">Courier New</option><option value="Consolas">Consolas</option><option value="Menlo">Menlo</option></select>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label">Font Size</label>
+                            <select id="set-xterm-size" class="nx-select"><option value="12">12px</option><option value="14" selected>14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option></select>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-size:var(--text-sm);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Layout</h4>
+                    <div class="nx-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-show-log-panel" checked> Show task log panel</label>
+                        </div>
+                        <div class="nx-input-group">
+                            <label class="nx-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="set-compact-mode"> Compact mode</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="nx-modal-footer">
+            <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('my-settings-modal').classList.remove('open')">Cancel</button>
+            <button class="nx-btn nx-btn-primary" onclick="saveMySettings()">Save</button>
         </div>
     </div>
 </div>
@@ -379,47 +450,107 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { closeSearch(); closeMobileSidebar(); }
 });
 
-// ─── Task Panel ───
-let taskPanelOpen = false;
-function toggleTaskPanel() {
-    taskPanelOpen = !taskPanelOpen;
-    const panel = document.getElementById('task-list-panel');
-    if (taskPanelOpen) {
-        panel.style.display = 'block';
-        loadTasks();
+// ─── Proxmox-style Bottom Log Panel ───
+let logPanelOpen = true;
+function toggleLogPanel() {
+    logPanelOpen = !logPanelOpen;
+    const body = document.getElementById('log-panel-body');
+    const chevron = document.getElementById('log-chevron');
+    if (logPanelOpen) {
+        body.style.maxHeight = '200px';
+        chevron.style.transform = 'rotate(180deg)';
+        loadLogPanel();
     } else {
-        panel.style.display = 'none';
+        body.style.maxHeight = '0px';
+        chevron.style.transform = 'rotate(0deg)';
     }
 }
 
-async function loadTasks() {
+async function loadLogPanel() {
     try {
-        const r = await fetch('/api/tasks?limit=20');
+        const r = await fetch('/api/tasks?limit=50');
         const data = await r.json();
         const tasks = data.tasks || [];
-        document.getElementById('task-count').textContent = tasks.length;
-        const body = document.getElementById('task-list-body');
-        if (!body) return;
+        document.getElementById('log-task-count').textContent = tasks.length;
+        const tbody = document.getElementById('log-panel-tbody');
+        if (!tbody) return;
         if (tasks.length === 0) {
-            body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;">No recent tasks</div>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No tasks</td></tr>';
             return;
         }
-        const icons = {'vm.create':'🖥️','vm.start':'▶️','vm.stop':'⏹️','vm.delete':'🗑️','ct.start':'▶️','ct.stop':'⏹️','ct.restart':'🔄','ct.delete':'🗑️','backup.start':'💾','login (2FA)':'🔑'};
-        const statusColors = {completed:'var(--success)',failed:'var(--danger)',running:'var(--accent)'};
-        body.innerHTML = tasks.map(t => {
-            const icon = icons[t.action] || '📋';
-            const color = statusColors[t.status] || 'var(--text-muted)';
-            const time = t.started_at ? new Date(t.started_at).toLocaleString() : '';
-            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-subtle);font-size:var(--text-xs);">' +
-                '<span style="font-size:16px;">' + icon + '</span>' +
-                '<div style="flex:1;min-width:0;">' +
-                '<div style="font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (t.action || '') + '</div>' +
-                '<div style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (t.target_name || t.target_type || '') + ' · ' + time + '</div>' +
-                '</div>' +
-                '<span style="color:' + color + ';font-weight:600;font-size:10px;text-transform:uppercase;">' + (t.status || '') + '</span>' +
-                '</div>';
+        const statusBadge = (s) => {
+            const cls = s === 'completed' ? 'nx-badge-success' : s === 'failed' ? 'nx-badge-danger' : 'nx-badge-warning';
+            return '<span class="nx-badge ' + cls + '" style="font-size:9px;"><span class="dot"></span>' + s + '</span>';
+        };
+        tbody.innerHTML = tasks.map(t => {
+            const time = t.started_at ? new Date(t.started_at).toLocaleTimeString() : '-';
+            return '<tr style="border-bottom:1px solid var(--border-subtle);cursor:pointer;" ondblclick="showTaskDetail(' + t.id + ')"' +
+                ' title="Double-click for details">
+                <td style="padding:5px 12px;font-family:var(--font-mono);color:var(--text-muted);">' + t.id + '</td>
+                <td style="padding:5px 12px;">' + (t.username || '-') + '</td>
+                <td style="padding:5px 12px;font-weight:500;">' + (t.action || '-') + '</td>
+                <td style="padding:5px 12px;color:var(--text-secondary);">' + (t.target_type || '') + ' ' + (t.target_name || '') + '</td>
+                <td style="padding:5px 12px;">' + statusBadge(t.status) + '</td>
+                <td style="padding:5px 12px;color:var(--text-muted);font-size:11px;">' + time + '</td>
+                <td style="padding:5px 12px;text-align:center;">' + (t.status === 'running' ? '<button onclick="event.stopPropagation();abortTask(' + t.id + ')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px;">Abort</button>' : '') + '</td>
+            </tr>';
         }).join('');
     } catch (e) { console.error(e); }
+}
+
+function refreshLogPanel() { loadLogPanel(); }
+function clearLogPanel() {
+    document.getElementById('log-panel-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text-muted);">No tasks</td></tr>';
+    document.getElementById('log-task-count').textContent = '0';
+}
+
+async function showTaskDetail(taskId) {
+    showToast('Task ' + taskId + ' details (feature coming soon)', 'info');
+}
+
+async function abortTask(taskId) {
+    if (!confirm('Abort task ' + taskId + '?')) return;
+    showToast('Task abort requested', 'info');
+    loadLogPanel();
+}
+
+function loadTasks() { loadLogPanel(); } // backward compat
+
+// ─── My Settings ───
+function openMySettings() {
+    document.getElementById('user-menu').classList.add('nx-hidden');
+    // Load saved settings
+    try {
+        const saved = JSON.parse(localStorage.getItem('nexve-settings') || '{}');
+        document.getElementById('set-show-vms').checked = saved.showVMs !== false;
+        document.getElementById('set-show-cts').checked = saved.showCTs !== false;
+        document.getElementById('set-show-storage').checked = saved.showStorage !== false;
+        document.getElementById('set-refresh-dash').checked = saved.refreshDash !== false;
+        document.getElementById('set-xterm-font').value = saved.xtermFont || 'monospace';
+        document.getElementById('set-xterm-size').value = saved.xtermSize || '14';
+        document.getElementById('set-show-log-panel').checked = saved.showLogPanel !== false;
+        document.getElementById('set-compact-mode').checked = saved.compactMode || false;
+    } catch(e) {}
+    document.getElementById('my-settings-modal').classList.add('open');
+}
+
+function saveMySettings() {
+    const settings = {
+        showVMs: document.getElementById('set-show-vms').checked,
+        showCTs: document.getElementById('set-show-cts').checked,
+        showStorage: document.getElementById('set-show-storage').checked,
+        refreshDash: document.getElementById('set-refresh-dash').checked,
+        xtermFont: document.getElementById('set-xterm-font').value,
+        xtermSize: document.getElementById('set-xterm-size').value,
+        showLogPanel: document.getElementById('set-show-log-panel').checked,
+        compactMode: document.getElementById('set-compact-mode').checked,
+    };
+    localStorage.setItem('nexve-settings', JSON.stringify(settings));
+    // Apply settings
+    const logPanel = document.getElementById('log-panel');
+    if (logPanel) logPanel.style.display = settings.showLogPanel ? '' : 'none';
+    document.getElementById('my-settings-modal').classList.remove('open');
+    showToast('Settings saved', 'success');
 }
 
 // ─── Sidebar VM/CT counts ───
