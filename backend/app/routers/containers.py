@@ -52,6 +52,9 @@ async def list_containers(request: Request):
         result = []
         for ct in db_containers:
             live_status = container_service.get_container_status(ct.id)
+            # If lxc-info returned unknown, fall back to DB status
+            if live_status == "unknown" and ct.status:
+                live_status = ct.status
             result.append({
                 "id": ct.id,
                 "name": ct.name,
@@ -193,11 +196,14 @@ async def start_container(request: Request, ct_id: int):
     try:
         ct = db.query(Container).filter(Container.id == ct_id).first()
         name = ct.name if ct else str(ct_id)
+        result = container_service.start_container_by_name(name)
+        if result.get("success") and ct:
+            ct.status = "running"
+            db.commit()
+        log_task(user.id, user.username, "ct.start", "container", name, "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
     finally:
         db.close()
-    result = container_service.start_container_by_name(name)
-    log_task(user.id, user.username, "ct.start", "container", name, "completed" if result.get("success") else "failed")
-    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/stop")
@@ -208,11 +214,14 @@ async def stop_container(request: Request, ct_id: int):
     try:
         ct = db.query(Container).filter(Container.id == ct_id).first()
         name = ct.name if ct else str(ct_id)
+        result = container_service.stop_container_by_name(name)
+        if result.get("success") and ct:
+            ct.status = "stopped"
+            db.commit()
+        log_task(user.id, user.username, "ct.stop", "container", name, "completed" if result.get("success") else "failed")
+        return JSONResponse(content=result)
     finally:
         db.close()
-    result = container_service.stop_container_by_name(name)
-    log_task(user.id, user.username, "ct.stop", "container", name, "completed" if result.get("success") else "failed")
-    return JSONResponse(content=result)
 
 
 @router.post("/{ct_id}/restart")

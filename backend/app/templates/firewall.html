@@ -183,6 +183,8 @@ function showTab(btn, name) {
     document.querySelectorAll('.nx-tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'macros') loadMacros();
+    if (name === 'connections') loadConnections();
 }
 
 // ── Load Rules ──
@@ -221,55 +223,7 @@ async function submitRule(e) {
             showToast('Rule added', 'success');
             hideAddRule();
             e.target.reset();
-            
-// ── Load Macros ──
-async function loadMacros() {
-    try {
-        const r = await fetch('/api/firewall/macros');
-        const data = await r.json();
-        const macros = data.macros || {};
-        const list = document.getElementById('macro-list');
-        list.innerHTML = Object.entries(macros).map(([name, m]) => `
-            <tr>
-                <td style="font-weight:500;font-family:monospace;">${name}</td>
-                <td><span class="nx-badge nx-badge-info">${m.protocol}</span></td>
-                <td style="font-family:monospace;">${m.dport || '-'}</td>
-                <td style="color:var(--text-muted);">${m.description}</td>
-                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyMacro('${name}')">Apply</button></td>
-            </tr>
-        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No macros available</td></tr>';
-    } catch(e) { console.error(e); }
-}
-
-async function applyMacro(name) {
-    const fd = new FormData();
-    fd.append('macro', name);
-    fd.append('direction', 'in');
-    fd.append('action', 'accept');
-    try {
-        const r = await fetch('/api/firewall/macros/apply', {method:'POST', body:fd});
-        const d = await r.json();
-        if (d.success) { showToast('Macro applied: ' + name, 'success'); loadRules(); }
-        else showToast(d.error || 'Failed', 'error');
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
-}
-
-// ── Load Connections ──
-async function loadConnections() {
-    try {
-        const r = await fetch('/api/firewall/connections');
-        const data = await r.json();
-        const conns = data.connections || [];
-        const el = document.getElementById('conn-list');
-        if (conns.length === 0) {
-            el.innerHTML = '<div style="color:var(--text-muted);">No active connections tracked. Connection tracking may not be enabled.</div>';
-        } else {
-            el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
-        }
-    } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
-}
-
-loadRules();
+            loadRules();
         } else {
             showToast(`Failed: ${data.error || 'unknown'}`, 'error');
         }
@@ -282,7 +236,10 @@ async function deleteRule(id) {
     try {
         await fetch(`/api/firewall/rules/${id}`, {method: 'DELETE'});
         showToast('Rule deleted', 'success');
-        
+        loadRules();
+    } catch (e) { showToast('Error', 'error'); }
+}
+
 // ── Load Macros ──
 async function loadMacros() {
     try {
@@ -328,10 +285,6 @@ async function loadConnections() {
             el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
         }
     } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
-}
-
-loadRules();
-    } catch (e) { showToast('Error', 'error'); }
 }
 
 // ── Save Options ──
@@ -339,54 +292,7 @@ function saveFWOptions() {
     showToast('Firewall options saved', 'success');
 }
 
-
-// ── Load Macros ──
-async function loadMacros() {
-    try {
-        const r = await fetch('/api/firewall/macros');
-        const data = await r.json();
-        const macros = data.macros || {};
-        const list = document.getElementById('macro-list');
-        list.innerHTML = Object.entries(macros).map(([name, m]) => `
-            <tr>
-                <td style="font-weight:500;font-family:monospace;">${name}</td>
-                <td><span class="nx-badge nx-badge-info">${m.protocol}</span></td>
-                <td style="font-family:monospace;">${m.dport || '-'}</td>
-                <td style="color:var(--text-muted);">${m.description}</td>
-                <td><button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="applyMacro('${name}')">Apply</button></td>
-            </tr>
-        `).join('') || '<tr><td colspan="5" class="nx-text-center nx-text-muted" style="padding:32px;">No macros available</td></tr>';
-    } catch(e) { console.error(e); }
-}
-
-async function applyMacro(name) {
-    const fd = new FormData();
-    fd.append('macro', name);
-    fd.append('direction', 'in');
-    fd.append('action', 'accept');
-    try {
-        const r = await fetch('/api/firewall/macros/apply', {method:'POST', body:fd});
-        const d = await r.json();
-        if (d.success) { showToast('Macro applied: ' + name, 'success'); loadRules(); }
-        else showToast(d.error || 'Failed', 'error');
-    } catch(e) { showToast('Error: ' + e.message, 'error'); }
-}
-
-// ── Load Connections ──
-async function loadConnections() {
-    try {
-        const r = await fetch('/api/firewall/connections');
-        const data = await r.json();
-        const conns = data.connections || [];
-        const el = document.getElementById('conn-list');
-        if (conns.length === 0) {
-            el.innerHTML = '<div style="color:var(--text-muted);">No active connections tracked. Connection tracking may not be enabled.</div>';
-        } else {
-            el.innerHTML = conns.map(c => '<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle);">' + (c.info || JSON.stringify(c)) + '</div>').join('');
-        }
-    } catch(e) { document.getElementById('conn-list').innerHTML = '<div style="color:var(--danger);">Failed to load connections</div>'; }
-}
-
+// ── Init ──
 loadRules();
 </script>
 {% endblock %}

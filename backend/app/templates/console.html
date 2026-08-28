@@ -106,7 +106,7 @@ async function connectConsole(type) {
 
     if (type === 'vnc') {
         try {
-            const r = await fetch(`/api/console/vm/${vmId}`);
+            const r = await fetch(`/api/console/vnc/${vmId}`);
             const d = await r.json();
             if (d.success && d.novnc_url) {
                 const frame = document.getElementById('console-frame');
@@ -181,10 +181,19 @@ function showError(msg) {
 
 function sendCtrlAltDel() {
     if (currentConsoleType === 'xterm' && window._term) {
-        window._term.write('\x1b[3~'); // Delete key as fallback
+        window._term.write('\x04'); // Ctrl+D as fallback
+        return;
     }
-    // noVNC has built-in Ctrl+Alt+Del via toolbar
-    alert('Use the noVNC toolbar for Ctrl+Alt+Del, or it was sent via terminal.');
+    if (currentConsoleType === 'vnc') {
+        try {
+            const r = await fetch(`/api/console/vnc/${vmId}/ctrl-alt-del`, {method: 'POST'});
+            const d = await r.json();
+            if (d.success) showToast('Ctrl+Alt+Del sent', 'success');
+            else showToast(d.error || 'Failed to send', 'error');
+        } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+    } else {
+        showToast('Ctrl+Alt+Del available via xterm.js or noVNC toolbar', 'info');
+    }
 }
 
 function toggleFullscreen() {

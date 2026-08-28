@@ -125,6 +125,9 @@ class VMService:
         result = []
         for vm in db_vms:
             live_status = self._get_vm_status(vm.name)
+            # If libvirt returns unknown, fall back to DB status
+            if live_status == "unknown":
+                live_status = vm.status or "stopped"
             result.append({
                 "id": vm.id,
                 "name": vm.name,
@@ -177,6 +180,8 @@ class VMService:
         if not vm:
             return None
         live_status = self._get_vm_status(vm.name)
+        if live_status == "unknown":
+            live_status = vm.status or "stopped"
         return {
             "id": vm.id,
             "name": vm.name,
@@ -336,7 +341,8 @@ class VMService:
         if vm.is_template:
             return {"success": False, "error": "Cannot start a template. Clone it first."}
         result = self._start_libvirt_vm(vm.name, vm=vm)
-        if result["success"]:
+        if result.get("success"):
+            vm.status = "running"
             vm.last_started = datetime.utcnow()
             db.commit()
         return result
@@ -345,7 +351,11 @@ class VMService:
         vm = db.query(VM).filter(VM.id == vm_id).first()
         if not vm:
             return {"success": False, "error": "VM not found"}
-        return self._stop_libvirt_vm(vm.name, mode)
+        result = self._stop_libvirt_vm(vm.name, mode)
+        if result.get("success"):
+            vm.status = "stopped"
+            db.commit()
+        return result
 
     def restart_vm(self, db, vm_id: int, mode: str = "restart") -> dict:
         """Restart a VM.
@@ -380,6 +390,7 @@ class VMService:
             result = self._start_libvirt_vm(vm.name)
         
         if result.get("success"):
+            vm.status = "running"
             vm.last_started = datetime.utcnow()
             db.commit()
         return result

@@ -332,9 +332,6 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
 
 <!-- LVM-thin -->
 <div class="nx-tab-content" id="tab-thin">
@@ -510,7 +507,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <style>
 .drive-item:hover, .zfs-drive-item:hover { background: var(--bg-elevated) !important; }
 .drive-item.selected, .zfs-drive-item.selected { background: var(--bg-elevated); border-left: 3px solid var(--accent); }
@@ -968,6 +967,300 @@ async function removeBackend(id) {
     try {
         await fetch(`/api/storage/backends/${id}`, {method:'DELETE'});
         showToast('Backend removed', 'success'); loadBackends();
+    } catch(e) { showToast('Error', 'error'); }
+}
+
+function hideModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── LVM-thin ──
+async function loadThinPools() {
+    try {
+        const r = await fetch('/api/storage/lvm-thin/pools');
+        const d = await r.json();
+        document.getElementById('thin-pool-list').innerHTML = (d.pools || []).map(p => `
+            <tr>
+                <td style="font-weight:500;">${p.name}</td>
+                <td>${p.vg || '-'}</td>
+                <td>${p.size || '-'}</td>
+                <td>${p.data_percent || '-'}</td>
+                <td>${p.metadata_percent || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removeThinPool('${p.vg}','${p.name}')">Remove</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">No thin pools</td></tr>';
+    } catch(e) { document.getElementById('thin-pool-list').innerHTML = '<tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">LVM-thin not available</td></tr>'; }
+}
+
+async function loadThinVolumes() {
+    try {
+        const r = await fetch('/api/storage/lvm-thin/volumes');
+        const d = await r.json();
+        document.getElementById('thin-vol-list').innerHTML = (d.volumes || []).map(v => `
+            <tr>
+                <td style="font-weight:500;">${v.name}</td>
+                <td>${v.pool || '-'}</td>
+                <td>${v.vg || '-'}</td>
+                <td>${v.size || '-'}</td>
+                <td>${v.origin || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removeThinVol('${v.vg}','${v.pool}','${v.name}')">Remove</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">No thin volumes</td></tr>';
+    } catch(e) { document.getElementById('thin-vol-list').innerHTML = '<tr><td colspan="6" style="padding:16px;color:var(--text-muted);text-align:center;">LVM-thin not available</td></tr>'; }
+}
+
+function showThinPoolModal() {
+    document.getElementById('thin-pool-modal').classList.add('open');
+    loadVGSelect('thin-vg');
+}
+
+function showThinVolModal() {
+    document.getElementById('thin-vol-modal').classList.add('open');
+    loadVGSelect('thin-vol-vg');
+}
+
+async function loadVGSelect(selectId) {
+    try {
+        const r = await fetch('/api/storage/lvm/vgs');
+        const d = await r.json();
+        const sel = document.getElementById(selectId);
+        sel.innerHTML = '<option value="">Select VG...</option>';
+        (d.vgs || []).forEach(v => { const o = document.createElement('option'); o.value = v.name; o.textContent = v.name; sel.appendChild(o); });
+    } catch(e) {}
+}
+
+async function loadThinPoolsForVG(vgName) {
+    const sel = document.getElementById('thin-vol-pool');
+    sel.innerHTML = '<option value="">Loading...</option>';
+    if (!vgName) { sel.innerHTML = '<option value="">Select pool...</option>'; return; }
+    try {
+        const r = await fetch(`/api/storage/lvm-thin/pools?vg=${encodeURIComponent(vgName)}`);
+        const d = await r.json();
+        sel.innerHTML = '<option value="">Select pool...</option>';
+        (d.pools || []).forEach(p => { const o = document.createElement('option'); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
+    } catch(e) { sel.innerHTML = '<option value="">Select pool...</option>'; }
+}
+
+async function createThinPool() {
+    const vg = document.getElementById('thin-vg').value;
+    const name = document.getElementById('thin-pool-name').value.trim();
+    const size = document.getElementById('thin-pool-size').value;
+    if (!vg || !name) { showToast('VG and pool name required', 'error'); return; }
+    const fd = new FormData(); fd.append('vg', vg); fd.append('name', name); fd.append('size_gb', size);
+    try {
+        const r = await fetch('/api/storage/lvm-thin/pools', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Thin pool created', 'success'); hideModal('thin-pool-modal'); loadThinPools(); }
+        else showToast(d.stderr || d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function createThinVol() {
+    const vg = document.getElementById('thin-vol-vg').value;
+    const pool = document.getElementById('thin-vol-pool').value;
+    const name = document.getElementById('thin-vol-name').value.trim();
+    const size = document.getElementById('thin-vol-size').value;
+    if (!vg || !pool || !name) { showToast('All fields required', 'error'); return; }
+    const fd = new FormData(); fd.append('vg', vg); fd.append('pool', pool); fd.append('name', name); fd.append('size_gb', size);
+    try {
+        const r = await fetch('/api/storage/lvm-thin/volumes', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Thin volume created', 'success'); hideModal('thin-vol-modal'); loadThinVolumes(); }
+        else showToast(d.stderr || d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function removeThinPool(vg, name) {
+    if (!confirm(`Remove thin pool ${name}?`)) return;
+    try { await fetch(`/api/storage/lvm-thin/pools/${encodeURIComponent(vg)}/${encodeURIComponent(name)}`, {method:'DELETE'}); showToast('Removed','success'); loadThinPools(); } catch(e) { showToast('Error','error'); }
+}
+
+async function removeThinVol(vg, pool, name) {
+    if (!confirm(`Remove thin volume ${name}?`)) return;
+    try { await fetch(`/api/storage/lvm-thin/volumes/${encodeURIComponent(vg)}/${encodeURIComponent(pool)}/${encodeURIComponent(name)}`, {method:'DELETE'}); showToast('Removed','success'); loadThinVolumes(); } catch(e) { showToast('Error','error'); }
+}
+
+// ── Ceph RBD ──
+async function loadCephStatus() {
+    try {
+        const r = await fetch('/api/ceph/status');
+        const d = await r.json();
+        document.getElementById('ceph-status').innerHTML = `
+            <div class="nx-grid" style="grid-template-columns:repeat(3,1fr);gap:12px;">
+                <div style="text-align:center;">
+                    <div style="font-size:var(--text-xs);color:var(--text-muted);">Health</div>
+                    <span class="nx-badge ${d.health === 'HEALTH_OK' ? 'nx-badge-success' : 'nx-badge-warning'}">${d.health || 'Unknown'}</span>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:var(--text-xs);color:var(--text-muted);">Monitors</div>
+                    <span style="font-weight:500;">${d.mon_count || 0}</span>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:var(--text-xs);color:var(--text-muted);">OSDs</div>
+                    <span style="font-weight:500;">${d.osd_count || 0} up / ${d.osd_total || 0}</span>
+                </div>
+            </div>`;
+    } catch(e) { document.getElementById('ceph-status').innerHTML = '<div style="color:var(--text-muted);padding:16px;text-align:center;">Ceph is not installed or configured</div>'; }
+}
+
+async function loadCephPools() {
+    try {
+        const r = await fetch('/api/ceph/pools');
+        const d = await r.json();
+        document.getElementById('ceph-pool-list').innerHTML = (d.pools || []).map(p => `
+            <tr><td style="font-weight:500;">${p.name}</td><td>${p.type || 'replicated'}</td><td>${p.pg_num || '-'}</td>
+            <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removeCephPool('${p.name}')">Remove</button></td></tr>
+        `).join('') || '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No Ceph pools</td></tr>';
+    } catch(e) { document.getElementById('ceph-pool-list').innerHTML = '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Ceph not available</td></tr>'; }
+}
+
+async function loadCephImages() {
+    try {
+        const r = await fetch('/api/ceph/images');
+        const d = await r.json();
+        document.getElementById('ceph-image-list').innerHTML = (d.images || []).map(i => `
+            <tr><td style="font-weight:500;">${i.name}</td><td>${i.pool || 'rbd'}</td><td>${i.size || '-'}</td>
+            <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="removeCephImage('${i.pool||'rbd'}','${i.name}')">Remove</button></td></tr>
+        `).join('') || '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">No RBD images</td></tr>';
+    } catch(e) { document.getElementById('ceph-image-list').innerHTML = '<tr><td colspan="4" style="padding:16px;color:var(--text-muted);text-align:center;">Ceph not available</td></tr>'; }
+}
+
+function showCephPoolModal() { document.getElementById('ceph-pool-modal').classList.add('open'); }
+function showCephImageModal() { document.getElementById('ceph-image-modal').classList.add('open'); }
+
+async function createCephPool() {
+    const name = document.getElementById('ceph-pool-name').value.trim();
+    const type = document.getElementById('ceph-pool-type').value;
+    const pg = document.getElementById('ceph-pg-num').value;
+    if (!name) { showToast('Pool name required', 'error'); return; }
+    const fd = new FormData(); fd.append('name', name); fd.append('pool_type', type); fd.append('pg_num', pg);
+    try {
+        const r = await fetch('/api/ceph/pools', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Ceph pool created', 'success'); hideModal('ceph-pool-modal'); loadCephPools(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function createCephImage() {
+    const pool = document.getElementById('ceph-img-pool').value;
+    const name = document.getElementById('ceph-img-name').value.trim();
+    const size = document.getElementById('ceph-img-size').value;
+    if (!name) { showToast('Image name required', 'error'); return; }
+    const fd = new FormData(); fd.append('pool', pool); fd.append('name', name); fd.append('size_gb', size);
+    try {
+        const r = await fetch('/api/ceph/images', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('RBD image created', 'success'); hideModal('ceph-image-modal'); loadCephImages(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function removeCephPool(name) {
+    if (!confirm(`Remove Ceph pool ${name}?`)) return;
+    try { await fetch(`/api/ceph/pools/${name}`, {method:'DELETE'}); showToast('Removed','success'); loadCephPools(); } catch(e) { showToast('Error','error'); }
+}
+
+async function removeCephImage(pool, name) {
+    if (!confirm(`Remove RBD image ${name}?`)) return;
+    try { await fetch(`/api/ceph/images/${pool}/${name}`, {method:'DELETE'}); showToast('Removed','success'); loadCephImages(); } catch(e) { showToast('Error','error'); }
+}
+
+// ── Storage Migration ──
+async function loadMigrationSources() {
+    try {
+        const r = await fetch('/api/storage/backends');
+        const d = await r.json();
+        const src = document.getElementById('migrate-source');
+        const tgt = document.getElementById('migrate-target');
+        const opts = (d.backends || []).map(b => `<option value="${b.name}">${b.name} (${b.type})</option>`).join('');
+        src.innerHTML = '<option value="">Select source...</option>' + opts;
+        tgt.innerHTML = '<option value="">Select target...</option>' + opts;
+    } catch(e) {}
+}
+
+async function startMigrate() {
+    const src = document.getElementById('migrate-source').value;
+    const tgt = document.getElementById('migrate-target').value;
+    if (!src || !tgt) { showToast('Select source and target', 'error'); return; }
+    if (src === tgt) { showToast('Source and target must be different', 'error'); return; }
+    const fd = new FormData(); fd.append('source', src); fd.append('target', tgt);
+    document.getElementById('migrate-status').innerHTML = '<div style="color:var(--accent);font-size:var(--text-sm);">Migration started...</div>';
+    try {
+        const r = await fetch('/api/storage/migrate', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) document.getElementById('migrate-status').innerHTML = '<div style="color:var(--success);font-size:var(--text-sm);">Migration completed successfully</div>';
+        else document.getElementById('migrate-status').innerHTML = `<div style="color:var(--danger);font-size:var(--text-sm);">${d.error || 'Migration failed'}</div>`;
+    } catch(e) { document.getElementById('migrate-status').innerHTML = `<div style="color:var(--danger);font-size:var(--text-sm);">Error: ${e.message}</div>`; }
+}
+
+// ── ZFS Replication ──
+async function loadReplicationStatus() {
+    try {
+        const r = await fetch('/api/storage/zfs/replication/jobs');
+        const d = await r.json();
+        const jobs = d.jobs || [];
+        document.getElementById('repl-jobs').innerHTML = jobs.length ? jobs.map(j => `
+            <div style="padding:8px;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);margin-bottom:8px;font-size:var(--text-sm);">
+                <span style="font-weight:500;">${j.source}</span> → <span style="color:var(--accent);">${j.target}</span>
+                <span class="nx-badge nx-badge-neutral" style="margin-left:8px;">${j.status || 'scheduled'}</span>
+            </div>
+        `).join('') : '<div style="color:var(--text-muted);font-size:var(--text-sm);">No replication jobs configured</div>';
+    } catch(e) { document.getElementById('repl-jobs').innerHTML = ''; }
+}
+
+async function startReplication() {
+    const source = document.getElementById('repl-source').value.trim();
+    const target = document.getElementById('repl-target').value.trim();
+    const snapshot = document.getElementById('repl-snap').value.trim();
+    if (!source || !target) { showToast('Source and target required', 'error'); return; }
+    const fd = new FormData(); fd.append('source', source); fd.append('target', target);
+    if (snapshot) fd.append('snapshot', snapshot);
+    document.getElementById('repl-status').textContent = 'Replicating...';
+    try {
+        const r = await fetch('/api/storage/zfs/replication/run', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Replication complete', 'success'); document.getElementById('repl-status').textContent = 'Done'; loadReplicationStatus(); }
+        else { document.getElementById('repl-status').textContent = d.error || 'Failed'; showToast('Replication failed', 'error'); }
+    } catch(e) { document.getElementById('repl-status').textContent = 'Error: ' + e.message; }
+}
+
+// ── ZFS Snapshots ──
+async function loadZFSSnapshots() {
+    const dataset = document.getElementById('snap-dataset').value.trim();
+    if (!dataset) { showToast('Enter a dataset name', 'error'); return; }
+    try {
+        const r = await fetch(`/api/storage/zfs/snapshots?dataset=${encodeURIComponent(dataset)}`);
+        const d = await r.json();
+        const snaps = d.snapshots || [];
+        document.getElementById('zfs-snap-list').innerHTML = snaps.map(s => `
+            <tr>
+                <td style="font-weight:500;font-family:var(--font-mono);font-size:var(--text-xs);">${s.name}</td>
+                <td>${s.used || '-'}</td>
+                <td>${s.referenced || '-'}</td>
+                <td style="font-size:var(--text-xs);color:var(--text-muted);">${s.created || '-'}</td>
+                <td><button class="nx-btn nx-btn-ghost nx-btn-sm nx-text-danger" onclick="deleteZFSSnap('${dataset}','${s.name}')">Delete</button></td>
+            </tr>
+        `).join('') || '<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">No snapshots for this dataset</td></tr>';
+    } catch(e) { document.getElementById('zfs-snap-list').innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--text-muted);text-align:center;">Failed to load snapshots</td></tr>'; }
+}
+
+async function createZFSSnapshot() {
+    const dataset = document.getElementById('snap-dataset').value.trim();
+    const name = document.getElementById('snap-name').value.trim();
+    if (!dataset || !name) { showToast('Dataset and snapshot name required', 'error'); return; }
+    const fd = new FormData(); fd.append('dataset', dataset); fd.append('name', name);
+    try {
+        const r = await fetch('/api/storage/zfs/snapshots', {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success) { showToast('Snapshot created', 'success'); loadZFSSnapshots(); }
+        else showToast(d.stderr || d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteZFSSnap(dataset, snapName) {
+    if (!confirm(`Delete snapshot ${snapName}?`)) return;
+    try {
+        await fetch(`/api/storage/zfs/snapshots/${encodeURIComponent(dataset)}/${encodeURIComponent(snapName)}`, {method:'DELETE'});
+        showToast('Snapshot deleted', 'success'); loadZFSSnapshots();
     } catch(e) { showToast('Error', 'error'); }
 }
 
