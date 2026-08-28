@@ -51,39 +51,109 @@ class SDNService:
             return []
 
     def create_zone(self, name: str, zone_type: str = "simple", 
-                   bridge: str = "", mtu: int = 1500) -> dict:
-        """Create an SDN zone."""
+                   bridge: str = "", mtu: int = 1500, **kwargs) -> dict:
+        """Create an SDN zone with support for simple, EVPN, QinQ, and L3 types."""
         try:
-            # Create bridge for the zone
-            bridge_name = bridge or f"vz{mtu}"
+            bridge_name = bridge or f"vz{name}"
 
-            # Add to network config
-            config = f"""
-auto {bridge_name}
+            if zone_type == "evpn":
+                # EVPN zone: VXLAN with BGP control plane
+                vni = kwargs.get("vni", hash(name) % 16777216)
+                bgp_as = kwargs.get("bgp_as", 65000)
+                bgp_router_id = kwargs.get("bgp_router_id", "")
+                # Create VXLAN interface
+                subprocess.run(
+                    f"ip link add {bridge_name} type vxlan id {vni} dstport 4789",
+                    shell=True, capture_output=True, timeout=10
+                )
+                # Create bridge
+                subprocess.run(
+                    f"ip link add br-{bridge_name} type bridge && "
+                    f"ip link set {bridge_name} master br-{bridge_name} && "
+                    f"ip link set {bridge_name} up && "
+                    f"ip link set br-{bridge_name} up",
+                    shell=True, capture_output=True, timeout=10
+                )
+                # Configure BGP if frrouting available
+                frr_conf = f"""router bgp {bgp_as}
+  bgp router-id {bgp_router_id or bridge_name}
+  address-family l2vpn evvpn
+    advertise-all-vni
+"""
+                try:
+                    os.makedirs("/etc/frr/conf.d", exist_ok=True)
+                    with open(f"/etc/frr/conf.d/sdn-{name}.conf", "w") as f:
+                        f.write(frr_conf)
+                    subprocess.run("systemctl restart frr 2>/dev/null", shell=True, timeout=15)
+                except Exception:
+                    pass  # FRR not available, zone still works without BGP
+                return {"success": True, "zone": name, "type": "evpn", "bridge": bridge_name, "vni": vni}
+
+            elif zone_type == "qinq":
+                # QinQ zone: 802.1ad VLAN stacking
+                outer_vlan = kwargs.get("outer_vlan", 100)
+                inner_vlan_start = kwargs.get("inner_vlan_start", 1)
+                config = f"""auto {bridge_name}
 iface {bridge_name} inet manual
     bridge-ports none
     bridge-stp off
     bridge-fd 0
 """
-            # Write to interfaces.d
-            try:
-                with open(f"/etc/network/interfaces.d/sdn-{name}", "w") as f:
-                    f.write(config)
-            except PermissionError:
-                return {"success": False, "error": "Permission denied"}
+                # Add QinQ sub-interface
+                parent_iface = kwargs.get("parent_interface", "eth0")
+                subprocess.run(
+                    f"ip link add link {parent_iface} name {bridge_name}.vlan type vlan id {outer_vlan} protocol 802.1ad 2>/dev/null",
+                    shell=True, capture_output=True, timeout=10
+                )
+                try:
+                    with open(f"/etc/network/interfaces.d/sdn-{name}", "w") as f:
+                        f.write(config)
+                except PermissionError:
+                    return {"success": False, "error": "Permission denied"}
+                return {"success": True, "zone": name, "type": "qinq", "bridge": bridge_name, "outer_vlan": outer_vlan}
 
-            # Bring up bridge
-            r = subprocess.run(
-                f"ip link add {bridge_name} type bridge 2>/dev/null && "
-                f"ip link set {bridge_name} up 2>/dev/null",
-                shell=True, capture_output=True, text=True, timeout=10
-            )
+            elif zone_type == "l3":
+                # L3 overlay zone: routed network with VXLAN underlay
+                subnet = kwargs.get("subnet", "10.0.0.0/24")
+                gateway = kwargs.get("gateway", "")
+                config = f"""auto {bridge_name}
+iface {bridge_name} inet static
+    address {gateway or '10.0.0.1/24'}
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+"""
+                try:
+                    with open(f"/etc/network/interfaces.d/sdn-{name}", "w") as f:
+                        f.write(config)
+                except PermissionError:
+                    return {"success": False, "error": "Permission denied"}
+                subprocess.run(
+                    f"ip link add {bridge_name} type bridge 2>/dev/null && "
+                    f"ip link set {bridge_name} up 2>/dev/null",
+                    shell=True, capture_output=True, timeout=10
+                )
+                return {"success": True, "zone": name, "type": "l3", "bridge": bridge_name, "subnet": subnet}
 
-            return {
-                "success": True,
-                "zone": name,
-                "bridge": bridge_name,
-            }
+            else:
+                # Simple zone: basic bridge
+                config = f"""auto {bridge_name}
+iface {bridge_name} inet manual
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+"""
+                try:
+                    with open(f"/etc/network/interfaces.d/sdn-{name}", "w") as f:
+                        f.write(config)
+                except PermissionError:
+                    return {"success": False, "error": "Permission denied"}
+                subprocess.run(
+                    f"ip link add {bridge_name} type bridge 2>/dev/null && "
+                    f"ip link set {bridge_name} up 2>/dev/null",
+                    shell=True, capture_output=True, text=True, timeout=10
+                )
+                return {"success": True, "zone": name, "type": "simple", "bridge": bridge_name}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

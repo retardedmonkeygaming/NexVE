@@ -176,6 +176,13 @@ async def apply_network_config(request: Request):
     return JSONResponse(svc.apply_network_config())
 
 
+@router.post("/ips-restore")
+async def restore_ips(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.restore_ips())
+
+
 # ════════════════════════════════════════════════
 # TRAFFIC MONITORING
 # ════════════════════════════════════════════════
@@ -553,3 +560,83 @@ async def clear_rate_limit(request: Request, interface: str):
     finally:
         db.close()
     return JSONResponse({"success": True})
+
+
+# ════════════════════════════════════════════════
+# STP (Spanning Tree Protocol)
+# ════════════════════════════════════════════════
+
+@router.get("/stp/status")
+async def stp_status(request: Request, bridge: str = "vmbr0"):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.stp_status(bridge))
+
+
+@router.post("/stp/enable")
+async def stp_enable(request: Request, bridge: str = Form("vmbr0"), priority: int = Form(32768)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.stp_enable(bridge, priority))
+
+
+@router.post("/stp/disable")
+async def stp_disable(request: Request, bridge: str = Form("vmbr0")):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.stp_disable(bridge))
+
+
+# ════════════════════════════════════════════════
+# BOND MODES
+# ════════════════════════════════════════════════
+
+@router.get("/bond/modes")
+async def list_bond_modes(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"modes": svc.list_bond_modes()})
+
+
+@router.get("/bond/{name}/status")
+async def bond_status(name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.get_bond_status(name))
+
+
+# ════════════════════════════════════════════════
+# MIGRATION NETWORK
+# ════════════════════════════════════════════════
+
+@router.get("/migration-network")
+async def get_migration_network(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.get_migration_network())
+
+
+@router.post("/migration-network")
+async def set_migration_network(request: Request, interface: str = Form(...),
+                                cidr: str = Form(""), gateway: str = Form("")):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.set_migration_network(interface, cidr, gateway))
+
+
+@router.delete("/migration-network")
+async def disable_migration_network(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.disable_migration_network())
+
+
+# ════════════════════════════════════════════════
+# INTERFACE TRAFFIC
+# ════════════════════════════════════════════════
+
+@router.get("/interface/{name}/traffic")
+async def interface_traffic(name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(svc.get_interface_traffic(name))

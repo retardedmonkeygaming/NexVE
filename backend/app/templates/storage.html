@@ -214,34 +214,65 @@
 
 <!-- Create ZFS Pool Modal -->
 <div class="nx-modal-overlay" id="zfs-pool-modal">
-    <div class="nx-modal" style="max-width:480px;">
+    <div class="nx-modal" style="max-width:640px;">
         <div class="nx-modal-header"><h3>Create ZFS Pool</h3><button class="nx-modal-close" onclick="document.getElementById('zfs-pool-modal').classList.remove('open')">✕</button></div>
         <div class="nx-modal-body">
             <div class="nx-flex nx-flex-col nx-gap-4">
-                <div class="nx-input-group"><label class="nx-label">Pool Name</label><input type="text" id="zfs-pool-name" class="nx-input" placeholder="tank"></div>
-                <div class="nx-input-group"><label class="nx-label">Device / File</label><input type="text" id="zfs-pool-device" class="nx-input" placeholder="/dev/sdb"></div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Pool Name *</label>
+                    <input type="text" id="zfs-pool-name" class="nx-input" placeholder="e.g. tank" required>
+                    <span class="nx-hint">Alphanumeric, hyphens, underscores. No spaces.</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Pool Type</label>
+                    <select id="zfs-pool-type" class="nx-select" onchange="onZFSPoolTypeChange()">
+                        <option value="single">Single Device</option>
+                        <option value="mirror">Mirror (RAID 1)</option>
+                        <option value="raidz">RAIDZ1 (RAID 5)</option>
+                        <option value="raidz2">RAIDZ2 (RAID 6)</option>
+                        <option value="stripe">Stripe (no redundancy)</option>
+                    </select>
+                    <span class="nx-hint" id="zfs-pool-type-hint">Use 1 disk. No redundancy.</span>
+                </div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Select Drives *</label>
+                    <div id="zfs-drive-list" style="border:1px solid var(--border-default);border-radius:var(--radius-lg);max-height:240px;overflow-y:auto;">
+                        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:var(--text-sm);">Loading available drives...</div>
+                    </div>
+                    <span class="nx-hint">Click drives to select/deselect them. Selected drives are highlighted.</span>
+                </div>
+                <div id="zfs-pool-preview" style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:12px;font-size:var(--text-sm);display:none;">
+                    <div style="font-weight:600;margin-bottom:4px;">Pool Preview</div>
+                    <div id="zfs-pool-preview-content"></div>
+                </div>
             </div>
         </div>
         <div class="nx-modal-footer">
             <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('zfs-pool-modal').classList.remove('open')">Cancel</button>
-            <button class="nx-btn nx-btn-primary" onclick="createZFSPool()">Create</button>
+            <button class="nx-btn nx-btn-primary" id="zfs-pool-create-btn" onclick="createZFSPool()">Create Pool</button>
         </div>
     </div>
 </div>
 
 <!-- Create LVM VG Modal -->
 <div class="nx-modal-overlay" id="vg-modal">
-    <div class="nx-modal" style="max-width:480px;">
+    <div class="nx-modal" style="max-width:640px;">
         <div class="nx-modal-header"><h3>Create LVM Volume Group</h3><button class="nx-modal-close" onclick="document.getElementById('vg-modal').classList.remove('open')">✕</button></div>
         <div class="nx-modal-body">
             <div class="nx-flex nx-flex-col nx-gap-4">
-                <div class="nx-input-group"><label class="nx-label">VG Name</label><input type="text" id="vg-name" class="nx-input" placeholder="data"></div>
-                <div class="nx-input-group"><label class="nx-label">Physical Device</label><input type="text" id="vg-device" class="nx-input" placeholder="/dev/sdb"></div>
+                <div class="nx-input-group"><label class="nx-label">VG Name *</label><input type="text" id="vg-name" class="nx-input" placeholder="e.g. data" required><span class="nx-hint">Alphanumeric, hyphens, underscores.</span></div>
+                <div class="nx-input-group">
+                    <label class="nx-label">Select Physical Device *</label>
+                    <div id="lvm-drive-list" style="border:1px solid var(--border-default);border-radius:var(--radius-lg);max-height:240px;overflow-y:auto;">
+                        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:var(--text-sm);">Loading drives...</div>
+                    </div>
+                    <span class="nx-hint">Click to select a drive. LVM uses raw block devices.</span>
+                </div>
             </div>
         </div>
         <div class="nx-modal-footer">
             <button class="nx-btn nx-btn-secondary" onclick="document.getElementById('vg-modal').classList.remove('open')">Cancel</button>
-            <button class="nx-btn nx-btn-primary" onclick="createVG()">Create</button>
+            <button class="nx-btn nx-btn-primary" onclick="createVG()">Create Volume Group</button>
         </div>
     </div>
 </div>
@@ -480,6 +511,11 @@
     </div>
 </div>
 
+<style>
+.drive-item:hover, .zfs-drive-item:hover { background: var(--bg-elevated) !important; }
+.drive-item.selected, .zfs-drive-item.selected { background: var(--bg-elevated); border-left: 3px solid var(--accent); }
+</style>
+
 <script>
 // Tab switching already handled by base.html showTab function
 // Override to also load tab data
@@ -583,18 +619,123 @@ async function loadZFS() {
     } catch(e) { console.error(e); }
 }
 
-function showCreateZFSPool() { document.getElementById('zfs-pool-modal').classList.add('open'); }
+let zfsSelectedDrives = [];
+let zfsAllDisks = [];
+
+async function showCreateZFSPool() {
+    zfsSelectedDrives = [];
+    document.getElementById('zfs-pool-name').value = '';
+    document.getElementById('zfs-pool-type').value = 'single';
+    document.getElementById('zfs-pool-preview').style.display = 'none';
+    document.getElementById('zfs-pool-modal').classList.add('open');
+    await loadAvailableDrives();
+}
+
+async function loadAvailableDrives() {
+    const list = document.getElementById('zfs-drive-list');
+    try {
+        const r = await fetch('/api/storage/disks');
+        const d = await r.json();
+        zfsAllDisks = d.disks || [];
+        // Filter to only whole disks (type=disk), skip partitions and loop devices
+        const available = zfsAllDisks.filter(disk =>
+            disk.type === 'disk' && !disk.name.startsWith('loop') && !disk.fstype && !disk.mountpoint
+        );
+        if (available.length === 0) {
+            list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:var(--text-sm);">No available (unpartitioned, unmounted) drives found.\nAll disks may have partitions or be in use.</div>';
+            return;
+        }
+        list.innerHTML = available.map(disk => {
+            const id = disk.name;
+            return `<div class="zfs-drive-item" data-dev="/dev/${id}" onclick="toggleDrive(this, '/dev/${id}')"
+                style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border-subtle);cursor:pointer;transition:background 0.15s;">
+                <div style="width:20px;height:20px;border-radius:4px;border:2px solid var(--border-default);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;color:var(--accent);"></div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:500;font-family:var(--font-mono);font-size:13px;">/dev/${id}</div>
+                    <div style="color:var(--text-muted);font-size:11px;">${disk.model || 'Unknown model'} · ${disk.size || '-'}</div>
+                </div>
+                <span class="nx-badge nx-badge-neutral" style="font-size:10px;">${disk.type || 'disk'}</span>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--danger);font-size:var(--text-sm);">Failed to load drives</div>';
+    }
+}
+
+function toggleDrive(el, dev) {
+    const idx = zfsSelectedDrives.indexOf(dev);
+    if (idx >= 0) {
+        zfsSelectedDrives.splice(idx, 1);
+        el.style.background = '';
+        el.querySelector('div:first-child').textContent = '';
+        el.querySelector('div:first-child').style.borderColor = 'var(--border-default)';
+    } else {
+        zfsSelectedDrives.push(dev);
+        el.style.background = 'var(--bg-elevated)';
+        el.querySelector('div:first-child').textContent = '✓';
+        el.querySelector('div:first-child').style.borderColor = 'var(--accent)';
+    }
+    updatePoolPreview();
+}
+
+function onZFSPoolTypeChange() {
+    updatePoolPreview();
+}
+
+function updatePoolPreview() {
+    const type = document.getElementById('zfs-pool-type').value;
+    const hints = {
+        'single': 'Use 1 disk. No redundancy.',
+        'mirror': 'Use 2+ disks. Full redundancy (RAID 1).',
+        'raidz': 'Use 3+ disks. Single parity (RAID 5).',
+        'raidz2': 'Use 4+ disks. Double parity (RAID 6).',
+        'stripe': 'Use 1+ disks. No redundancy, combined capacity.',
+    }
+    const minDisks = { 'single': 1, 'mirror': 2, 'raidz': 3, 'raidz2': 4, 'stripe': 1 };
+    document.getElementById('zfs-pool-type-hint').textContent = hints[type] || '';
+    const n = zfsSelectedDrives.length;
+    const min = minDisks[type] || 1;
+    const preview = document.getElementById('zfs-pool-preview');
+    const content = document.getElementById('zfs-pool-preview-content');
+    const btn = document.getElementById('zfs-pool-create-btn');
+    if (n === 0) {
+        preview.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Select drives first';
+        return;
+    }
+    preview.style.display = '';
+    const valid = n >= min;
+    btn.disabled = !valid;
+    btn.textContent = valid ? 'Create Pool' : `Need at least ${min} disk${min > 1 ? 's' : ''} for ${type}`;
+    content.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="color:var(--text-muted);">Type:</span><span class="nx-badge nx-badge-accent">${type}</span>
+            <span style="color:var(--text-muted);">Disks:</span><span class="nx-badge nx-badge-neutral">${n}</span>
+            ${valid ? '<span class="nx-badge nx-badge-success">✓ Ready</span>' : `<span class="nx-badge nx-badge-danger">✗ Need ${min - n} more</span>`}
+        </div>
+        <div style="margin-top:6px;color:var(--text-muted);font-size:11px;">${zfsSelectedDrives.join(', ')}</div>`;
+}
 
 async function createZFSPool() {
     const name = document.getElementById('zfs-pool-name').value.trim();
-    const device = document.getElementById('zfs-pool-device').value.trim();
-    if (!name || !device) { showToast('Name and device are required', 'error'); return; }
-    const fd = new FormData(); fd.append('name', name); fd.append('device', device);
+    const poolType = document.getElementById('zfs-pool-type').value;
+    if (!name) { showToast('Pool name is required', 'error'); return; }
+    if (zfsSelectedDrives.length === 0) { showToast('Select at least one drive', 'error'); return; }
+    const minDisks = { 'single': 1, 'mirror': 2, 'raidz': 3, 'raidz2': 4, 'stripe': 1 };
+    if (zfsSelectedDrives.length < (minDisks[poolType] || 1)) {
+        showToast(`Need at least ${minDisks[poolType]} disks for ${poolType}`, 'error'); return;
+    }
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('pool_type', poolType);
+    fd.append('devices', zfsSelectedDrives.join(','));
+    fd.append('device', zfsSelectedDrives[0]);
     try {
         const r = await fetch('/api/storage/zfs/pools', {method:'POST', body:fd});
         const d = await r.json();
-        if (d.success) { showToast('ZFS pool created', 'success'); document.getElementById('zfs-pool-modal').classList.remove('open'); loadZFS(); }
-        else showToast(d.stderr || 'Failed to create pool', 'error');
+        if (d.success) { showToast('ZFS pool created!', 'success'); document.getElementById('zfs-pool-modal').classList.remove('open'); loadZFS(); }
+        else showToast(d.stderr || d.error || 'Failed to create pool', 'error');
     } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
@@ -623,18 +764,56 @@ async function loadLVM() {
     } catch(e) { console.error(e); }
 }
 
-function showCreateVG() { document.getElementById('vg-modal').classList.add('open'); }
+let lvmSelectedDrive = '';
+
+async function showCreateVG() {
+    lvmSelectedDrive = '';
+    document.getElementById('vg-name').value = '';
+    document.getElementById('vg-modal').classList.add('open');
+    await loadLVMDrives();
+}
+
+async function loadLVMDrives() {
+    const list = document.getElementById('lvm-drive-list');
+    try {
+        const r = await fetch('/api/storage/disks');
+        const d = await r.json();
+        const available = (d.disks || []).filter(disk =>
+            disk.type === 'disk' && !disk.name.startsWith('loop') && !disk.fstype && !disk.mountpoint
+        );
+        if (available.length === 0) {
+            list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:var(--text-sm);">No available drives found.</div>';
+            return;
+        }
+        list.innerHTML = available.map(disk => `<div class="drive-item" data-dev="/dev/${disk.name}" onclick="selectLVMDrive(this, '/dev/${disk.name}')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border-subtle);cursor:pointer;transition:background 0.15s;">
+            <div style="width:18px;height:18px;border-radius:4px;border:2px solid var(--border-default);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;color:var(--accent);"></div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:500;font-family:var(--font-mono);font-size:13px;">/dev/${disk.name}</div>
+                <div style="color:var(--text-muted);font-size:11px;">${disk.model || 'Unknown'} · ${disk.size || '-'}</div>
+            </div>
+            <span class="nx-badge nx-badge-neutral" style="font-size:10px;">${disk.type}</span>
+        </div>`).join('');
+    } catch(e) { list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--danger);">Failed to load drives</div>'; }
+}
+
+function selectLVMDrive(el, dev) {
+    document.querySelectorAll('#lvm-drive-list .drive-item').forEach(i => { i.style.background = ''; i.querySelector('div:first-child').textContent = ''; i.querySelector('div:first-child').style.borderColor = 'var(--border-default)'; });
+    lvmSelectedDrive = dev;
+    el.style.background = 'var(--bg-elevated)';
+    el.querySelector('div:first-child').textContent = '●';
+    el.querySelector('div:first-child').style.borderColor = 'var(--accent)';
+}
 
 async function createVG() {
     const name = document.getElementById('vg-name').value.trim();
-    const device = document.getElementById('vg-device').value.trim();
-    if (!name || !device) { showToast('Name and device are required', 'error'); return; }
-    const fd = new FormData(); fd.append('name', name); fd.append('device', device);
+    if (!name) { showToast('VG name is required', 'error'); return; }
+    if (!lvmSelectedDrive) { showToast('Select a drive', 'error'); return; }
+    const fd = new FormData(); fd.append('name', name); fd.append('device', lvmSelectedDrive);
     try {
         const r = await fetch('/api/storage/lvm/vgs', {method:'POST', body:fd});
         const d = await r.json();
         if (d.success) { showToast('VG created', 'success'); document.getElementById('vg-modal').classList.remove('open'); loadLVM(); }
-        else showToast(d.stderr || 'Failed to create VG', 'error');
+        else showToast(d.stderr || d.error || 'Failed to create VG', 'error');
     } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 

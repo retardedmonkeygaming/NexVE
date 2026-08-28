@@ -123,3 +123,113 @@ class HAService:
             return {"success": r.returncode == 0, "error": r.stderr.strip()}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+
+    # ── HA Simulator ──
+
+    def ha_simulate(self, event: str = "node-failure", node: str = "", vm_id: int = 0) -> dict:
+        """Simulate HA events for testing (similar to Proxmox HA Simulator).
+        
+        Events: node-failure, node-recovery, vm-failure, vm-migrate
+        """
+        import json
+        import os
+        import time
+
+        sim_log = []
+        timestamp = datetime.utcnow().isoformat()
+
+        if event == "node-failure":
+            sim_log.append({
+                "time": timestamp, "event": "node-failure",
+                "node": node, "status": "simulated",
+                "actions": [
+                    f"Detected failure on node '{node}'",
+                    "Fencing node via watchdog",
+                    "Starting failover for affected VMs",
+                    "Migrating VMs to remaining nodes",
+                ],
+                "result": "All VMs restarted on surviving nodes"
+            })
+        elif event == "node-recovery":
+            sim_log.append({
+                "time": timestamp, "event": "node-recovery",
+                "node": node, "status": "simulated",
+                "actions": [
+                    f"Node '{node}' rejoined cluster",
+                    "Syncing configuration",
+                    "Balancing resources",
+                ],
+                "result": "Node reintegrated successfully"
+            })
+        elif event == "vm-failure":
+            sim_log.append({
+                "time": timestamp, "event": "vm-failure",
+                "vm_id": vm_id, "status": "simulated",
+                "actions": [
+                    f"VM {vm_id} became unresponsive",
+                    "Checking guest agent",
+                    "Attempting restart on same node",
+                    "Restarting on different node (failover)",
+                ],
+                "result": f"VM {vm_id} restarted successfully"
+            })
+        elif event == "vm-migrate":
+            sim_log.append({
+                "time": timestamp, "event": "vm-migrate",
+                "vm_id": vm_id, "node": node, "status": "simulated",
+                "actions": [
+                    f"Initiating migration of VM {vm_id} to '{node}'",
+                    "Pre-migration check passed",
+                    "Transferring memory pages",
+                    "Switching to destination",
+                ],
+                "result": f"VM {vm_id} migrated to '{node}' successfully"
+            })
+        else:
+            return {"success": False, "error": f"Unknown event: {event}"}
+
+        # Save simulation log
+        sim_dir = "/var/lib/nexve/ha-simulator"
+        try:
+            os.makedirs(sim_dir, exist_ok=True)
+        except PermissionError:
+            import tempfile
+            sim_dir = os.path.join(tempfile.gettempdir(), "nexve-ha-sim")
+            os.makedirs(sim_dir, exist_ok=True)
+        log_file = f"{sim_dir}/sim-log.json"
+        logs = []
+        if os.path.exists(log_file):
+            try:
+                with open(log_file) as f:
+                    logs = json.load(f)
+            except Exception:
+                logs = []
+        logs.extend(sim_log)
+        # Keep last 100 entries
+        logs = logs[-100:]
+        with open(log_file, "w") as f:
+            json.dump(logs, f, indent=2)
+
+        return {"success": True, "simulation": sim_log[0]}
+
+    def ha_simulate_list_events(self) -> List[dict]:
+        """List past simulation events."""
+        import json, os
+        log_file = "/var/lib/nexve/ha-simulator/sim-log.json"
+        if os.path.exists(log_file):
+            try:
+                with open(log_file) as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return []
+
+    def ha_simulate_clear(self) -> dict:
+        """Clear simulation log."""
+        import os
+        try:
+            os.remove("/var/lib/nexve/ha-simulator/sim-log.json")
+        except Exception:
+            pass
+        return {"success": True}

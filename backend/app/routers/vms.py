@@ -15,7 +15,11 @@ vm_service = VMService()
 async def list_vms(request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(content={"vms": vm_service.get_all_vms(SessionLocal())})
+    db = SessionLocal()
+    try:
+        return JSONResponse(content={"vms": vm_service.get_all_vms(db)})
+    finally:
+        db.close()
 
 
 @router.get("/{vm_id}")
@@ -700,3 +704,211 @@ async def vm_status(request: Request):
         "libvirt_connected": libvirt_connected,
         "message": "" if libvirt_connected else "libvirt not available. Install: apt install libvirt-daemon-system libvirt-clients",
     })
+
+
+# ── vGPU / Mediated Device endpoints ──
+
+@router.get("/mdev/types")
+async def list_mdev_types(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"types": vm_service.list_mdev_types()})
+
+
+@router.post("/{vm_id}/mdev/attach")
+async def attach_mdev(request: Request, vm_id: int, type_id: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        return JSONResponse(vm_service.attach_mdev(db, vm_id, type_id))
+    finally:
+        db.close()
+
+
+@router.post("/{vm_id}/mdev/detach")
+async def detach_mdev(request: Request, vm_id: int):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        return JSONResponse(vm_service.detach_mdev(db, vm_id))
+    finally:
+        db.close()
+
+
+# ── Guest Exec endpoints ──
+
+@router.post("/{vm_id}/guest-exec")
+async def guest_exec(request: Request, vm_id: int, cmd: str = Form(...),
+                     args: str = Form("")):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        arg_list = [a.strip() for a in args.split() if a.strip()] if args else []
+        return JSONResponse(vm_service.guest_exec(db, vm_id, cmd, arg_list))
+    finally:
+        db.close()
+
+
+# ── USB Hot-plug/Unplug endpoints ──
+
+@router.post("/{vm_id}/usb/hotplug")
+async def usb_hotplug(request: Request, vm_id: int, vendor_id: str = Form(...),
+                      product_id: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        return JSONResponse(vm_service.usb_hotplug(db, vm_id, vendor_id, product_id))
+    finally:
+        db.close()
+
+
+@router.post("/{vm_id}/usb/unplug")
+async def usb_unplug(request: Request, vm_id: int, vendor_id: str = Form(...),
+                     product_id: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        return JSONResponse(vm_service.usb_unplug(db, vm_id, vendor_id, product_id))
+    finally:
+        db.close()
+
+
+# ── Daily Tasks endpoint ──
+
+@router.post("/daily-tasks")
+async def daily_tasks(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        return JSONResponse(vm_service.run_daily_tasks(db))
+    finally:
+        db.close()
+
+
+# ── Batch Operations ──
+
+@router.post("/batch/start")
+async def batch_start(request: Request):
+    """Start multiple VMs at once."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    results = []
+    db = SessionLocal()
+    try:
+        for vid in vm_ids:
+            vid = vid.strip()
+            if vid.isdigit():
+                r = vm_service.start_vm(db, int(vid))
+                results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    finally:
+        db.close()
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})
+
+
+@router.post("/batch/stop")
+async def batch_stop(request: Request):
+    """Stop multiple VMs at once."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    mode = form.get("mode", "stop")
+    results = []
+    db = SessionLocal()
+    try:
+        for vid in vm_ids:
+            vid = vid.strip()
+            if vid.isdigit():
+                r = vm_service.stop_vm(db, int(vid), mode=mode)
+                results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    finally:
+        db.close()
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})
+
+
+@router.post("/batch/migrate")
+async def batch_migrate(request: Request):
+    """Migrate multiple VMs to a target node."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    target_node = form.get("target", "")
+    results = []
+    from ..services.migration_service import MigrationService
+    mig_svc = MigrationService()
+    for vid in vm_ids:
+        vid = vid.strip()
+        if vid.isdigit():
+            r = mig_svc.migrate_vm(int(vid), target_node)
+            results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})
+
+
+@router.post("/batch/delete")
+async def batch_delete(request: Request):
+    """Delete multiple VMs at once."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    results = []
+    db = SessionLocal()
+    try:
+        for vid in vm_ids:
+            vid = vid.strip()
+            if vid.isdigit():
+                r = vm_service.delete_vm(db, int(vid))
+                results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    finally:
+        db.close()
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})
+
+
+@router.post("/batch/snapshot")
+async def batch_snapshot(request: Request):
+    """Snapshot multiple VMs at once."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    name = form.get("name", "batch-snap")
+    results = []
+    db = SessionLocal()
+    try:
+        for vid in vm_ids:
+            vid = vid.strip()
+            if vid.isdigit():
+                r = vm_service.create_snapshot(db, int(vid), f"{name}-{vid}")
+                results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    finally:
+        db.close()
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})
+
+
+@router.post("/batch/convert-template")
+async def batch_convert_template(request: Request):
+    """Convert multiple VMs to templates."""
+    user, error = api_auth(request)
+    if error: return error
+    form = await request.form()
+    vm_ids = form.get("vm_ids", "").split(",")
+    results = []
+    db = SessionLocal()
+    try:
+        for vid in vm_ids:
+            vid = vid.strip()
+            if vid.isdigit():
+                r = vm_service.convert_to_template(db, int(vid))
+                results.append({"vm_id": int(vid), "success": r.get("success", False), "error": r.get("error")})
+    finally:
+        db.close()
+    return JSONResponse({"results": results, "total": len(results), "succeeded": sum(1 for r in results if r["success"])})

@@ -490,3 +490,117 @@ th {{ color:#8899a6;font-weight:600;text-transform:uppercase;font-size:0.8em; }}
 </body></html>"""
     return HTMLResponse(html)
 
+
+
+# ── Update Repository Management ──
+
+@router.get("/repositories")
+async def list_repositories(request: Request):
+    """List configured apt repositories."""
+    user, error = api_auth(request)
+    if error: return error
+    import os
+    repos = []
+    sources_dir = "/etc/apt/sources.list.d"
+    main_list = "/etc/apt/sources.list"
+    for path in [main_list] + ([os.path.join(sources_dir, f) for f in os.listdir(sources_dir)] if os.path.isdir(sources_dir) else []):
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    content = f.read()
+                lines = [l.strip() for l in content.splitlines() if l.strip() and not l.startswith("#")]
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        repos.append({
+                            "source_file": path,
+                            "type": parts[0],
+                            "url": parts[1],
+                            "distribution": parts[2] if len(parts) > 2 else "",
+                            "components": parts[3:] if len(parts) > 3 else [],
+                            "enabled": True,
+                        })
+            except Exception:
+                pass
+    return JSONResponse({"repositories": repos})
+
+
+@router.post("/repositories/toggle")
+async def toggle_repository(request: Request, source_file: str = Form(...),
+                            url: str = Form(...), enabled: str = Form("true")):
+    """Enable/disable an apt repository."""
+    user, error = api_auth(request)
+    if error: return error
+    if user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin required"}, status_code=403)
+    import os
+    try:
+        with open(source_file) as f:
+            lines = f.readlines()
+        new_lines = []
+        found = False
+        for line in lines:
+            if url in line:
+                found = True
+                if enabled.lower() in ("false", "0"):
+                    new_lines.append("#" + line if not line.startswith("#") else line)
+                else:
+                    new_lines.append(line.lstrip("#"))
+            else:
+                new_lines.append(line)
+        if found:
+            with open(source_file, "w") as f:
+                f.writelines(new_lines)
+            return JSONResponse({"success": True})
+        return JSONResponse({"success": False, "error": "Repository not found"})
+    except PermissionError:
+        return JSONResponse({"success": False, "error": "Permission denied"})
+
+
+@router.post("/update/check")
+async def check_updates(request: Request):
+    """Check for available updates."""
+    user, error = api_auth(request)
+    if error: return error
+    import subprocess
+    r = subprocess.run("apt list --upgradable 2>/dev/null | tail -n +2", shell=True, capture_output=True, text=True, timeout=60)
+    updates = []
+    for line in r.stdout.splitlines():
+        if "/" in line:
+            parts = line.split()
+            if len(parts) >= 2:
+                updates.append({"package": parts[0], "new_version": parts[1]})
+    return JSONResponse({"updates": updates, "count": len(updates)})
+
+
+# ── Audit Logging ──
+
+@router.get("/audit")
+async def list_audit_log(request: Request, limit: int = 100):
+    """Get audit log entries."""
+    user, error = api_auth(request)
+    if error: return error
+    from ..models.user import AuditLog
+    db = SessionLocal()
+    try:
+        entries = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).all()
+        return JSONResponse({"entries": [{
+            "id": e.id, "user": e.user_id, "action": e.action,
+            "resource": e.resource, "details": e.details or "",
+            "ip": e.ip_address or "", "time": e.created_at.isoformat() if e.created_at else ""
+        } for e in entries]})
+    finally:
+        db.close()
+
+
+def log_audit(user_id: int, action: str, resource: str = "", details: str = "", ip: str = ""):
+    """Write an audit log entry."""
+    from ..models.user import AuditLog
+    db = SessionLocal()
+    try:
+        db.add(AuditLog(user_id=user_id, action=action, resource=resource, details=details, ip_address=ip))
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()

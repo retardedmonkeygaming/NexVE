@@ -114,12 +114,27 @@ async def startup_event():
     monitor.start_collector()
 
 
+# ─── Global exception handler — return JSON for API, HTML for pages ───
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    tb = traceback.format_exc()
+    path = request.url.path
+    if path.startswith("/api/") or request.headers.get("accept", "").startswith("application/json"):
+        return JSONResponse(
+            {"error": str(exc), "type": type(exc).__name__, "detail": tb[-500:] if len(tb) > 500 else tb},
+            status_code=500,
+        )
+    return HTMLResponse(f"<h1>500 Internal Server Error</h1><pre>{tb}</pre>", status_code=500)
+
+
 # ─── Middleware: Force setup if no admin exists ───
 @app.middleware("http")
 async def setup_middleware(request: Request, call_next):
     path = request.url.path
-    allowed = ["/setup", "/login", "/login/2fa", "/static", "/favicon.ico", "/api/setup"]
-    if any(path.startswith(a) for a in allowed):
+    # Allow ALL API endpoints, static, and auth pages through — never redirect API calls to HTML
+    allowed_prefixes = ["/setup", "/login", "/login/2fa", "/static", "/favicon.ico", "/api/"]
+    if any(path.startswith(a) for a in allowed_prefixes):
         return await call_next(request)
 
     db = SessionLocal()
@@ -266,6 +281,16 @@ async def wireguard_page(request: Request):
         "user": user, "csrf_token": csrf, "page": "wireguard", "hostname": os.uname().nodename
     })
 
+
+@app.get("/console/{vm_id}", response_class=HTMLResponse)
+async def console_page(request: Request, vm_id: int):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    csrf = generate_csrf_token(request.cookies.get("nexve_session", ""))
+    return templates.TemplateResponse(request=request, name="console.html", context={
+        "user": user, "csrf_token": csrf, "page": "console", "hostname": os.uname().nodename, "vm_id": vm_id
+    })
 
 
 @app.get("/shell", response_class=HTMLResponse)

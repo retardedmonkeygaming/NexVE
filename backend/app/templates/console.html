@@ -1,48 +1,216 @@
 {% extends "base.html" %}
+{% block title %}NexVE — Console{% endblock %}
+{% block breadcrumb %}Console{% endblock %}
+
 {% block content %}
-<div class="p-6">
-    <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold">Console</h1>
-        <button onclick="history.back()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">← Back</button>
+<div class="nx-page-header">
+    <div>
+        <div class="nx-page-title">Console</div>
+        <div class="nx-page-subtitle">VM {{ vm_id }} — Remote console access</div>
     </div>
-
-    <div id="console-container" class="bg-black rounded-xl border border-zinc-800 overflow-hidden" style="height: 70vh;">
-        <div id="console-placeholder" class="flex items-center justify-center h-full text-zinc-500">
-            <div class="text-center">
-                <p class="text-lg mb-2">Loading console...</p>
-                <p class="text-sm">The VNC connection will appear here.</p>
-            </div>
-        </div>
-        <iframe id="console-frame" class="w-full h-full hidden" frameborder="0"></iframe>
-    </div>
-
-    <div class="flex gap-2 mt-4">
-        <button onclick="sendCtrlAltDel()" class="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm transition">Ctrl+Alt+Del</button>
+    <div class="nx-page-actions">
+        <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="history.back()">← Back</button>
+        <div class="nx-btn-group" id="console-type-btns"></div>
     </div>
 </div>
 
+<div class="nx-card" style="padding:0;overflow:hidden;">
+    <div id="console-container" style="background:#000;height:72vh;position:relative;">
+        <!-- Loading state -->
+        <div id="console-loading" class="flex items-center justify-center h-full text-zinc-500">
+            <div class="text-center">
+                <div style="font-size:32px;margin-bottom:12px;">⏳</div>
+                <p>Connecting to console...</p>
+                <p style="font-size:12px;margin-top:8px;color:var(--text-muted);" id="console-status">Detecting console type...</p>
+            </div>
+        </div>
+        <!-- noVNC iframe -->
+        <iframe id="console-frame" class="w-full h-full hidden" style="border:none;" frameborder="0"></iframe>
+        <!-- SPICE canvas -->
+        <div id="spice-area" class="hidden w-full h-full"></div>
+        <!-- xterm.js container -->
+        <div id="xterm-container" class="hidden w-full h-full"></div>
+        <!-- Error state -->
+        <div id="console-error" class="hidden flex items-center justify-center h-full">
+            <div class="text-center" style="color:var(--danger);">
+                <div style="font-size:48px;margin-bottom:16px;">❌</div>
+                <p style="font-size:16px;font-weight:600;">Console Unavailable</p>
+                <p id="console-error-msg" style="font-size:13px;margin-top:8px;color:var(--text-muted);"></p>
+                <button class="nx-btn nx-btn-primary" style="margin-top:16px;" onclick="loadConsole()">Retry</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top:12px;" class="nx-flex nx-gap-2">
+    <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="sendCtrlAltDel()">Ctrl+Alt+Del</button>
+    <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadConsole()">↻ Reconnect</button>
+</div>
+
 <script>
-const vmId = {{ vm_id }};
+const vmId = {{ vm_id | default(0) }};
+let currentConsoleType = null;
+
+// Detect console type from URL params or auto-detect
+const urlParams = new URLSearchParams(window.location.search);
+const requestedType = urlParams.get('type');
 
 async function loadConsole() {
-    const r = await fetch(`/api/console/vm/${vmId}`);
-    const d = await r.json();
-    if (d.success && d.novnc_url) {
-        const frame = document.getElementById('console-frame');
-        frame.src = d.novnc_url;
-        frame.classList.remove('hidden');
-        document.getElementById('console-placeholder').classList.add('hidden');
-    } else {
-        document.getElementById('console-placeholder').innerHTML =
-            `<div class="text-center text-red-400"><p>Could not connect to console.</p><p class="text-sm mt-2">${d.error || 'VM may not be running or VNC not enabled.'}</p></div>`;
+    document.getElementById('console-loading').classList.remove('hidden');
+    document.getElementById('console-error').classList.add('hidden');
+    document.getElementById('console-frame').classList.add('hidden');
+    document.getElementById('spice-area').classList.add('hidden');
+    if (typeof Term !== 'undefined') document.getElementById('xterm-container').classList.add('hidden');
+    document.getElementById('console-status').textContent = 'Detecting console type...';
+
+    try {
+        const r = await fetch(`/api/console/types/${vmId}`);
+        const d = await r.json();
+        const types = d.types || [];
+
+        // Render console type buttons
+        const btnsEl = document.getElementById('console-type-btns');
+        btnsEl.innerHTML = types.map(t =>
+            `<button class="nx-btn nx-btn-sm ${t.type === currentConsoleType ? 'nx-btn-primary' : 'nx-btn-secondary'}" onclick="connectConsole('${t.type}')">${t.label}</button>`
+        ).join('');
+
+        if (types.length === 0) {
+            showError('No console types available. VM may not be running.');
+            return;
+        }
+
+        // Auto-select: prefer requested type, then noVNC, then first available
+        const targetType = requestedType || types.find(t => t.type === 'vnc')?.type || types[0].type;
+        connectConsole(targetType);
+    } catch (e) {
+        showError('Failed to detect console types: ' + e.message);
     }
 }
 
-function sendCtrlAltDel() {
-    // noVNC sends keys via its API — for now, just notify
-    alert('Ctrl+Alt+Del sent (connects via noVNC toolbar)');
+async function connectConsole(type) {
+    currentConsoleType = type;
+    document.getElementById('console-status').textContent = `Connecting via ${type}...`;
+    document.getElementById('console-frame').classList.add('hidden');
+    document.getElementById('spice-area').classList.add('hidden');
+    document.getElementById('console-loading').classList.remove('hidden');
+    document.getElementById('console-error').classList.add('hidden');
+
+    // Update active button
+    document.querySelectorAll('#console-type-btns .nx-btn').forEach(b => {
+        b.classList.remove('nx-btn-primary');
+        b.classList.add('nx-btn-secondary');
+    });
+    event?.target?.classList?.remove('nx-btn-secondary');
+    event?.target?.classList?.add('nx-btn-primary');
+
+    if (type === 'vnc') {
+        try {
+            const r = await fetch(`/api/console/vm/${vmId}`);
+            const d = await r.json();
+            if (d.success && d.novnc_url) {
+                const frame = document.getElementById('console-frame');
+                frame.src = d.novnc_url;
+                frame.classList.remove('hidden');
+                document.getElementById('console-loading').classList.add('hidden');
+            } else {
+                showError(d.error || 'VNC not available');
+            }
+        } catch (e) {
+            showError('VNC connection failed: ' + e.message);
+        }
+    } else if (type === 'spice') {
+        try {
+            const r = await fetch(`/api/console/spice/${vmId}`);
+            const d = await r.json();
+            if (d.available) {
+                document.getElementById('console-loading').classList.add('hidden');
+                document.getElementById('spice-area').classList.remove('hidden');
+                document.getElementById('spice-area').innerHTML = `
+                    <div style="padding:32px;text-align:center;color:var(--text-secondary);">
+                        <p>SPICE requires a native client or HTML5 SPICE viewer.</p>
+                        <p style="font-size:12px;margin-top:8px;">Port: ${d.port || 5900}</p>
+                        <button class="nx-btn nx-btn-primary" style="margin-top:12px;" onclick="window.open('spice://${d.host || 'localhost'}:${d.port || 5900}')">Open in SPICE Client</button>
+                    </div>`;
+            } else {
+                showError(d.error || 'SPICE not available');
+            }
+        } catch (e) {
+            showError('SPICE connection failed: ' + e.message);
+        }
+    } else if (type === 'xterm') {
+        try {
+            // Load xterm.js if not already loaded
+            if (typeof Terminal === 'undefined') {
+                await loadScript('https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js');
+                await loadScript('https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js');
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css';
+                document.head.appendChild(link);
+            }
+            const container = document.getElementById('xterm-container');
+            container.classList.remove('hidden');
+            document.getElementById('console-loading').classList.add('hidden');
+
+            if (window._term) { window._term.dispose(); }
+            const term = new Terminal({ cursorBlink: true, fontSize: 14, theme: { background: '#0d1117', foreground: '#c9d1d9' } });
+            term.open(container);
+            window._term = term;
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            fitAddon.fit();
+
+            // Connect via WebSocket
+            const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${wsProto}//${location.host}/ws/shell/${vmId}`);
+            ws.onmessage = (e) => term.write(e.data);
+            term.onData((data) => ws.send(data));
+            ws.onclose = () => term.write('\r\n[Connection closed]\r\n');
+        } catch (e) {
+            showError('xterm.js failed: ' + e.message);
+        }
+    }
 }
 
+function showError(msg) {
+    document.getElementById('console-loading').classList.add('hidden');
+    document.getElementById('console-error').classList.remove('hidden');
+    document.getElementById('console-error-msg').textContent = msg;
+}
+
+function sendCtrlAltDel() {
+    if (currentConsoleType === 'xterm' && window._term) {
+        window._term.write('\x1b[3~'); // Delete key as fallback
+    }
+    // noVNC has built-in Ctrl+Alt+Del via toolbar
+    alert('Use the noVNC toolbar for Ctrl+Alt+Del, or it was sent via terminal.');
+}
+
+function toggleFullscreen() {
+    const el = document.getElementById('console-container');
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else {
+        el.requestFullscreen();
+    }
+}
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+// Init
 loadConsole();
+setInterval(() => {
+    // Auto-reconnect if console went blank
+    if (!currentConsoleType) return;
+}, 30000);
 </script>
 {% endblock %}

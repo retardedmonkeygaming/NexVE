@@ -545,32 +545,243 @@ class BackupService:
 
     # ── PBS Integration ──
 
+    # ── VZDump Integration ──
+
+    def vzdump_status(self) -> dict:
+        """Check if vzdump is available."""
+        r = self.run_cmd("which vzdump 2>/dev/null")
+        return {"available": r["success"], "path": r["stdout"] if r["success"] else ""}
+
+    def vzdump_backup(self, vm_id: int, mode: str = "snapshot", compress: str = "zstd",
+                     storage: str = "", remove_old: bool = False, tmpdir: str = "") -> dict:
+        """Run vzdump for a VM or container."""
+        cmd = f"vzdump {vm_id} --mode {mode} --compress {compress}"
+        if storage:
+            cmd += f" --storage {storage}"
+        if remove_old:
+            cmd += " --remove"
+        if tmpdir:
+            cmd += f" --tmpdir {tmpdir}"
+        cmd += " --quiet 1"
+        r = self.run_cmd(cmd, timeout=3600)
+        if r["success"]:
+            # Parse log for backup path
+            backup_path = ""
+            for line in (r["stdout"] + "\n" + r["stderr"]).splitlines():
+                if " backup " in line.lower() and (".tar" in line or ".vma" in line):
+                    parts = line.split()
+                    for p in parts:
+                        if os.path.exists(p) or p.startswith("/"):
+                            backup_path = p
+                            break
+            return {"success": True, "output": r["stdout"], "path": backup_path}
+        return {"success": False, "error": r["stderr"] or r["stdout"]}
+
+    def vzdump_restore(self, vm_id: int, archive_path: str) -> dict:
+        """Restore a VM/container from a vzdump archive."""
+        if not os.path.exists(archive_path):
+            return {"success": False, "error": "Archive not found"}
+        # Determine restore command based on archive type
+        if ".vma" in archive_path or ".vma.zst" in archive_path:
+            cmd = f"qmrestore {archive_path} {vm_id} --force 2>/dev/null || pct restore {vm_id} {archive_path} --ignore-unpack-errors 2>/dev/null"
+        elif archive_path.endswith(".tar.gz") or archive_path.endswith(".tar.zst"):
+            cmd = f"qmrestore {archive_path} {vm_id} --force 2>/dev/null || pct restore {vm_id} {archive_path} --ignore-unpack-errors 2>/dev/null"
+        else:
+            return {"success": False, "error": f"Unsupported archive format: {archive_path}"}
+        r = self.run_cmd(cmd, timeout=3600)
+        return {"success": r["success"], "error": r["stderr"] if not r["success"] else "", "output": r["stdout"]}
+
+    def vzdump_verify(self, archive_path: str) -> dict:
+        """Verify integrity of a vzdump backup archive."""
+        if not os.path.exists(archive_path):
+            return {"success": False, "error": "Archive not found", "valid": False}
+        if ".vma" in archive_path:
+            cmd = f"vma verify {archive_path} 2>&1"
+        elif archive_path.endswith(".tar.gz"):
+            cmd = f"tar tzf {archive_path} > /dev/null 2>&1 && echo OK"
+        elif archive_path.endswith(".tar.zst"):
+            cmd = f"tar --zstd -tf {archive_path} > /dev/null 2>&1 && echo OK"
+        else:
+            return {"success": False, "error": "Unsupported format", "valid": False}
+        r = self.run_cmd(cmd, timeout=300)
+        return {"success": r["success"], "valid": r["success"] and "OK" in r["stdout"], "output": r["stdout"]}
+
+    def vzdump_retention(self, vm_id: int, max_backups: int = 3) -> dict:
+        """Apply retention policy — keep only N most recent backups for a VM."""
+        backups = self.list_backups()
+        vm_backups = sorted(
+            [b for b in backups if b.get("type") == "vm" and str(b.get("vm_id", "")) == str(vm_id)],
+            key=lambda x: x.get("created", ""),
+            reverse=True
+        )
+        if len(vm_backups) <= max_backups:
+            return {"success": True, "deleted": 0}
+        to_delete = vm_backups[max_backups:]
+        deleted = 0
+        for b in to_delete:
+            path = b.get("path") or b.get("filename", "")
+            if path and os.path.exists(path):
+                os.remove(path)
+                deleted += 1
+        return {"success": True, "deleted": deleted}
+
+    # ── PBS (Proxmox Backup Server) Full API ──
+
     def pbs_status(self) -> dict:
-        """Check if Proxmox Backup Server client is available."""
-        r = self.run_cmd("which pxar 2>/dev/null || which pbs 2>/dev/null")
-        return {"available": r["success"]}
+        """Check if PBS client tools are available and configured."""
+        r = self.run_cmd("which proxmox-backup-client 2>/dev/null || which pxar 2>/dev/null")
+        # Check for configured repositories
+        repo_file = "/etc/proxmox-backup/pbs.repo"
+        configured = os.path.exists(repo_file)
+        # Check running PBS daemon
+        pr = subprocess.run("systemctl is-active proxmox-backup 2>/dev/null",
+                          shell=True, capture_output=True, text=True, timeout=5)
+        daemon_running = pr.stdout.strip() == "active"
+        return {
+            "client_available": r["success"],
+            "daemon_running": daemon_running,
+            "configured": configured,
+        }
 
-    def pbs_backup(self, vm_id: int, repository: str = "", password: str = "") -> dict:
-        """Backup a VM to a PBS repository."""
-        if not repository:
-            return {"success": False, "error": "PBS repository not specified"}
+    def pbs_list_repositories(self) -> List[dict]:
+        """List configured PBS repositories."""
+        # Check common PBS config locations
+        repos = []
+        config_dir = "/etc/proxmox-backup"
+        if os.path.isdir(config_dir):
+            for f in os.listdir(config_dir):
+                if f.endswith(".repo") or f.endswith(".pbs"):
+                    try:
+                        with open(os.path.join(config_dir, f)) as fh:
+                            content = fh.read()
+                        repos.append({"name": f, "config": content.strip()})
+                    except Exception:
+                        pass
+        # Also check /etc/pve for PBS storage configs
+        pve_dir = "/etc/pve"
+        if os.path.isdir(pve_dir):
+            for f in os.listdir(pve_dir):
+                if "pbs" in f.lower():
+                    try:
+                        with open(os.path.join(pve_dir, f)) as fh:
+                            content = fh.read()
+                        repos.append({"name": f, "config": content.strip()})
+                    except Exception:
+                        pass
+        return repos
 
-        # Create backup first
-        result = self.backup_vm(vm_id, compress=False)
+    def pbs_backup(self, vm_id: int, repository: str = "", password: str = "",
+                   backup_type: str = "vm", compress: str = "zstd") -> dict:
+        """Backup a VM/container to PBS using proxmox-backup-client."""
+        # Try proxmox-backup-client first, then fall back to pxar
+        client = "proxmox-backup-client"
+        r = self.run_cmd(f"which {client} 2>/dev/null")
+        if not r["success"]:
+            client = "pxar"
+            r2 = self.run_cmd(f"which {client} 2>/dev/null")
+            if not r2["success"]:
+                return {"success": False, "error": "No PBS client found. Install proxmox-backup-client."}
+
+        # Create backup archive first
+        result = self.backup_vm(vm_id, compress=(compress != "none"))
         if not result.get("success"):
             return result
-
         backup_path = result.get("path", "")
         if not backup_path:
             return {"success": False, "error": "Backup path empty"}
 
-        # Use pxar to create archive
-        pxar_path = f"{backup_path}.pxar"
-        r = self.run_cmd(f'pxar create "{pxar_path}" "{backup_path}"')
+        # Push to PBS
+        if client == "proxmox-backup-client" and repository:
+            backup_name = os.path.basename(backup_path)
+            cmd = f"proxmox-backup-client backup {backup_name}={backup_path} --repository {repository}"
+            if password:
+                cmd += f" --keyfile /dev/stdin"
+            r = self.run_cmd(cmd, timeout=3600)
+            if r["success"]:
+                return {"success": True, "path": backup_path, "pbs_repository": repository, "output": r["stdout"]}
+            return {"success": False, "error": r["stderr"]}
+        else:
+            # pxar fallback
+            pxar_path = f"{backup_path}.pxar"
+            r = self.run_cmd(f'pxar create "{pxar_path}" "{backup_path}"')
+            if r["success"]:
+                return {"success": True, "path": pxar_path, "pbs_repository": repository}
+            return {"success": False, "error": r["stderr"]}
 
+    def pbs_restore(self, repository: str, backup_snapshot: str, vm_id: int) -> dict:
+        """Restore from PBS."""
+        client = "proxmox-backup-client"
+        r = self.run_cmd(f"which {client} 2>/dev/null")
+        if not r["success"]:
+            return {"success": False, "error": "proxmox-backup-client not found"}
+
+        restore_dir = f"/tmp/pbs-restore-{vm_id}"
+        os.makedirs(restore_dir, exist_ok=True)
+        cmd = f"proxmox-backup-client restore {backup_snapshot} --repository {repository} --target {restore_dir}"
+        r = self.run_cmd(cmd, timeout=3600)
+        if not r["success"]:
+            return {"success": False, "error": r["stderr"]}
+
+        # Find the restored archive and restore it
+        for f in os.listdir(restore_dir):
+            archive = os.path.join(restore_dir, f)
+            if os.path.isfile(archive):
+                return self.vzdump_restore(vm_id, archive)
+        return {"success": False, "error": "No archive found after PBS restore"}
+
+    def pbs_live_restore(self, repository: str, backup_snapshot: str, vm_id: int) -> dict:
+        """Live-restore: start VM while data is still being restored."""
+        client = "proxmox-backup-client"
+        r = self.run_cmd(f"which {client} 2>/dev/null")
+        if not r["success"]:
+            return {"success": False, "error": "proxmox-backup-client not found"}
+
+        restore_dir = f"/var/lib/libvirt/images/pbs-live-{vm_id}"
+        os.makedirs(restore_dir, exist_ok=True)
+        # Start background restore
+        cmd = (f"nohup proxmox-backup-client restore {backup_snapshot} "
+               f"--repository {repository} --target {restore_dir} "
+               f"> {restore_dir}/restore.log 2>&1 &")
+        self.run_cmd(cmd, timeout=10)
+        return {
+            "success": True,
+            "message": "Live restore started in background",
+            "restore_dir": restore_dir,
+            "log": f"{restore_dir}/restore.log",
+        }
+
+    def pbs_list_snapshots(self, repository: str) -> List[dict]:
+        """List snapshots in a PBS repository."""
+        client = "proxmox-backup-client"
+        cmd = f"proxmox-backup-client snapshots --repository {repository} 2>&1"
+        r = self.run_cmd(cmd, timeout=30)
+        snapshots = []
         if r["success"]:
-            return {"success": True, "path": pxar_path, "pbs_repository": repository}
-        return {"success": False, "error": r["stderr"]}
+            for line in r["stdout"].splitlines():
+                if line.strip() and not line.startswith("Using"):
+                    snapshots.append({"raw": line.strip()})
+        return snapshots
+
+    def pbs_prune(self, repository: str, keep_daily: int = 7, keep_weekly: int = 4,
+                  keep_monthly: int = 6) -> dict:
+        """Prune old backups in PBS repository."""
+        cmd = (f"proxmox-backup-client prune --repository {repository} "
+               f"--keep-daily {keep_daily} --keep-weekly {keep_weekly} "
+               f"--keep-monthly {keep_monthly} 2>&1")
+        r = self.run_cmd(cmd, timeout=300)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    def pbs_gc(self, repository: str) -> dict:
+        """Run garbage collection on PBS repository."""
+        cmd = f"proxmox-backup-client gc --repository {repository} 2>&1"
+        r = self.run_cmd(cmd, timeout=3600)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    def pbs_info(self, repository: str) -> dict:
+        """Get PBS repository info."""
+        cmd = f"proxmox-backup-client info --repository {repository} 2>&1"
+        r = self.run_cmd(cmd, timeout=30)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
 
     # ── Single File Restore ──
 

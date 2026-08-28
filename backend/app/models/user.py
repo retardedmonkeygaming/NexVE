@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from ..database import Base
 import bcrypt
+import json
 
 
 class User(Base):
@@ -118,5 +119,44 @@ class Role(Base):
     name = Column(String, unique=True, index=True)
     description = Column(String, nullable=True)
     permissions = Column(Text, nullable=True)  # JSON list of permissions
+    builtin = Column(Boolean, default=False)  # System roles can't be deleted
+    created_at = Column(DateTime, server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id, "name": self.name, "description": self.description,
+            "permissions": json.loads(self.permissions) if self.permissions else [],
+            "builtin": self.builtin,
+        }
+
+
+class ACL(Base):
+    """Path-based Access Control List."""
+    __tablename__ = "acls"
+
+    id = Column(Integer, primary_key=True, index=True)
+    path = Column(String, index=True)  # e.g., "/vms/100", "/storage/local", "/nodes/*"
+    subject_type = Column(String)  # user, group, api_token
+    subject_id = Column(Integer)  # user.id, group.id, api_token.id
+    role_id = Column(Integer)  # role.id
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id, "path": self.path, "subject_type": self.subject_type,
+            "subject_id": self.subject_id, "role_id": self.role_id, "enabled": self.enabled,
+        }
+
+
+class PAMConfig(Base):
+    """PAM authentication configuration."""
+    __tablename__ = "pam_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    enabled = Column(Boolean, default=False)
+    map_to_role = Column(String, default="user")  # Default role for PAM users
+    allowed_groups = Column(Text, nullable=True)  # JSON: ["sudo", "nexve-admin"]
+    deny_groups = Column(Text, nullable=True)  # JSON: ["nogroup"]
     created_at = Column(DateTime, server_default=func.now())
 

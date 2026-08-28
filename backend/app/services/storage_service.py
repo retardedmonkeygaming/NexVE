@@ -88,13 +88,33 @@ class StorageService:
         except json.JSONDecodeError:
             return []
 
-    def zfs_create_pool(self, name: str, device: str, force: bool = False) -> dict:
-        # Ensure ZFS module is loaded
+    def zfs_create_pool(self, name: str, device: str, force: bool = False,
+                        pool_type: str = "single", devices: List[str] = None) -> dict:
+        """Create a ZFS pool with single or multiple devices.
+        pool_type: single, mirror, raidz, raidz2, raidz3, stripe
+        """
         check = self._ensure_zfs_loaded()
         if not check["success"]:
             return check
         force_flag = "-f" if force else ""
-        return self.run_cmd(f"zpool create {force_flag} {name} {device}")
+        devs = devices or [d.strip() for d in device.split() if d.strip()]
+        if len(devs) == 0:
+            return {"success": False, "error": "No devices specified"}
+        if pool_type == "single" or len(devs) == 1:
+            dev_str = " ".join(devs)
+            return self.run_cmd(f"zpool create {force_flag} {name} {dev_str}")
+        elif pool_type == "mirror":
+            dev_str = " ".join(devs)
+            return self.run_cmd(f"zpool create {force_flag} {name} mirror {dev_str}")
+        elif pool_type in ("raidz", "raidz2", "raidz3"):
+            dev_str = " ".join(devs)
+            return self.run_cmd(f"zpool create {force_flag} {name} {pool_type} {dev_str}")
+        elif pool_type == "stripe":
+            dev_str = " ".join(devs)
+            return self.run_cmd(f"zpool create {force_flag} {name} stripe {dev_str}")
+        else:
+            dev_str = " ".join(devs)
+            return self.run_cmd(f"zpool create {force_flag} {name} {dev_str}")
 
     def zfs_destroy_pool(self, name: str) -> dict:
         return self.run_cmd(f"zpool destroy -f {name}")
@@ -811,3 +831,176 @@ class StorageService:
             # Fallback: try edquota-style
             r = self.run_cmd(f"setquota -g 0 {size_gb}G 0 0 {path}")
         return {"success": r["success"], "stderr": r["stderr"]}
+
+    # ── GlusterFS ──
+
+    def _has_gluster(self) -> bool:
+        r = self.run_cmd("which gluster 2>/dev/null")
+        return r["success"]
+
+    def gluster_status(self) -> dict:
+        if not self._has_gluster():
+            return {"available": False}
+        r = self.run_cmd("gluster peer status 2>&1")
+        peers = []
+        in_peer = False
+        for line in r["stdout"].splitlines():
+            if "Hostname" in line:
+                peers.append({"hostname": line.split(":")[-1].strip()})
+                in_peer = True
+            elif in_peer and "State" in line:
+                peers[-1]["state"] = line.split(":")[-1].strip()
+                in_peer = False
+        return {"available": True, "peers": peers, "raw": r["stdout"]}
+
+    def gluster_list_volumes(self) -> List[dict]:
+        r = self.run_cmd("gluster volume list 2>&1")
+        volumes = []
+        for line in r["stdout"].splitlines():
+            v = line.strip()
+            if v and not v.startswith("Volume") and "No volumes" not in v:
+                # Get volume info
+                info = self.run_cmd(f"gluster volume info {v} 2>&1")
+                details = {}
+                for il in info["stdout"].splitlines():
+                    if ":" in il:
+                        k, val = il.split(":", 1)
+                        details[k.strip().lower().replace(" ", "_")] = val.strip()
+                volumes.append({"name": v, "status": details.get("status", "unknown"),
+                               "type": details.get("type", "unknown"),
+                               "bricks": details.get("number_of_bricks", "0")})
+        return volumes
+
+    def gluster_create_volume(self, name: str, bricks: List[str],
+                             replica_count: int = 1, transport: str = "tcp") -> dict:
+        bricks_str = " ".join(bricks)
+        cmd = f"gluster volume create {name}"
+        if replica_count > 1:
+            cmd += f" replica {replica_count}"
+        cmd += f" transport {transport} {bricks_str} force 2>&1"
+        r = self.run_cmd(cmd, timeout=60)
+        if r["success"]:
+            self.run_cmd(f"gluster volume start {name} 2>&1")
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    def gluster_delete_volume(self, name: str) -> dict:
+        self.run_cmd(f"gluster volume stop {name} force 2>&1", timeout=30)
+        r = self.run_cmd(f"gluster volume delete {name} 2>&1", timeout=30)
+        return {"success": r["success"], "error": r["stderr"]}
+
+    def gluster_peer_probe(self, host: str) -> dict:
+        r = self.run_cmd(f"gluster peer probe {host} 2>&1", timeout=15)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    def gluster_peer_detach(self, host: str) -> dict:
+        r = self.run_cmd(f"gluster peer detach {host} force 2>&1", timeout=15)
+        return {"success": r["success"], "error": r["stderr"]}
+
+    def gluster_volume_info(self, name: str) -> dict:
+        r = self.run_cmd(f"gluster volume info {name} 2>&1")
+        info = {}
+        for line in r["stdout"].splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                info[k.strip().lower().replace(" ", "_")] = v.strip()
+        return info
+
+    # ── RAIDZ Expansion ──
+
+    def zfs_raidz_expand(self, pool: str, new_device: str) -> dict:
+        """Expand a RAIDZ pool by adding a new device."""
+        r = self.run_cmd(f"zpool attach {pool} {new_device} 2>&1", timeout=300)
+        if r["success"]:
+            return {"success": True, "message": f"Device {new_device} added to pool {pool}. Resilver in progress."}
+        # Try add for RAIDZ vdev expansion
+        r2 = self.run_cmd(f"zpool add {pool} {new_device} 2>&1", timeout=300)
+        return {"success": r2["success"], "output": r2["stdout"], "error": r2["stderr"] or r["stderr"]}
+
+    def zfs_raidz_status(self, pool: str) -> dict:
+        """Get RAIDZ pool status (resilver progress, errors, etc.)."""
+        r = self.run_cmd(f"zpool status {pool} 2>&1")
+        return {"output": r["stdout"], "error": r["stderr"]}
+
+    def zfs_raidz_add_vdev(self, pool: str, devices: List[str]) -> dict:
+        """Add a new RAIDZ vdev to an existing pool."""
+        devs = " ".join(devices)
+        r = self.run_cmd(f"zpool add {pool} raidz {devs} 2>&1", timeout=600)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    # ── Scheduled Replication Jobs ──
+
+    REPLICATION_FILE = "/var/lib/nexve/replication.json"
+
+    def _save_replication(self, jobs: List[dict]):
+        import os
+        os.makedirs(os.path.dirname(self.REPLICATION_FILE), exist_ok=True)
+        with open(self.REPLICATION_FILE, "w") as f:
+            json.dump(jobs, f, indent=2)
+
+    def _load_replication(self) -> List[dict]:
+        if os.path.exists(self.REPLICATION_FILE):
+            with open(self.REPLICATION_FILE) as f:
+                return json.load(f)
+        return []
+
+    def replication_list_jobs(self) -> List[dict]:
+        return self._load_replication()
+
+    def replication_create_job(self, source: str, target: str, schedule: str = "daily",
+                              recursive: bool = True, max_snapshots: int = 10) -> dict:
+        jobs = self._load_replication()
+        job_id = len(jobs) + 1
+        job = {
+            "id": job_id, "source": source, "target": target,
+            "schedule": schedule, "recursive": recursive,
+            "max_snapshots": max_snapshots, "enabled": True,
+            "last_run": None, "last_status": None,
+        }
+        jobs.append(job)
+        self._save_replication(jobs)
+        # Schedule via cron
+        cron_line = self._schedule_to_cron(schedule)
+        self.run_cmd(
+            f"(crontab -l 2>/dev/null | grep -v 'nexve-repl-{job_id}'; "
+            f"echo '{cron_line} /usr/sbin/zfs send -R {source} | zfs recv -F {target} # nexve-repl-{job_id}') | crontab -"
+        )
+        return {"success": True, "job": job}
+
+    def replication_delete_job(self, job_id: int) -> dict:
+        jobs = self._load_replication()
+        jobs = [j for j in jobs if j["id"] != job_id]
+        self._save_replication(jobs)
+        self.run_cmd(f"crontab -l 2>/dev/null | grep -v 'nexve-repl-{job_id}' | crontab -")
+        return {"success": True}
+
+    def replication_run_now(self, job_id: int) -> dict:
+        jobs = self._load_replication()
+        job = next((j for j in jobs if j["id"] == job_id), None)
+        if not job:
+            return {"success": False, "error": "Job not found"}
+        source = job["source"]
+        target = job["target"]
+        # Create snapshot first
+        snap_name = f"repl-{int(time.time())}"
+        self.zfs_snapshot(source, snap_name)
+        # Send/receive
+        cmd = f"zfs send -R {source}@{snap_name} | zfs recv -F {target} 2>&1"
+        r = self.run_cmd(cmd, timeout=3600)
+        # Update job status
+        for j in jobs:
+            if j["id"] == job_id:
+                j["last_run"] = datetime.utcnow().isoformat()
+                j["last_status"] = "success" if r["success"] else "failed"
+        self._save_replication(jobs)
+        return {"success": r["success"], "output": r["stdout"], "error": r["stderr"]}
+
+    def _schedule_to_cron(self, schedule: str) -> str:
+        schedules = {
+            "hourly": "0 * * * *",
+            "daily": "0 2 * * *",
+            "weekly": "0 2 * * 0",
+            "monthly": "0 2 1 * *",
+            "every6h": "0 */6 * * *",
+            "every12h": "0 */12 * * *",
+        }
+        return schedules.get(schedule, "0 2 * * *")

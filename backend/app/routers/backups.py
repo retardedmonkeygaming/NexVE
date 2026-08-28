@@ -376,6 +376,109 @@ async def extract_from_backup(
     return JSONResponse(backup_svc.extract_file_from_backup(backup_path, file_path, output_path))
 
 
+# ── VZDump endpoints ──
+
+@router.get("/vzdump/status")
+async def vzdump_status(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.vzdump_status())
+
+
+@router.post("/vzdump/backup")
+async def vzdump_backup(request: Request, vm_id: int = Form(...),
+                        mode: str = Form("snapshot"), compress: str = Form("zstd")):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.vzdump_backup(vm_id, mode=mode, compress=compress))
+
+
+@router.post("/vzdump/restore")
+async def vzdump_restore(request: Request, vm_id: int = Form(...),
+                         archive_path: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.vzdump_restore(vm_id, archive_path))
+
+
+@router.post("/vzdump/verify")
+async def vzdump_verify(request: Request, archive_path: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.vzdump_verify(archive_path))
+
+
+@router.post("/vzdump/retention")
+async def vzdump_retention(request: Request, vm_id: int = Form(...),
+                          max_backups: int = Form(3)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.vzdump_retention(vm_id, max_backups))
+
+
+# ── Full PBS endpoints ──
+
+@router.get("/pbs/repositories")
+async def pbs_repositories(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"repositories": backup_svc.pbs_list_repositories()})
+
+
+@router.post("/pbs/backup")
+async def pbs_backup(request: Request, vm_id: int = Form(...),
+                     repository: str = Form(""), compress: str = Form("zstd")):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_backup(vm_id, repository=repository, compress=compress))
+
+
+@router.post("/pbs/restore")
+async def pbs_restore(request: Request, repository: str = Form(...),
+                      backup_snapshot: str = Form(...), vm_id: int = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_restore(repository, backup_snapshot, vm_id))
+
+
+@router.post("/pbs/live-restore")
+async def pbs_live_restore(request: Request, repository: str = Form(...),
+                           backup_snapshot: str = Form(...), vm_id: int = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_live_restore(repository, backup_snapshot, vm_id))
+
+
+@router.get("/pbs/snapshots")
+async def pbs_snapshots(request: Request, repository: str = ""):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"snapshots": backup_svc.pbs_list_snapshots(repository)})
+
+
+@router.post("/pbs/prune")
+async def pbs_prune(request: Request, repository: str = Form(...),
+                    keep_daily: int = Form(7), keep_weekly: int = Form(4),
+                    keep_monthly: int = Form(6)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_prune(repository, keep_daily, keep_weekly, keep_monthly))
+
+
+@router.post("/pbs/gc")
+async def pbs_gc(request: Request, repository: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_gc(repository))
+
+
+@router.get("/pbs/info")
+async def pbs_info(request: Request, repository: str = ""):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(backup_svc.pbs_info(repository))
+
+
 @router.delete("/{filename}")
 async def delete_backup_file(request: Request, filename: str):
     user, error = api_auth(request)

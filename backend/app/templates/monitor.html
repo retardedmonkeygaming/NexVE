@@ -6,7 +6,7 @@
     <div class="nx-card-header">
         <span class="nx-card-title">Recent Tasks</span>
         <div class="nx-flex nx-gap-2">
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTasks()">↻ Refresh</button>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTaskViewer()">↻ Refresh</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--text-muted);cursor:pointer;">
                 <input type="checkbox" id="auto-refresh-tasks" checked onchange="toggleTaskAutoRefresh()"> Auto-refresh
             </label>
@@ -39,7 +39,7 @@
     <div class="nx-card-header">
         <span class="nx-card-title">Recent Tasks</span>
         <div class="nx-flex nx-gap-2">
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTasks()">↻ Refresh</button>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTaskViewer()">↻ Refresh</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--text-muted);cursor:pointer;">
                 <input type="checkbox" id="auto-refresh-tasks" checked onchange="toggleTaskAutoRefresh()"> Auto-refresh
             </label>
@@ -166,7 +166,7 @@
     <div class="nx-card-header">
         <span class="nx-card-title">Recent Tasks</span>
         <div class="nx-flex nx-gap-2">
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTasks()">↻ Refresh</button>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTaskViewer()">↻ Refresh</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--text-muted);cursor:pointer;">
                 <input type="checkbox" id="auto-refresh-tasks" checked onchange="toggleTaskAutoRefresh()"> Auto-refresh
             </label>
@@ -360,12 +360,13 @@ setInterval(loadProcesses, 10000);
 // ── Task Viewer ──
 let taskRefreshInterval = null;
 
-async function loadTasks() {
+async function loadTaskViewer() {
     try {
         const r = await fetch('/api/tasks?limit=20');
         const data = await r.json();
         const tasks = data.tasks || [];
         const list = document.getElementById('task-list');
+        if (!list) return;
         if (tasks.length === 0) {
             list.innerHTML = '<tr><td colspan="6" class="nx-text-center nx-text-muted" style="padding:24px;">No recent tasks</td></tr>';
         } else {
@@ -383,17 +384,21 @@ async function loadTasks() {
                 </tr>`;
             }).join('');
         }
-    } catch(e) { console.error('loadTasks:', e); }
+    } catch(e) { console.error('loadTaskViewer:', e); }
 }
 
 function toggleTaskAutoRefresh() {
     const enabled = document.getElementById('auto-refresh-tasks').checked;
     if (enabled) {
-        taskRefreshInterval = setInterval(loadTasks, 5000);
+        taskRefreshInterval = setInterval(loadTaskViewer, 5000);
     } else {
         clearInterval(taskRefreshInterval);
     }
 }
+
+// Init: load task viewer on page load
+loadTaskViewer();
+toggleTaskAutoRefresh();
 
 </script>
 
@@ -403,7 +408,7 @@ function toggleTaskAutoRefresh() {
     <div class="nx-card-header">
         <span class="nx-card-title">Recent Tasks</span>
         <div class="nx-flex nx-gap-2">
-            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTasks()">↻ Refresh</button>
+            <button class="nx-btn nx-btn-ghost nx-btn-sm" onclick="loadTaskViewer()">↻ Refresh</button>
             <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--text-muted);cursor:pointer;">
                 <input type="checkbox" id="auto-refresh-tasks" checked onchange="toggleTaskAutoRefresh()"> Auto-refresh
             </label>

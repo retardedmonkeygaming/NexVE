@@ -175,6 +175,37 @@ class NetworkService:
 
     # ── Firewall Aliases (nftables sets) ──
 
+    IPSets_FILE = "/var/lib/nexve/ipssets.json"
+
+    def _save_ips(self, sets: List[dict]):
+        """Persist IP sets to disk."""
+        import json as _json, os
+        os.makedirs(os.path.dirname(self.IPSets_FILE), exist_ok=True)
+        with open(self.IPSets_FILE, "w") as f:
+            _json.dump(sets, f, indent=2)
+
+    def _load_ips(self) -> List[dict]:
+        """Load persisted IP sets from disk."""
+        import json as _json, os
+        if os.path.exists(self.IPSets_FILE):
+            with open(self.IPSets_FILE) as f:
+                return _json.load(f)
+        return []
+
+    def restore_ips(self) -> dict:
+        """Restore all persisted IP sets to nftables (call on boot)."""
+        persisted = self._load_ips()
+        restored = 0
+        for s in persisted:
+            name = s.get("name", "")
+            entries = s.get("entries", [])
+            family = s.get("family", "inet")
+            self.run_cmd(f"nft add set {family} nexve {name} {{ type ipv4_addr; }} 2>/dev/null")
+            for entry in entries:
+                self.run_cmd(f"nft add element {family} nexve {name} {{ {entry} }} 2>/dev/null")
+            restored += 1
+        return {"success": True, "restored": restored}
+
     def create_alias_set(self, name: str, entries: List[str], family: str = "inet") -> dict:
         """Create an nftables set (alias) with the given entries."""
         # Create the set
@@ -185,6 +216,11 @@ class NetworkService:
         # Add elements
         for entry in entries:
             self.run_cmd(f"nft add element {family} nexve {name} {{ {entry} }}")
+        # Persist
+        persisted = self._load_ips()
+        persisted = [p for p in persisted if p["name"] != name]
+        persisted.append({"name": name, "entries": entries, "family": family})
+        self._save_ips(persisted)
         return {"success": True}
 
     def delete_alias_set(self, name: str, family: str = "inet") -> dict:
@@ -444,3 +480,138 @@ class NetworkService:
             "vlans": self.list_vlans(),
             "bonds": self.list_bonds(),
         }
+
+    # ── STP (Spanning Tree Protocol) ──
+
+    def stp_status(self, bridge: str = "vmbr0") -> dict:
+        """Get STP status on a bridge."""
+        r = self.run_cmd(f"bridge link show dev {bridge} 2>/dev/null")
+        # Check via brctl or bridge command
+        r2 = self.run_cmd(f"cat /sys/class/net/{bridge}/bridge/stp_state 2>/dev/null")
+        enabled = r2["stdout"].strip() == "1" if r2["success"] else False
+        # Get STP priority and forward delay
+        pri = self.run_cmd(f"cat /sys/class/net/{bridge}/bridge/priority 2>/dev/null")
+        fd = self.run_cmd(f"cat /sys/class/net/{bridge}/bridge/forward_delay 2>/dev/null")
+        return {
+            "bridge": bridge,
+            "stp_enabled": enabled,
+            "priority": int(pri["stdout"].strip()) if pri["success"] else 32768,
+            "forward_delay": int(fd["stdout"].strip()) if fd["success"] else 15,
+        }
+
+    def stp_enable(self, bridge: str = "vmbr0", priority: int = 32768, forward_delay: int = 15) -> dict:
+        """Enable STP on a bridge."""
+        self.run_cmd(f"ip link set {bridge} type bridge stp_state 1 priority {priority} forward_delay {forward_delay} 2>/dev/null")
+        return self.stp_status(bridge)
+
+    def stp_disable(self, bridge: str = "vmbr0") -> dict:
+        """Disable STP on a bridge."""
+        self.run_cmd(f"ip link set {bridge} type bridge stp_state 0 2>/dev/null")
+        return self.stp_status(bridge)
+
+    # ── Bond Modes ──
+
+    BOND_MODES = {
+        "balance-rr": "Round-robin (packet distribution)",
+        "active-backup": "Active-backup (failover)",
+        "balance-xor": "XOR (hash-based)",
+        "broadcast": "Broadcast (all-slave)",
+        "802.3ad": "LACP (Link Aggregation)",
+        "balance-tlb": "Adaptive TX load balancing",
+        "balance-alb": "Adaptive load balancing",
+    }
+
+    def list_bond_modes(self) -> List[dict]:
+        return [{"mode": k, "description": v} for k, v in self.BOND_MODES.items()]
+
+    def get_bond_status(self, name: str) -> dict:
+        """Get detailed bond status."""
+        r = self.run_cmd(f"cat /proc/net/bonding/{name} 2>/dev/null")
+        if not r["success"]:
+            return {"error": f"Bond {name} not found"}
+        info = {"name": name, "mode": "unknown", "slaves": [], "miimon": ""}
+        for line in r["stdout"].splitlines():
+            if "Bonding Mode" in line:
+                info["mode"] = line.split(":")[-1].strip()
+            elif "Slave Interface" in line:
+                info["slaves"].append({"interface": line.split(":")[-1].strip()})
+            elif "MII Status" in line and info["slaves"]:
+                info["slaves"][-1]["status"] = line.split(":")[-1].strip()
+            elif "Link Speed" in line and info["slaves"]:
+                info["slaves"][-1]["speed"] = line.split(":")[-1].strip()
+            elif "MII Polling Interval" in line:
+                info["miimon"] = line.split(":")[-1].strip()
+        return info
+
+    # ── Migration Network ──
+
+    MIGRATION_FILE = "/var/lib/nexve/migration_network.json"
+
+    def get_migration_network(self) -> dict:
+        """Get the dedicated migration network configuration."""
+        import os
+        if os.path.exists(self.MIGRATION_FILE):
+            with open(self.MIGRATION_FILE) as f:
+                return json.load(f)
+        return {"enabled": False, "interface": "", "cidr": "", "gateway": ""}
+
+    def set_migration_network(self, interface: str, cidr: str = "", gateway: str = "") -> dict:
+        """Set a dedicated network for live migration traffic."""
+        import os
+        config = {"enabled": True, "interface": interface, "cidr": cidr, "gateway": gateway}
+        os.makedirs(os.path.dirname(self.MIGRATION_FILE), exist_ok=True)
+        with open(self.MIGRATION_FILE, "w") as f:
+            json.dump(config, f, indent=2)
+        # Add to /etc/network/interfaces
+        if cidr:
+            iface_config = f"""
+auto {interface}
+iface {interface} inet static
+    address {cidr}
+"""
+            if gateway:
+                iface_config += f"    gateway {gateway}\n"
+            try:
+                with open(f"/etc/network/interfaces.d/migration", "w") as f:
+                    f.write(iface_config)
+            except PermissionError:
+                pass
+        return {"success": True, "config": config}
+
+    def disable_migration_network(self) -> dict:
+        """Disable dedicated migration network."""
+        import os
+        config = {"enabled": False, "interface": "", "cidr": "", "gateway": ""}
+        os.makedirs(os.path.dirname(self.MIGRATION_FILE), exist_ok=True)
+        with open(self.MIGRATION_FILE, "w") as f:
+            json.dump(config, f)
+        try:
+            os.remove("/etc/network/interfaces.d/migration")
+        except Exception:
+            pass
+        return {"success": True}
+
+    # ── Per-interface Traffic Stats ──
+
+    def get_interface_traffic(self, interface: str) -> dict:
+        """Get detailed traffic stats for a specific interface."""
+        path = f"/sys/class/net/{interface}/statistics"
+        stats = {}
+        for stat in ["rx_bytes", "tx_bytes", "rx_packets", "tx_packets", "rx_errors", "tx_errors", "rx_dropped", "tx_dropped"]:
+            try:
+                with open(f"{path}/{stat}") as f:
+                    stats[stat] = int(f.read().strip())
+            except Exception:
+                stats[stat] = 0
+        # Get link speed and state
+        try:
+            with open(f"/sys/class/net/{interface}/operstate") as f:
+                stats["state"] = f.read().strip()
+        except Exception:
+            stats["state"] = "unknown"
+        try:
+            with open(f"/sys/class/net/{interface}/speed") as f:
+                stats["speed_mbps"] = int(f.read().strip())
+        except Exception:
+            stats["speed_mbps"] = -1
+        return {"interface": interface, **stats}

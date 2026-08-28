@@ -281,3 +281,159 @@ logging {{
             return {"exists": True, "config": conf}
         except Exception as e:
             return {"exists": False, "error": str(e)}
+
+    # ── pmxcfs (Proxmox Cluster File System) ──
+
+    def _has_pmxcfs(self) -> bool:
+        """Check if pmxcfs is available."""
+        r = subprocess.run("which pmxcfs 2>/dev/null || ls /usr/lib/pmxcfs 2>/dev/null",
+                          shell=True, capture_output=True, text=True, timeout=5)
+        return r.returncode == 0
+
+    def pmxcfs_status(self) -> dict:
+        """Get pmxcfs status."""
+        r = subprocess.run("systemctl is-active pmxcfs 2>/dev/null",
+                          shell=True, capture_output=True, text=True, timeout=5)
+        running = r.stdout.strip() == "active"
+        # Check if cluster filesystem is mounted
+        mr = subprocess.run("mount | grep /etc/pve 2>/dev/null",
+                           shell=True, capture_output=True, text=True, timeout=5)
+        mounted = "/etc/pve" in mr.stdout
+        return {
+            "available": self._has_pmxcfs(),
+            "running": running,
+            "mounted": mounted,
+            "mountpoint": "/etc/pve",
+        }
+
+    def pmxcfs_read(self, path: str) -> dict:
+        """Read a file from the cluster filesystem (/etc/pve)."""
+        full_path = f"/etc/pve/{path.lstrip('/')}"
+        if not os.path.exists(full_path):
+            return {"success": False, "error": "File not found"}
+        try:
+            with open(full_path) as f:
+                content = f.read()
+            return {"success": True, "path": path, "content": content}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def pmxcfs_write(self, path: str, content: str) -> dict:
+        """Write a file to the cluster filesystem (/etc/pve)."""
+        full_path = f"/etc/pve/{path.lstrip('/')}"
+        try:
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "w") as f:
+                f.write(content)
+            return {"success": True, "path": path}
+        except PermissionError:
+            return {"success": False, "error": "Permission denied. Requires cluster admin."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def pmxcfs_list(self, path: str = "") -> dict:
+        """List files/dirs in the cluster filesystem."""
+        full_path = f"/etc/pve/{path.lstrip('/')}/" if path else "/etc/pve/"
+        try:
+            entries = []
+            if os.path.exists(full_path):
+                for entry in sorted(os.listdir(full_path)):
+                    entry_path = f"{path}/{entry}" if path else entry
+                    is_dir = os.path.isdir(os.path.join(full_path, entry))
+                    entries.append({"name": entry, "path": entry_path, "type": "dir" if is_dir else "file"})
+            return {"success": True, "entries": entries}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def pmxcfs_delete(self, path: str) -> dict:
+        """Delete a file from the cluster filesystem."""
+        full_path = f"/etc/pve/{path.lstrip('/')}"
+        try:
+            if os.path.isdir(full_path):
+                os.rmdir(full_path)
+            else:
+                os.remove(full_path)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Watchdog Fencing ──
+
+    def watchdog_status(self) -> dict:
+        """Get watchdog status."""
+        r = subprocess.run("lsmod | grep softdog 2>/dev/null || echo ''",
+                          shell=True, capture_output=True, text=True, timeout=5)
+        loaded = "softdog" in r.stdout
+        # Check watchdog device
+        wr = subprocess.run("ls -la /dev/watchdog 2>/dev/null || echo ''",
+                           shell=True, capture_output=True, text=True, timeout=5)
+        device_exists = "/dev/watchdog" in wr.stdout
+        # Check pacemaker watchdog config
+        pr = subprocess.run("crm configure show 2>/dev/null | grep watchdog || echo ''",
+                          shell=True, capture_output=True, timeout=5)
+        pacemaker_configured = "watchdog" in (pr.stdout or "").lower()
+        return {
+            "loaded": loaded,
+            "device_exists": device_exists,
+            "pacemaker_configured": pacemaker_configured,
+            "module": "softdog",
+        }
+
+    def watchdog_enable(self) -> dict:
+        """Enable hardware watchdog for fencing."""
+        commands = [
+            "modprobe softdog 2>/dev/null",
+            "chmod 600 /dev/watchdog 2>/dev/null",
+            # Persist across reboots
+            "echo softdog > /etc/modules-load.d/watchdog.conf 2>/dev/null",
+        ]
+        for cmd in commands:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        # Configure pacemaker to use watchdog
+        subprocess.run(
+            "crm configure property watchdog-timeout=30s 2>/dev/null",
+            shell=True, capture_output=True, text=True, timeout=10
+        )
+        return self.watchdog_status()
+
+    def watchdog_disable(self) -> dict:
+        """Disable hardware watchdog."""
+        subprocess.run("rm -f /etc/modules-load.d/watchdog.conf 2>/dev/null",
+                      shell=True, capture_output=True, timeout=5)
+        subprocess.run("rmmod softdog 2>/dev/null", shell=True, capture_output=True, timeout=5)
+        return self.watchdog_status()
+
+    # ── Multi-master ──
+
+    def get_multi_master_status(self) -> dict:
+        """Check multi-master cluster status."""
+        nodes = self.get_nodes()
+        online = [n for n in nodes if n.get("status") == "online"]
+        # Get resource status
+        r = subprocess.run("crm status 2>/dev/null || echo ''",
+                          shell=True, capture_output=True, text=True, timeout=10)
+        resources = []
+        if r.stdout:
+            for line in r.stdout.splitlines():
+                line = line.strip()
+                if "Started" in line or "Stopped" in line or "Failed" in line:
+                    resources.append(line)
+        return {
+            "total_nodes": len(nodes),
+            "online_nodes": len(online),
+            "nodes": nodes,
+            "resources": resources,
+            "quorate": len(online) > len(nodes) // 2,
+        }
+
+    def get_node_resources(self, node_name: str) -> dict:
+        """Get resources running on a specific node."""
+        r = subprocess.run(
+            f"crm status 2>/dev/null | grep -A50 'Full List' || echo ''",
+            shell=True, capture_output=True, text=True, timeout=10
+        )
+        resources = []
+        for line in r.stdout.splitlines():
+            if node_name in line or "Started" in line:
+                resources.append(line.strip())
+        return {"node": node_name, "resources": resources}

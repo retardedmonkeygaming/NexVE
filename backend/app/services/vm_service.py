@@ -148,6 +148,25 @@ class VMService:
                 "hotplug_ram": vm.hotplug_ram,
                 "is_template": vm.is_template,
                 "linked_from": vm.linked_from,
+                "tpm_enabled": vm.tpm_enabled,
+                "secure_boot": vm.secure_boot,
+                "scsi_hw": vm.scsi_hw or "virtio-scsi-single",
+                "cpu_sockets": vm.cpu_sockets or 1,
+                "cpu_threads": vm.cpu_threads or 1,
+                "numa": vm.numa,
+                "hugepages": vm.hugepages or "none",
+                "cloud_init": vm.cloud_init,
+                "vga_display": vm.vga_display or "std",
+                "watchdog_model": vm.watchdog_model,
+                "disk_cache": vm.disk_cache or "none",
+                "disk_discard": vm.disk_discard,
+                "disk_iothread": vm.disk_iothread,
+                "disk_ssd": vm.disk_ssd,
+                "cpu_units": vm.cpu_units or 1024,
+                "cpu_limit": vm.cpu_limit,
+                "memory_min": vm.memory_min,
+                "efidisk_size": vm.efidisk_size,
+                "cpu_affinity": vm.cpu_affinity,
                 "created_at": vm.created_at.isoformat() if vm.created_at else None,
                 "last_started": vm.last_started.isoformat() if vm.last_started else None,
             })
@@ -1138,3 +1157,181 @@ class VMService:
                 dom.setMemory(vm.memory_mb * 1024)
         except libvirt.libvirtError:
             pass
+
+    # ── vGPU / Mediated Device Management ──
+
+    def list_mdev_types(self) -> List[dict]:
+        """List available mediated device types (NVIDIA vGPU, Intel GVT-g)."""
+        devices = self.list_pci_devices("0300")
+        mdevs = []
+        for dev in devices:
+            addr = dev["address"]
+            # Check for mdev support via sysfs
+            mdev_path = f"/sys/bus/pci/devices/0000:{addr}/mdev_supported_types"
+            if os.path.isdir(mdev_path):
+                for type_dir in os.listdir(mdev_path):
+                    type_path = os.path.join(mdev_path, type_dir)
+                    if os.path.isdir(type_path):
+                        desc = ""
+                        try:
+                            with open(os.path.join(type_path, "description")) as f:
+                                desc = f.read().strip()
+                        except Exception:
+                            pass
+                        mdevs.append({
+                            "parent_pci": addr,
+                            "parent_name": dev.get("name", ""),
+                            "type_id": type_dir,
+                            "description": desc,
+                        })
+        # Fallback: check nvidia-smi for vGPU types
+        r = subprocess.run("nvidia-smi --query-gpu=gpu_name,gpu_bus_id --format=csv,noheader 2>/dev/null",
+                          shell=True, capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                parts = line.split(",")
+                if len(parts) >= 2:
+                    name = parts[0].strip()
+                    bus = parts[1].strip()
+                    mdevs.append({
+                        "parent_pci": bus,
+                        "parent_name": name,
+                        "type_id": "nvidia-vgpu",
+                        "description": f"NVIDIA vGPU capable: {name}",
+                    })
+        return mdevs
+
+    def attach_mdev(self, db, vm_id: int, type_id: str) -> dict:
+        """Attach a mediated device to a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            xml = dom.XMLDesc(0)
+            # Find available mdev UUID from sysfs
+            mdev_xml = f"<hostdev mode='subsystem' type='mdev' model='vfio-pci'><source><address uuid='{type_id}'/></source></hostdev>"
+            xml = xml.replace("</devices>", mdev_xml + "</devices>")
+            conn.defineXML(xml)
+            return {"success": True, "type_id": type_id}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    def detach_mdev(self, db, vm_id: int) -> dict:
+        """Remove mediated device from a VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            xml = dom.XMLDesc(0)
+            xml = re.sub(r'<hostdev[^>]*type=.mdev.[^>]*>.*?</hostdev>', '', xml, flags=re.DOTALL)
+            conn.defineXML(xml)
+            return {"success": True}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Guest Exec (run commands via guest agent) ──
+
+    def guest_exec(self, db, vm_id: int, cmd: str, args: List[str] = None, timeout: int = 30) -> dict:
+        """Execute a command inside the guest via QEMU guest agent."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if not vm.agent_enabled:
+            return {"success": False, "error": "Guest agent not enabled"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            import base64
+            cmd_b64 = base64.b64encode(cmd.encode()).decode()
+            payload = json.dumps({
+                "path": cmd,
+                "arg": args or [],
+                "env": [],
+                "input-data": "",
+                "capture-output": True,
+                "capture-error": True,
+            })
+            result = dom.execCommand(payload, [0], timeout * 1000)
+            return {"success": True, "result": result}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # ── USB Hot-plug/Unplug ──
+
+    def usb_hotplug(self, db, vm_id: int, vendor_id: str, product_id: str) -> dict:
+        """Hot-plug a USB device to a running VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        if self._get_vm_status(vm.name) != "running":
+            return {"success": False, "error": "VM must be running for hot-plug"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            usb_xml = f"<hostdev mode='subsystem' type='usb' managed='yes'><source><vendor id='0x{vendor_id}'/><product id='0x{product_id}'/></source></hostdev>"
+            dom.attachDeviceFlags(usb_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            return {"success": True, "vendor_id": vendor_id, "product_id": product_id}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    def usb_unplug(self, db, vm_id: int, vendor_id: str, product_id: str) -> dict:
+        """Hot-unplug a USB device from a running VM."""
+        vm = db.query(VM).filter(VM.id == vm_id).first()
+        if not vm:
+            return {"success": False, "error": "VM not found"}
+        conn = self._ensure_conn()
+        if not conn:
+            return {"success": False, "error": "libvirt not available"}
+        try:
+            dom = conn.lookupByName(vm.name)
+            usb_xml = f"<hostdev mode='subsystem' type='usb' managed='yes'><source><vendor id='0x{vendor_id}'/><product id='0x{product_id}'/></source></hostdev>"
+            flags = libvirt.VIR_DOMAIN_AFFECT_LIVE | libvirt.VIR_DOMAIN_AFFECT_CONFIG if self._get_vm_status(vm.name) == "running" else libvirt.VIR_DOMAIN_AFFECT_CONFIG
+            dom.detachDeviceFlags(usb_xml, flags)
+            return {"success": True}
+        except libvirt.libvirtError as e:
+            return {"success": False, "error": str(e)}
+
+    # ── Automated Daily Tasks ──
+
+    def run_daily_tasks(self, db) -> dict:
+        """Run automated daily tasks for all running VMs (fstrim, agent info, health check)."""
+        results = []
+        vms = db.query(VM).all()
+        for vm in vms:
+            status = self._get_vm_status(vm.name)
+            if status != "running":
+                continue
+            vm_result = {"vm_id": vm.id, "vm_name": vm.name, "tasks": []}
+            # fstrim
+            if vm.agent_enabled:
+                try:
+                    self.guest_agent_fstrim(db, vm.id)
+                    vm_result["tasks"].append({"task": "fstrim", "status": "success"})
+                except Exception as e:
+                    vm_result["tasks"].append({"task": "fstrim", "status": "failed", "error": str(e)})
+            # Health check: get agent info
+            if vm.agent_enabled:
+                try:
+                    info = self.guest_agent_info(db, vm.id)
+                    vm_result["tasks"].append({"task": "agent_info", "status": "success"})
+                except Exception:
+                    vm_result["tasks"].append({"task": "agent_info", "status": "failed"})
+            # Check disk usage
+            disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
+            if os.path.exists(disk_path):
+                size_gb = os.path.getsize(disk_path) / (1024**3)
+                vm_result["disk_gb"] = round(size_gb, 2)
+            results.append(vm_result)
+        return {"success": True, "results": results, "vm_count": len(results)}

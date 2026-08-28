@@ -104,3 +104,79 @@ async def get_config(request: Request):
     if error: return error
     result = cluster_svc.get_cluster_config()
     return JSONResponse(result)
+
+
+# ── pmxcfs endpoints ──
+
+@router.get("/pmxcfs/status")
+async def pmxcfs_status(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.pmxcfs_status())
+
+
+@router.get("/pmxcfs/read")
+async def pmxcfs_read(request: Request, path: str = ""):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.pmxcfs_read(path))
+
+
+@router.post("/pmxcfs/write")
+async def pmxcfs_write(request: Request, path: str = Form(...), content: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.pmxcfs_write(path, content))
+
+
+@router.get("/pmxcfs/list")
+async def pmxcfs_list(request: Request, path: str = ""):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.pmxcfs_list(path))
+
+
+@router.delete("/pmxcfs/{path:path}")
+async def pmxcfs_delete(path: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.pmxcfs_delete(path))
+
+
+# ── Watchdog fencing endpoints ──
+
+@router.get("/watchdog/status")
+async def watchdog_status(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.watchdog_status())
+
+
+@router.post("/watchdog/enable")
+async def watchdog_enable(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.watchdog_enable())
+
+
+@router.post("/watchdog/disable")
+async def watchdog_disable(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.watchdog_disable())
+
+
+# ── Multi-master endpoints ──
+
+@router.get("/multi-master/status")
+async def multi_master_status(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.get_multi_master_status())
+
+
+@router.get("/node-resources/{node_name}")
+async def node_resources(node_name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(cluster_svc.get_node_resources(node_name))

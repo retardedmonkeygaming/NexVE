@@ -188,3 +188,27 @@ async def ha_migrate_guest(
         return JSONResponse(result)
     finally:
         db.close()
+
+
+# ── HA Simulator ──
+
+@router.post("/simulate")
+async def ha_simulate(request: Request, event: str = Form("node-failure"),
+                      node: str = Form(""), vm_id: int = Form(0)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(ha_svc.ha_simulate(event, node, vm_id))
+
+
+@router.get("/simulate/events")
+async def ha_simulate_events(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"events": ha_svc.ha_simulate_list_events()})
+
+
+@router.post("/simulate/clear")
+async def ha_simulate_clear(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(ha_svc.ha_simulate_clear())

@@ -104,10 +104,13 @@ async def zfs_check_status(request: Request):
     return JSONResponse(svc.zfs_status())
 
 @router.post("/zfs/pools")
-async def zfs_create_pool(request: Request, name: str = Form(...), device: str = Form(...), force: bool = Form(False)):
+async def zfs_create_pool(request: Request, name: str = Form(...), device: str = Form(""),
+                          force: bool = Form(False), pool_type: str = Form("single"),
+                          devices: str = Form("")):
     user, error = api_auth(request)
     if error: return error
-    result = svc.zfs_create_pool(name, device, force)
+    dev_list = [d.strip() for d in devices.split(",") if d.strip()] if devices else None
+    result = svc.zfs_create_pool(name, device, force, pool_type=pool_type, devices=dev_list)
     return JSONResponse(result)
 
 
@@ -582,3 +585,102 @@ async def remove_backend(request: Request, backend_id: int):
         return JSONResponse({"success": True})
     finally:
         db.close()
+
+
+# ── GlusterFS endpoints ──
+
+@router.get("/gluster/status")
+async def gluster_status(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.gluster_status())
+
+
+@router.get("/gluster/volumes")
+async def gluster_volumes(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"volumes": storage_svc.gluster_list_volumes()})
+
+
+@router.post("/gluster/volume")
+async def gluster_create_volume(request: Request, name: str = Form(...), bricks: str = Form(...),
+                               replica: int = Form(1)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.gluster_create_volume(name, bricks.split(), replica))
+
+
+@router.delete("/gluster/volume/{name}")
+async def gluster_delete_volume(name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.gluster_delete_volume(name))
+
+
+@router.post("/gluster/peer/probe")
+async def gluster_peer_probe(request: Request, host: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.gluster_peer_probe(host))
+
+
+@router.post("/gluster/peer/detach")
+async def gluster_peer_detach(request: Request, host: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.gluster_peer_detach(host))
+
+
+# ── RAIDZ Expansion endpoints ──
+
+@router.post("/zfs/raidz/expand")
+async def zfs_raidz_expand(request: Request, pool: str = Form(...), device: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.zfs_raidz_expand(pool, device))
+
+
+@router.get("/zfs/raidz/status/{pool}")
+async def zfs_raidz_status(pool: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.zfs_raidz_status(pool))
+
+
+@router.post("/zfs/raidz/add-vdev")
+async def zfs_raidz_add_vdev(request: Request, pool: str = Form(...), devices: str = Form(...)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.zfs_raidz_add_vdev(pool, devices.split()))
+
+
+# ── Replication Job endpoints ──
+
+@router.get("/replication/jobs")
+async def replication_jobs(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"jobs": storage_svc.replication_list_jobs()})
+
+
+@router.post("/replication/job")
+async def replication_create_job(request: Request, source: str = Form(...), target: str = Form(...),
+                               schedule: str = Form("daily"), recursive: bool = Form(True)):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.replication_create_job(source, target, schedule, recursive))
+
+
+@router.delete("/replication/job/{job_id}")
+async def replication_delete_job(job_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.replication_delete_job(job_id))
+
+
+@router.post("/replication/job/{job_id}/run")
+async def replication_run_now(job_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse(storage_svc.replication_run_now(job_id))
