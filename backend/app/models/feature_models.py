@@ -160,3 +160,39 @@ class NetworkRateLimit(Base):
     tx_burst = Column(Integer, nullable=True)
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
+
+class WebAuthnCredential(Base):
+    __tablename__ = "webauthn_credentials"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    credential_id = Column(Text, unique=True, nullable=False)
+    public_key = Column(Text, nullable=False)
+    sign_count = Column(Integer, default=0)
+    device_name = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    last_used = Column(DateTime, nullable=True)
+
+class DatacenterFirewallRule(Base):
+    __tablename__ = "datacenter_firewall_rules"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    action = Column(String, default="accept")  # accept, drop, reject
+    direction = Column(String, default="in")  # in, out
+    protocol = Column(String, default="tcp")  # tcp, udp, icmp, all
+    source = Column(String, nullable=True)  # CIDR
+    destination = Column(String, nullable=True)  # CIDR
+    dport = Column(String, nullable=True)  # port or range
+    comment = Column(String, nullable=True)
+    enabled = Column(Boolean, default=True)
+    pos = Column(Integer, default=0)  # order
+    created_at = Column(DateTime, server_default=func.now())
+
+class DatacenterSettings(Base):
+    __tablename__ = "datacenter_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, nullable=False)
+    value = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    updated_at = Column(DateTime, onupdate=func.now())

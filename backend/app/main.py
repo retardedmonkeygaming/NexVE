@@ -18,7 +18,8 @@ from .models.feature_models import (
     VMTag, VMTagAssignment, ResourcePool, ResourcePoolMember,
     LDAPConfig, ClientCertConfig, NetworkSecurityGroup, SecurityGroupRule,
     SecurityGroupAssignment, NetworkFirewallAlias, FirewallAliasEntry,
-    NetworkRateLimit,
+    NetworkRateLimit, WebAuthnCredential, DatacenterFirewallRule,
+    DatacenterSettings,
 )
 from .models.enhanced_models import (
     MigrationJob, HAGroup, HAGuest, ClusterNode, ClusterConfig,
@@ -38,7 +39,7 @@ from .routers import (
 )
 from .routers import (
     migration, ha, cluster, cluster_mgmt, sdn, ceph, acme, notifications,
-    wireguard, dhcp_dns, oidc,
+    wireguard, dhcp_dns, oidc, datacenter,
 )
 
 # Create all tables
@@ -104,6 +105,7 @@ app.include_router(dhcp_dns.router, prefix="/api/dhcp-dns", tags=["DHCP/DNS"])
 app.include_router(oidc.router, prefix="/auth/oidc", tags=["OIDC"])
 app.include_router(acme.router, prefix="/api/acme", tags=["ACME"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(datacenter.router, prefix="/api/datacenter", tags=["Datacenter"])
 
 
 # ─── Start background monitor collector ───

@@ -82,3 +82,37 @@ async def get_node(node_name: str):
         "kernel": platform.release(),
         "os": run_cmd("cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'\"' -f2") or platform.platform(),
     }
+
+
+@router.post("/{node_name}/reboot")
+async def reboot_node(node_name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    from ..auth import get_current_user
+    user = get_current_user(request)
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    import subprocess
+    log_task(user.id, user.username, "node.reboot", "node", node_name, "completed")
+    try:
+        subprocess.Popen(["shutdown", "-r", "+0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+    return JSONResponse({"success": True, "message": "Reboot scheduled"})
+
+
+@router.post("/{node_name}/shutdown")
+async def shutdown_node(node_name: str, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    from ..auth import get_current_user
+    user = get_current_user(request)
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    import subprocess
+    log_task(user.id, user.username, "node.shutdown", "node", node_name, "completed")
+    try:
+        subprocess.Popen(["shutdown", "-h", "+0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+    return JSONResponse({"success": True, "message": "Shutdown scheduled"})
