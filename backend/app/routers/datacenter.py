@@ -275,3 +275,298 @@ async def get_consent():
         return JSONResponse({"text": text, "enabled": bool(text)})
     finally:
         db.close()
+
+
+# ═══════════════════════════════════════════════════
+# PHASE 2: Metric Servers, Registered Tags, LDAP Mapping, Token ACL
+# ═══════════════════════════════════════════════════
+
+from ..models.feature_models import MetricServer, RegisteredTag, LDAPDomainMapping, APITokenACL
+
+
+# ── Metric Servers (InfluxDB/Graphite) ──
+@router.get("/metric-servers")
+async def list_metric_servers(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        servers = db.query(MetricServer).all()
+        return JSONResponse({"servers": [
+            {
+                "id": s.id, "name": s.name, "type": s.type,
+                "host": s.host, "port": s.port,
+                "database": s.database, "username": s.username,
+                "organization": s.organization, "bucket": s.bucket,
+                "prefix": s.prefix, "enabled": s.enabled,
+                "verify_ssl": s.verify_ssl,
+            } for s in servers
+        ]})
+    finally:
+        db.close()
+
+
+@router.post("/metric-servers")
+async def create_metric_server(
+    request: Request,
+    name: str = Form(...),
+    type: str = Form(...),
+    host: str = Form(...),
+    port: int = Form(8086),
+    database: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
+    organization: str = Form(""),
+    token: str = Form(""),
+    bucket: str = Form(""),
+    prefix: str = Form(""),
+    verify_ssl: str = Form("true"),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        server = MetricServer(
+            name=name, type=type, host=host, port=port,
+            database=database or None, username=username or None, password=password or None,
+            organization=organization or None, token=token or None,
+            bucket=bucket or None, prefix=prefix or None,
+            verify_ssl=verify_ssl == "true",
+        )
+        db.add(server)
+        db.commit()
+        log_task(user.id, user.username, "metric-server.create", "metric-server", name, "completed")
+        return JSONResponse({"success": True, "id": server.id})
+    finally:
+        db.close()
+
+
+@router.post("/metric-servers/{server_id}/test")
+async def test_metric_server(server_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        server = db.query(MetricServer).filter(MetricServer.id == server_id).first()
+        if not server:
+            return JSONResponse({"success": False, "error": "Not found"}, status_code=404)
+        # Test connectivity
+        import socket
+        try:
+            sock = socket.create_connection((server.host, server.port), timeout=5)
+            sock.close()
+            return JSONResponse({"success": True, "message": f"Connection to {server.host}:{server.port} OK"})
+        except Exception as e:
+            return JSONResponse({"success": False, "error": f"Connection failed: {e}"})
+    finally:
+        db.close()
+
+
+@router.delete("/metric-servers/{server_id}")
+async def delete_metric_server(server_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        server = db.query(MetricServer).filter(MetricServer.id == server_id).first()
+        if server:
+            db.delete(server)
+            db.commit()
+        return JSONResponse({"success": True})
+    finally:
+        db.close()
+
+
+# ── Registered Tags ──
+@router.get("/tags")
+async def list_registered_tags(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        tags = db.query(RegisteredTag).order_by(RegisteredTag.name).all()
+        return JSONResponse({"tags": [
+            {"id": t.id, "name": t.name, "color": t.color, "text_color": t.text_color, "description": t.description}
+            for t in tags
+        ]})
+    finally:
+        db.close()
+
+
+@router.post("/tags")
+async def create_registered_tag(
+    request: Request,
+    name: str = Form(...),
+    color: str = Form("#00d4aa"),
+    text_color: str = Form(""),
+    description: str = Form(""),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        tag = RegisteredTag(name=name, color=color, text_color=text_color or None, description=description or None)
+        db.add(tag)
+        db.commit()
+        return JSONResponse({"success": True, "id": tag.id})
+    finally:
+        db.close()
+
+
+@router.put("/tags/{tag_id}")
+async def update_registered_tag(
+    tag_id: int, request: Request,
+    name: str = Form(...),
+    color: str = Form("#00d4aa"),
+    text_color: str = Form(""),
+    description: str = Form(""),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        tag = db.query(RegisteredTag).filter(RegisteredTag.id == tag_id).first()
+        if tag:
+            tag.name = name
+            tag.color = color
+            tag.text_color = text_color or None
+            tag.description = description or None
+            db.commit()
+        return JSONResponse({"success": True})
+    finally:
+        db.close()
+
+
+@router.delete("/tags/{tag_id}")
+async def delete_registered_tag(tag_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        tag = db.query(RegisteredTag).filter(RegisteredTag.id == tag_id).first()
+        if tag:
+            db.delete(tag)
+            db.commit()
+        return JSONResponse({"success": True})
+    finally:
+        db.close()
+
+
+# ── LDAP Domain Mapping ──
+@router.get("/ldap-mappings")
+async def list_ldap_domain_mappings(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        mappings = db.query(LDAPDomainMapping).all()
+        return JSONResponse({"mappings": [
+            {"id": m.id, "domain_group": m.domain_group, "nexve_role": m.nexve_role, "description": m.description}
+            for m in mappings
+        ]})
+    finally:
+        db.close()
+
+
+@router.post("/ldap-mappings")
+async def create_ldap_domain_mapping(
+    request: Request,
+    domain_group: str = Form(...),
+    nexve_role: str = Form(...),
+    description: str = Form(""),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    if nexve_role not in ("admin", "auditor", "user"):
+        return JSONResponse({"success": False, "error": "Invalid role. Must be admin, auditor, or user."})
+    db = SessionLocal()
+    try:
+        mapping = LDAPDomainMapping(domain_group=domain_group, nexve_role=nexve_role, description=description or None)
+        db.add(mapping)
+        db.commit()
+        return JSONResponse({"success": True, "id": mapping.id})
+    finally:
+        db.close()
+
+
+@router.delete("/ldap-mappings/{mapping_id}")
+async def delete_ldap_domain_mapping(mapping_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        mapping = db.query(LDAPDomainMapping).filter(LDAPDomainMapping.id == mapping_id).first()
+        if mapping:
+            db.delete(mapping)
+            db.commit()
+        return JSONResponse({"success": True})
+    finally:
+        db.close()
+
+
+# ── API Token ACL ──
+@router.get("/token-acl")
+async def list_token_acl(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    db = SessionLocal()
+    try:
+        acls = db.query(APITokenACL).all()
+        return JSONResponse({"acl": [
+            {"id": a.id, "token_id": a.token_id, "path": a.path, "roles": a.roles}
+            for a in acls
+        ]})
+    finally:
+        db.close()
+
+
+@router.post("/token-acl")
+async def create_token_acl(
+    request: Request,
+    token_id: int = Form(...),
+    path: str = Form(...),
+    roles: str = Form("PVEAuditor"),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        acl = APITokenACL(token_id=token_id, path=path, roles=roles)
+        db.add(acl)
+        db.commit()
+        return JSONResponse({"success": True, "id": acl.id})
+    finally:
+        db.close()
+
+
+@router.delete("/token-acl/{acl_id}")
+async def delete_token_acl(acl_id: int, request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    if not user or user.role != "admin":
+        return JSONResponse({"success": False, "error": "Admin only"}, status_code=403)
+    db = SessionLocal()
+    try:
+        acl = db.query(APITokenACL).filter(APITokenACL.id == acl_id).first()
+        if acl:
+            db.delete(acl)
+            db.commit()
+        return JSONResponse({"success": True})
+    finally:
+        db.close()

@@ -187,3 +187,88 @@ async def firewall_stats(request: Request):
     user, error = api_auth(request)
     if error: return error
     return JSONResponse(fw_service.get_stats())
+
+
+# ── Firewall Macros (Proxmox-style predefined service rules) ──
+FIREWALL_MACROS = {
+    "SSH": {"protocol": "tcp", "dport": "22", "description": "Secure Shell"},
+    "HTTP": {"protocol": "tcp", "dport": "80", "description": "HTTP Web"},
+    "HTTPS": {"protocol": "tcp", "dport": "443", "description": "HTTPS Web"},
+    "SMTP": {"protocol": "tcp", "dport": "25", "description": "SMTP Mail"},
+    "DNS": {"protocol": "udp", "dport": "53", "description": "DNS"},
+    "FTP": {"protocol": "tcp", "dport": "21", "description": "FTP File Transfer"},
+    "SSH-Alt": {"protocol": "tcp", "dport": "2222", "description": "SSH Alternate"},
+    "MySQL": {"protocol": "tcp", "dport": "3306", "description": "MySQL Database"},
+    "PostgreSQL": {"protocol": "tcp", "dport": "5432", "description": "PostgreSQL Database"},
+    "Redis": {"protocol": "tcp", "dport": "6379", "description": "Redis Cache"},
+    "Docker": {"protocol": "tcp", "dport": "2375", "description": "Docker API"},
+    "Kubernetes-API": {"protocol": "tcp", "dport": "6443", "description": "Kubernetes API"},
+    "RDP": {"protocol": "tcp", "dport": "3389", "description": "Remote Desktop"},
+    "VNC": {"protocol": "tcp", "dport": "5900", "description": "VNC Remote Desktop"},
+    "noVNC": {"protocol": "tcp", "dport": "6080", "description": "noVNC Web Console"},
+    "NTP": {"protocol": "udp", "dport": "123", "description": "Network Time Protocol"},
+    "SNMP": {"protocol": "udp", "dport": "161", "description": "SNMP Monitoring"},
+    "LDAP": {"protocol": "tcp", "dport": "389", "description": "LDAP Directory"},
+    "LDAPS": {"protocol": "tcp", "dport": "636", "description": "LDAP over SSL"},
+    "IMAP": {"protocol": "tcp", "dport": "143", "description": "IMAP Mail"},
+    "POP3": {"protocol": "tcp", "dport": "110", "description": "POP3 Mail"},
+}
+
+
+@router.get("/macros")
+async def list_macros(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    return JSONResponse({"macros": FIREWALL_MACROS})
+
+
+@router.post("/macros/apply")
+async def apply_macro(
+    request: Request,
+    macro: str = Form(...),
+    direction: str = Form("in"),
+    action: str = Form("accept"),
+):
+    user, error = api_auth(request)
+    if error: return error
+    if macro not in FIREWALL_MACROS:
+        return JSONResponse({"success": False, "error": f"Unknown macro: {macro}"})
+    m = FIREWALL_MACROS[macro]
+    from ..database import SessionLocal
+    from ..models.firewall import FirewallRule
+    db = SessionLocal()
+    try:
+        rule = FirewallRule(
+            action=action, direction=direction, protocol=m["protocol"],
+            dport=m["dport"], comment=f"Macro: {macro} - {m['description']}",
+        )
+        db.add(rule)
+        db.commit()
+        log_task(user.id, user.username, "firewall.macro.apply", "firewall", macro, "completed")
+        return JSONResponse({"success": True})
+    finally:
+        db.close()
+
+
+# ── Active Connections ──
+@router.get("/connections")
+async def list_connections(request: Request):
+    user, error = api_auth(request)
+    if error: return error
+    import subprocess
+    try:
+        r = subprocess.run(["ss", "-tunap"], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.strip().split("\n") if r.stdout.strip() else []
+        connections = []
+        for line in lines[1:50]:  # Skip header, limit to 50
+            parts = line.split()
+            if len(parts) >= 5:
+                connections.append({
+                    "info": " ".join(parts[:5]),
+                    "state": parts[0] if parts else "",
+                    "local": parts[3] if len(parts) > 3 else "",
+                    "peer": parts[4] if len(parts) > 4 else "",
+                })
+        return JSONResponse({"connections": connections})
+    except Exception:
+        return JSONResponse({"connections": []})

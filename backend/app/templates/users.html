@@ -355,52 +355,6 @@ async function submitUser(e) {
             e.target.reset();
             
 // ── LDAP ──
-async function loadLDAP() {
-    try {
-        const r = await fetch('/api/ldap/');
-        const d = await r.json();
-        document.getElementById('ldap-enabled').checked = d.enabled || false;
-        document.getElementById('ldap-host').value = d.host || '';
-        document.getElementById('ldap-port').value = d.port || 636;
-        document.getElementById('ldap-tls').checked = d.use_tls !== false;
-        document.getElementById('ldap-bind-dn').value = d.bind_dn || '';
-        document.getElementById('ldap-base-dn').value = d.base_dn || '';
-        document.getElementById('ldap-user-filter').value = d.user_filter || '(objectClass=person)';
-        document.getElementById('ldap-group-filter').value = d.group_filter || '(objectClass=group)';
-        document.getElementById('ldap-user-attr').value = d.username_attr || 'sAMAccountName';
-        document.getElementById('ldap-email-attr').value = d.email_attr || 'mail';
-        document.getElementById('ldap-admin-group').value = d.admin_group || 'Domain Admins';
-    } catch(e) { console.error(e); }
-}
-
-async function saveLDAP(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    fd.set('enabled', document.getElementById('ldap-enabled').checked ? 'true' : 'false');
-    fd.set('use_tls', document.getElementById('ldap-tls').checked ? 'true' : 'false');
-    try {
-        const r = await fetch('/api/ldap/save', {method:'POST', body:fd});
-        const d = await r.json();
-        if (d.success) { showToast('LDAP configuration saved', 'success'); }
-        else { showToast('Failed: ' + (d.error || 'unknown'), 'error'); }
-    } catch(e) { showToast('Error saving LDAP config', 'error'); }
-}
-
-async function testLDAP() {
-    document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent);">Testing connection...</span>';
-    try {
-        const r = await fetch('/api/ldap/test', {method:'POST'});
-        const d = await r.json();
-        if (d.success) {
-            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--success);">✓ Connection successful</span>';
-        } else {
-            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ ' + (d.error || 'Connection failed') + '</span>';
-        }
-    } catch(e) {
-        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ Network error</span>';
-    }
-}
-
 loadUsers();
         } else {
             showToast(`Failed: ${data.error || 'unknown'}`, 'error');
@@ -508,52 +462,6 @@ async function deleteToken(id) {
 
 
 // ── LDAP ──
-async function loadLDAP() {
-    try {
-        const r = await fetch('/api/ldap/');
-        const d = await r.json();
-        document.getElementById('ldap-enabled').checked = d.enabled || false;
-        document.getElementById('ldap-host').value = d.host || '';
-        document.getElementById('ldap-port').value = d.port || 636;
-        document.getElementById('ldap-tls').checked = d.use_tls !== false;
-        document.getElementById('ldap-bind-dn').value = d.bind_dn || '';
-        document.getElementById('ldap-base-dn').value = d.base_dn || '';
-        document.getElementById('ldap-user-filter').value = d.user_filter || '(objectClass=person)';
-        document.getElementById('ldap-group-filter').value = d.group_filter || '(objectClass=group)';
-        document.getElementById('ldap-user-attr').value = d.username_attr || 'sAMAccountName';
-        document.getElementById('ldap-email-attr').value = d.email_attr || 'mail';
-        document.getElementById('ldap-admin-group').value = d.admin_group || 'Domain Admins';
-    } catch(e) { console.error(e); }
-}
-
-async function saveLDAP(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    fd.set('enabled', document.getElementById('ldap-enabled').checked ? 'true' : 'false');
-    fd.set('use_tls', document.getElementById('ldap-tls').checked ? 'true' : 'false');
-    try {
-        const r = await fetch('/api/ldap/save', {method:'POST', body:fd});
-        const d = await r.json();
-        if (d.success) { showToast('LDAP configuration saved', 'success'); }
-        else { showToast('Failed: ' + (d.error || 'unknown'), 'error'); }
-    } catch(e) { showToast('Error saving LDAP config', 'error'); }
-}
-
-async function testLDAP() {
-    document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent);">Testing connection...</span>';
-    try {
-        const r = await fetch('/api/ldap/test', {method:'POST'});
-        const d = await r.json();
-        if (d.success) {
-            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--success);">✓ Connection successful</span>';
-        } else {
-            document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ ' + (d.error || 'Connection failed') + '</span>';
-        }
-    } catch(e) {
-        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--danger);">✗ Network error</span>';
-    }
-}
-
 loadUsers();
 </script>
 {% endblock %}

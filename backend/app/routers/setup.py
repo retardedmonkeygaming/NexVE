@@ -364,7 +364,10 @@ async def reset_setup(request: Request):
     """Reset all users and re-run setup. Requires admin password confirmation."""
     from ..auth import get_current_user
     user = get_current_user(request)
-    if not user or user.role != "admin":
+    if not user:
+        return JSONResponse({"success": False, "error": "Authentication required"}, status_code=401)
+    role = user.role if hasattr(user, 'role') else user.get('role', '')
+    if role != 'admin':
         return JSONResponse({"success": False, "error": "Admin authentication required"}, status_code=403)
     db = SessionLocal()
     try:
@@ -381,7 +384,10 @@ async def factory_reset(request: Request):
     """Completely wipe everything. Requires admin authentication."""
     from ..auth import get_current_user
     user = get_current_user(request)
-    if not user or user.role != "admin":
+    if not user:
+        return JSONResponse({"success": False, "error": "Authentication required"}, status_code=401)
+    role = user.role if hasattr(user, 'role') else user.get('role', '')
+    if role != 'admin':
         return JSONResponse({"success": False, "error": "Admin authentication required"}, status_code=403)
     import subprocess
     import shutil

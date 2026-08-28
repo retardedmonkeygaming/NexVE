@@ -19,7 +19,8 @@ from .models.feature_models import (
     LDAPConfig, ClientCertConfig, NetworkSecurityGroup, SecurityGroupRule,
     SecurityGroupAssignment, NetworkFirewallAlias, FirewallAliasEntry,
     NetworkRateLimit, WebAuthnCredential, DatacenterFirewallRule,
-    DatacenterSettings,
+    DatacenterSettings, MetricServer, RegisteredTag, LDAPDomainMapping,
+    APITokenACL,
 )
 from .models.enhanced_models import (
     MigrationJob, HAGroup, HAGuest, ClusterNode, ClusterConfig,

@@ -291,7 +291,7 @@ async def get_syslog(request: Request, level: str = "all", lines: int = 100):
 async def host_power(request: Request, action: str):
     user, error = api_auth(request)
     if error: return error
-    if user.get("role") != "admin":
+    if not user or user.role != "admin":
         return JSONResponse({"success": False, "error": "Admin required"}, status_code=403)
     if action == "reboot":
         run_cmd("reboot", timeout=5)

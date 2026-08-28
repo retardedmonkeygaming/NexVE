@@ -546,7 +546,8 @@ def systemd_enable(service_name):
 # Build install steps based on selected components
 # ═══════════════════════════════════════════════════════════════
 
-def get_install_steps(choices):
+def get_install_steps(choices=None):
+    """Install ALL dependencies for ALL features. choices parameter is ignored — everything is installed."""
     steps = []
     pip = f"{INSTALL_DIR}/venv/bin/pip"
     venv = f"{INSTALL_DIR}/venv/bin/python3"
@@ -555,142 +556,123 @@ def get_install_steps(choices):
     os_info = detect_os()
     distro = os_info["distro"]
 
-    # Debian/Ubuntu package name mappings
-    PKG = {
-        "qemu": "qemu-system-x86" if distro == "debian" else "qemu-kvm",
-        "libvirt-daemon": "libvirt-daemon-system" if distro == "debian" else "libvirt-daemon",
-        "novnc": "novnc" if distro == "debian" else "novnc",
-        "zfs": "zfsutils-linux" if distro == "debian" else "zfsutils",
-    }
+    # ═══════════════════════════════════════════════════════════
+    # INSTALL EVERYTHING — no selective choices
+    # ═══════════════════════════════════════════════════════════
 
-    # Step 1: System update
+    # Step 1: System update + enable repos
     steps.append(("Updating package lists",
         "apt-get update -qq 2>/dev/null || apt-get update 2>/dev/null || true"))
 
-    # Step 2: Enable contrib/non-free repos for ZFS
-    if "ZFS" in choices:
-        steps.append(("Enabling contrib/non-free repos",
-            "sed -i 's/^# *deb /deb /' /etc/apt/sources.list 2>/dev/null || true; "
-            "if [ -f /etc/apt/sources.list.d/debian.sources ]; then "
-            "  sed -i 's/Components: main$/Components: main contrib non-free non-free-firmware/' "
-            "  /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; "
-            "fi; "
-            "apt-get update -qq 2>/dev/null || true"))
+    steps.append(("Enabling contrib/non-free repos (for ZFS)",
+        "sed -i 's/^# *deb /deb /' /etc/apt/sources.list 2>/dev/null || true; "
+        "if [ -f /etc/apt/sources.list.d/debian.sources ]; then "
+        "  sed -i 's/Components: main$/Components: main contrib non-free non-free-firmware/' "
+        "  /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; "
+        "fi; "
+        "apt-get update -qq 2>/dev/null || true"))
 
-    # ── CORE ──
-    if "CORE" in choices:
-        steps.append(("Installing Python 3 + dev headers",
-            apt_install("python3", "python3-pip", "python3-venv", "python3-dev",
-                        "libffi-dev", "libssl-dev", "libjpeg-dev", "zlib1g-dev")))
-        steps.append(("Installing build tools",
-            apt_install("build-essential", "gcc", "g++", "make")))
-        steps.append(("Installing system utilities",
-            apt_install("git", "curl", "wget", "jq", "openssl", "sudo", "cron",
-                        "lsb-release", "ca-certificates", "gnupg")))
+    # ── CORE: Python, build tools, system utils ──
+    steps.append(("Installing Python 3 + dev headers",
+        apt_install("python3", "python3-pip", "python3-venv", "python3-dev",
+                    "libffi-dev", "libssl-dev", "libjpeg-dev", "zlib1g-dev")))
+    steps.append(("Installing build tools",
+        apt_install("build-essential", "gcc", "g++", "make")))
+    steps.append(("Installing system utilities",
+        apt_install("git", "curl", "wget", "jq", "openssl", "sudo", "cron",
+                    "lsb-release", "ca-certificates", "gnupg")))
 
-    # ── KVM/QEMU ──
-    if "KVM" in choices:
-        steps.append(("Installing QEMU/KVM",
-            f"({apt_install(PKG['qemu'], 'qemu-utils')} || "
-            f"{apt_install('qemu-system-x86', 'qemu-utils')}) && true"))
-        steps.append(("Installing libvirt daemon",
-            f"({apt_install(PKG['libvirt-daemon'], 'libvirt-clients')} || "
-            f"{apt_install('libvirt-daemon', 'libvirt-clients')}) && true"))
-        steps.append(("Installing virt-manager + OVMF UEFI firmware",
-            f"{apt_install('virtinst', 'ovmf', 'libvirt-dev')} && true"))
-        steps.append(("Enabling libvirtd",
-            "systemctl enable --now libvirtd 2>/dev/null || "
-            "systemctl enable libvirtd 2>/dev/null || true"))
+    # ── KVM/QEMU: full virtualization stack ──
+    steps.append(("Installing QEMU/KVM",
+        f"({apt_install('qemu-system-x86', 'qemu-system-x86-modules', 'qemu-utils', 'qemu-block-extra')} || "
+        f"{apt_install('qemu-kvm', 'qemu-utils')}) && true"))
+    steps.append(("Installing libvirt daemon + clients",
+        f"({apt_install('libvirt-daemon-system', 'libvirt-clients', 'libvirt-dev')} || "
+        f"{apt_install('libvirt-daemon', 'libvirt-clients', 'libvirt-devel')}) && true"))
+    steps.append(("Installing virt-manager + OVMF UEFI firmware",
+        f"{apt_install('virtinst', 'ovmf')} && true"))
+    steps.append(("Enabling libvirtd",
+        "systemctl enable --now libvirtd 2>/dev/null || "
+        "systemctl enable libvirtd 2>/dev/null || true"))
 
-    # ── LXC ──
-    if "LXC" in choices:
-        steps.append(("Installing LXC container runtime",
-            f"{apt_install('lxc', 'lxc-utils')} && true"))
-        steps.append(("Installing debootstrap for containers",
-            apt_install("debootstrap")))
+    # ── LXC: container runtime ──
+    steps.append(("Installing LXC container runtime",
+        f"{apt_install('lxc', 'lxc-utils', 'lxc-dev')} && true"))
+    steps.append(("Installing debootstrap for containers",
+        apt_install("debootstrap")))
 
-    # ── ZFS ──
-    if "ZFS" in choices:
-        steps.append(("Installing ZFS utilities",
-            f"({apt_install('zfsutils-linux')} || "
-            f"{apt_install('zfsutils')} || "
-            f"echo 'ZFS not available - install zfsutils-linux from contrib repo') && true"))
+    # ── ZFS: pool/dataset management ──
+    steps.append(("Installing ZFS utilities",
+        f"({apt_install('zfsutils-linux')} || "
+        f"{apt_install('zfsutils')} || "
+        f"echo 'ZFS not available - install from contrib repo') && true"))
 
-    # ── LVM ──
-    if "LVM" in choices:
-        steps.append(("Installing LVM2",
-            apt_install("lvm2")))
+    # ── LVM/LVM-thin: volume management ──
+    steps.append(("Installing LVM2",
+        apt_install("lvm2")))
 
-    # ── BTRFS ──
-    if "BTRFS" in choices:
-        steps.append(("Installing BTRFS tools",
-            apt_install("btrfs-progs")))
+    # ── BTRFS: filesystem tools ──
+    steps.append(("Installing BTRFS tools",
+        apt_install("btrfs-progs")))
 
-    # ── NFS ──
-    if "NFS" in choices:
-        steps.append(("Installing NFS client",
-            apt_install("nfs-common")))
+    # ── NFS client ──
+    steps.append(("Installing NFS client",
+        apt_install("nfs-common")))
 
-    # ── CIFS ──
-    if "CIFS" in choices:
-        steps.append(("Installing CIFS/SMB client",
-            f"{apt_install('cifs-utils')}; {apt_install('samba-common-bin')} && true"))
+    # ── CIFS/SMB client ──
+    steps.append(("Installing CIFS/SMB client",
+        f"{apt_install('cifs-utils', 'samba-common-bin')} && true"))
 
-    # ── iSCSI ──
-    if "ISCSI" in choices:
-        steps.append(("Installing iSCSI initiator",
-            f"({apt_install('open-iscsi')} || "
-            f"{apt_install('iscsi-initiator-utils')}) && "
-            f"{systemd_enable('iscsid')} && true"))
-        steps.append(("Installing SMART + disk tools",
-            f"{apt_install('smartmontools')}; "
-            f"{apt_install('gdisk')}; "
-            f"{apt_install('hdparm')} && true"))
+    # ── iSCSI initiator + SMART ──
+    steps.append(("Installing iSCSI initiator",
+        f"({apt_install('open-iscsi')} || "
+        f"{apt_install('iscsi-initiator-utils')}) && "
+        f"{systemd_enable('iscsid')} && true"))
+    steps.append(("Installing SMART + disk tools",
+        f"{apt_install('smartmontools', 'gdisk', 'hdparm', 'parted', 'lshw')} && true"))
 
-    # ── NETWORKING ──
-    if "NET" in choices:
-        steps.append(("Installing networking tools",
-            f"{apt_install('bridge-utils', 'iproute2', 'net-tools')}; "
-            f"{apt_install('vlan', 'ethtool')} && true"))
-        steps.append(("Installing PCI/USB utils for passthrough",
-            apt_install("pciutils", "usbutils")))
+    # ── Networking ──
+    steps.append(("Installing networking tools",
+        f"{apt_install('bridge-utils', 'iproute2', 'net-tools', 'vlan', 'ethtool', 'ifenslave')} && true"))
+    steps.append(("Installing PCI/USB utils for passthrough",
+        apt_install("pciutils", "usbutils")))
 
-    # ── FIREWALL ──
-    if "FIREWALL" in choices:
-        steps.append(("Installing nftables firewall",
-            f"{apt_install('nftables')} && "
-            f"{systemd_enable('nftables')} && true"))
+    # ── Firewall ──
+    steps.append(("Installing nftables firewall",
+        f"{apt_install('nftables')} && "
+        f"{systemd_enable('nftables')} && true"))
 
-    # ── CONSOLE ──
-    if "CONSOLE" in choices:
-        steps.append(("Installing noVNC + websockify",
-            f"({apt_install('novnc', 'websockify')} || "
-            f"{apt_install('python3-novnc')} || "
-            f"({pip} install websockify -q 2>/dev/null || true)) && true"))
-        steps.append(("Installing xterm for shell",
-            apt_install("xterm")))
+    # ── Console (noVNC + xterm) ──
+    steps.append(("Installing noVNC + websockify",
+        f"({apt_install('novnc', 'websockify')} || "
+        f"{apt_install('python3-novnc')} || "
+        f"({pip} install websockify -q 2>/dev/null || true)) && true"))
+    steps.append(("Installing xterm for shell",
+        apt_install("xterm")))
 
-    # ── CLOUD-INIT ──
-    if "CLOUD" in choices:
-        steps.append(("Installing cloud-init",
-            f"{apt_install('cloud-init')}; {apt_install('cloud-utils')} && true"))
-        steps.append(("Installing ISO creation tools",
-            f"{apt_install('genisoimage')}; {apt_install('xorriso')} && true"))
+    # ── Cloud-init + ISO tools ──
+    steps.append(("Installing cloud-init + cloud-utils",
+        f"{apt_install('cloud-init', 'cloud-utils', 'cloud-image-utils')} && true"))
+    steps.append(("Installing ISO creation tools",
+        f"{apt_install('genisoimage', 'xorriso', 'mkisofs')} && true"))
 
-    # ── MONITORING ──
-    if "MONITOR" in choices:
-        steps.append(("Installing system monitoring tools",
-            apt_install("sysstat", "procps")))
+    # ── Monitoring tools ──
+    steps.append(("Installing system monitoring tools",
+        apt_install("sysstat", "procps", "iotop", "nmon")))
 
-    # ── BACKUP ──
-    if "BACKUP" in choices:
-        steps.append(("Enabling cron daemon",
-            f"{systemd_enable('cron')} || "
-            f"{systemd_enable('cronie')} || true"))
-
-    # Always install rsyslog
+    # ── Rsyslog ──
     steps.append(("Installing rsyslog",
         apt_install("rsyslog")))
+
+    # ── SSL/TLS tools ──
+    steps.append(("Installing SSL/TLS tools",
+        f"{apt_install('certbot')} && true"))
+
+    # ── Time synchronization ──
+    steps.append(("Installing NTP (chrony)",
+        f"{apt_install('chrony')} && "
+        f"{systemd_enable('chrony')} || "
+        f"{systemd_enable('ntpd')} || true"))
 
     # ═══════════════════════════════════════════════════════════
     # Project setup

@@ -196,3 +196,54 @@ class DatacenterSettings(Base):
     value = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
     updated_at = Column(DateTime, onupdate=func.now())
+
+class MetricServer(Base):
+    __tablename__ = "metric_servers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # influxdb, influxdb2, graphite
+    host = Column(String, nullable=False)
+    port = Column(Integer, default=8086)
+    # InfluxDB v1
+    database = Column(String, nullable=True)  # InfluxDB v1 database name
+    username = Column(String, nullable=True)
+    password = Column(String, nullable=True)
+    # InfluxDB v2
+    organization = Column(String, nullable=True)
+    token = Column(String, nullable=True)
+    bucket = Column(String, nullable=True)
+    # Graphite
+    prefix = Column(String, nullable=True)
+    # Common
+    enabled = Column(Boolean, default=True)
+    verify_ssl = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class RegisteredTag(Base):
+    __tablename__ = "registered_tags"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    color = Column(String, default="#00d4aa")  # hex color
+    text_color = Column(String, nullable=True)  # optional text color
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class LDAPDomainMapping(Base):
+    __tablename__ = "ldap_domain_mappings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    domain_group = Column(String, nullable=False)  # e.g. "cn=admins,dc=example,dc=com"
+    nexve_role = Column(String, nullable=False)  # admin, auditor, user
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+class APITokenACL(Base):
+    __tablename__ = "api_token_acl"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    token_id = Column(Integer, nullable=False, index=True)
+    path = Column(String, nullable=False)  # e.g. "/vms", "/storage", "/nodes"
+    roles = Column(String, default="PVEAuditor")  # comma-separated roles
+    created_at = Column(DateTime, server_default=func.now())

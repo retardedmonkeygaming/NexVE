@@ -19,10 +19,13 @@ pyotp==2.9.0
 qrcode[pil]==8.0
 Pillow==11.0.0
 ldap3==2.9.1
+python-pam==2.1.2
+webauthn>=1.0.0
 
 # ── Cryptography ──
 certifi>=2023.7.22
 cryptography>=41.0.0
+pyOpenSSL>=23.0.0
 
 # ── HTTP Client ──
 httpx>=0.25.0
@@ -37,6 +40,9 @@ websockets==13.1
 # ── Virtualization ──
 paramiko>=3.4.0
 websockify>=0.12.0
+
+# ── Monitoring / Metrics Export ──
+influxdb-client>=1.30.0
 
 # ── Date/Time ──
 python-dateutil>=2.8.2

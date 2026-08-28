@@ -148,8 +148,8 @@ async def create_backup(request: Request):
             if not vm:
                 return JSONResponse(content={"success": False, "error": "VM not found"}, status_code=404)
 
-            backup_dir = "/opt/nexve/data/backups"
             import os
+            backup_dir = os.path.expanduser("~/.local/share/nexve/backups")
             os.makedirs(backup_dir, exist_ok=True)
 
             disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
@@ -192,8 +192,8 @@ async def backup_vm_now(request: Request, vm_id: int):
         if not vm:
             return JSONResponse(content={"error": "VM not found"}, status_code=404)
 
-        backup_dir = "/opt/nexve/data/backups"
         import os
+        backup_dir = os.path.expanduser("~/.local/share/nexve/backups")
         os.makedirs(backup_dir, exist_ok=True)
 
         disk_path = f"/var/lib/libvirt/images/{vm.name}.qcow2"
@@ -229,9 +229,8 @@ async def backup_container_now(request: Request, ct_id: int):
 async def list_backups(request: Request):
     user, error = api_auth(request)
     if error: return error
-
-    backup_dir = "/opt/nexve/data/backups"
     import os
+    backup_dir = os.path.expanduser("~/.local/share/nexve/backups")
     if not os.path.exists(backup_dir):
         os.makedirs(backup_dir, exist_ok=True)
 
@@ -250,7 +249,7 @@ async def list_backups(request: Request):
 
 
 def _install_cron(schedule):
-    cron_line = f"{schedule.cron_expr} /opt/nexve/venv/bin/python3 -c \"import requests; requests.post('http://localhost:8000/api/backups/run-schedule/{schedule.id}')\""
+    cron_line = f"{schedule.cron_expr} /var/lib/nexve/venv/bin/python3 -c \"import requests; requests.post('http://localhost:8000/api/backups/run-schedule/{schedule.id}')\""
     _remove_cron(schedule)  # Remove first to avoid duplicates
     import os
     crontab_r = subprocess.run("crontab -l 2>/dev/null || true", shell=True, capture_output=True, text=True)

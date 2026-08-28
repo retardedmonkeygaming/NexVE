@@ -2,6 +2,32 @@ from datetime import datetime, timedelta
 from fastapi import Request, HTTPException
 from fastapi.responses import RedirectResponse
 import secrets
+
+
+class UserContext:
+    """Dict-like user object that also supports attribute access (user.id, user['id'])."""
+    def __init__(self, data: dict):
+        self._data = data
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        try:
+            return self._data[name]
+        except KeyError:
+            raise AttributeError(f"'UserContext' has no attribute '{name}'")
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __repr__(self):
+        return f"UserContext({self._data})"
 try:
     import pyotp
 except ImportError:
@@ -47,12 +73,12 @@ def get_current_user(request: Request):
         if not user or not user.is_active:
             return None
 
-        return {
+        return UserContext({
             "id": user.id,
             "username": user.username,
             "role": user.role,
             "totp_enabled": user.totp_enabled
-        }
+        })
     finally:
         db.close()
 

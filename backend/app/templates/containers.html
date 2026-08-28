@@ -273,7 +273,7 @@ async function submitCT(e) {
 // ── Check LXC tools ──
 async function checkLXC() {
     try {
-        const r = await fetch('/api/containers/status');
+        const r = await fetch('/api/containers/system-info');
         const d = await r.json();
         if (d.available === false) {
             document.getElementById('lxc-warning').classList.remove('nx-hidden');

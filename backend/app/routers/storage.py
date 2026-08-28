@@ -444,7 +444,7 @@ async def list_isos(request: Request):
 async def lvm_thin_pools(request: Request, vg: str = ""):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_list_pools(vg))
+    return JSONResponse(svc.lvm_thin_list_pools(vg))
 
 
 @router.post("/lvm-thin/pools/create")
@@ -456,21 +456,21 @@ async def lvm_thin_create_pool(
 ):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_create_pool(vg_name, pool_name, size_gb))
+    return JSONResponse(svc.lvm_thin_create_pool(vg_name, pool_name, size_gb))
 
 
 @router.delete("/lvm-thin/pools/{vg_name}/{pool_name}")
 async def lvm_thin_delete_pool(request: Request, vg_name: str, pool_name: str):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_remove_pool(vg_name, pool_name))
+    return JSONResponse(svc.lvm_thin_remove_pool(vg_name, pool_name))
 
 
 @router.get("/lvm-thin/volumes")
 async def lvm_thin_volumes(request: Request, vg: str = "", pool: str = ""):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_list_volumes(vg, pool))
+    return JSONResponse(svc.lvm_thin_list_volumes(vg, pool))
 
 
 @router.post("/lvm-thin/volumes/create")
@@ -483,14 +483,14 @@ async def lvm_thin_create_volume(
 ):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_create_lv(vg_name, pool_name, lv_name, size_gb))
+    return JSONResponse(svc.lvm_thin_create_lv(vg_name, pool_name, lv_name, size_gb))
 
 
 @router.delete("/lvm-thin/volumes/{lv_path:path}")
 async def lvm_thin_delete_volume(request: Request, lv_path: str):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_remove_lv(lv_path))
+    return JSONResponse(svc.lvm_thin_remove_lv(lv_path))
 
 
 @router.post("/lvm-thin/snapshot")
@@ -501,14 +501,14 @@ async def lvm_thin_snapshot_create(
 ):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_snapshot(source_lv, snap_name))
+    return JSONResponse(svc.lvm_thin_snapshot(source_lv, snap_name))
 
 
 @router.get("/lvm-thin/snapshots")
 async def lvm_thin_snapshots(request: Request, vg: str = ""):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.lvm_thin_list_snapshots(vg))
+    return JSONResponse(svc.lvm_thin_list_snapshots(vg))
 
 
 @router.post("/migrate")
@@ -519,7 +519,7 @@ async def storage_migrate(
 ):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.migrate_storage(source, target))
+    return JSONResponse(svc.migrate_storage(source, target))
 
 
 async def list_backends(request: Request):
@@ -593,14 +593,14 @@ async def remove_backend(request: Request, backend_id: int):
 async def gluster_status(request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.gluster_status())
+    return JSONResponse(svc.gluster_status())
 
 
 @router.get("/gluster/volumes")
 async def gluster_volumes(request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse({"volumes": storage_svc.gluster_list_volumes()})
+    return JSONResponse({"volumes": svc.gluster_list_volumes()})
 
 
 @router.post("/gluster/volume")
@@ -608,28 +608,28 @@ async def gluster_create_volume(request: Request, name: str = Form(...), bricks:
                                replica: int = Form(1)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.gluster_create_volume(name, bricks.split(), replica))
+    return JSONResponse(svc.gluster_create_volume(name, bricks.split(), replica))
 
 
 @router.delete("/gluster/volume/{name}")
 async def gluster_delete_volume(name: str, request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.gluster_delete_volume(name))
+    return JSONResponse(svc.gluster_delete_volume(name))
 
 
 @router.post("/gluster/peer/probe")
 async def gluster_peer_probe(request: Request, host: str = Form(...)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.gluster_peer_probe(host))
+    return JSONResponse(svc.gluster_peer_probe(host))
 
 
 @router.post("/gluster/peer/detach")
 async def gluster_peer_detach(request: Request, host: str = Form(...)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.gluster_peer_detach(host))
+    return JSONResponse(svc.gluster_peer_detach(host))
 
 
 # ── RAIDZ Expansion endpoints ──
@@ -638,21 +638,21 @@ async def gluster_peer_detach(request: Request, host: str = Form(...)):
 async def zfs_raidz_expand(request: Request, pool: str = Form(...), device: str = Form(...)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.zfs_raidz_expand(pool, device))
+    return JSONResponse(svc.zfs_raidz_expand(pool, device))
 
 
 @router.get("/zfs/raidz/status/{pool}")
 async def zfs_raidz_status(pool: str, request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.zfs_raidz_status(pool))
+    return JSONResponse(svc.zfs_raidz_status(pool))
 
 
 @router.post("/zfs/raidz/add-vdev")
 async def zfs_raidz_add_vdev(request: Request, pool: str = Form(...), devices: str = Form(...)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.zfs_raidz_add_vdev(pool, devices.split()))
+    return JSONResponse(svc.zfs_raidz_add_vdev(pool, devices.split()))
 
 
 # ── Replication Job endpoints ──
@@ -661,7 +661,7 @@ async def zfs_raidz_add_vdev(request: Request, pool: str = Form(...), devices: s
 async def replication_jobs(request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse({"jobs": storage_svc.replication_list_jobs()})
+    return JSONResponse({"jobs": svc.replication_list_jobs()})
 
 
 @router.post("/replication/job")
@@ -669,18 +669,18 @@ async def replication_create_job(request: Request, source: str = Form(...), targ
                                schedule: str = Form("daily"), recursive: bool = Form(True)):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.replication_create_job(source, target, schedule, recursive))
+    return JSONResponse(svc.replication_create_job(source, target, schedule, recursive))
 
 
 @router.delete("/replication/job/{job_id}")
 async def replication_delete_job(job_id: int, request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.replication_delete_job(job_id))
+    return JSONResponse(svc.replication_delete_job(job_id))
 
 
 @router.post("/replication/job/{job_id}/run")
 async def replication_run_now(job_id: int, request: Request):
     user, error = api_auth(request)
     if error: return error
-    return JSONResponse(storage_svc.replication_run_now(job_id))
+    return JSONResponse(svc.replication_run_now(job_id))
