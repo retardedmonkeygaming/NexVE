@@ -674,6 +674,38 @@ def get_install_steps(choices=None):
         f"{systemd_enable('chrony')} || "
         f"{systemd_enable('ntpd')} || true"))
 
+    # ── WireGuard VPN ──
+    steps.append(("Installing WireGuard VPN",
+        f"({apt_install('wireguard', 'wireguard-tools')} || "
+        f"{apt_install('wg')} || "
+        f"echo 'WireGuard not available') && true"))
+
+    # ── Open vSwitch (for advanced networking) ──
+    steps.append(("Installing Open vSwitch",
+        f"{apt_install('openvswitch-switch', 'openvswitch-common')} && "
+        f"{systemd_enable('openvswitch-switch')} || true"))
+
+    # ── Disk benchmarking + network testing ──
+    steps.append(("Installing performance tools",
+        f"{apt_install('fio', 'iperf3', 'netcat-openbsd', 'nmap')} && true"))
+
+    # ── System utilities ──
+    steps.append(("Installing system utilities",
+        f"{apt_install('htop', 'tree', 'rsync', 'mc', 'tmux', 'screen')} && true"))
+
+    # ── Security ──
+    steps.append(("Installing security tools",
+        f"{apt_install('fail2ban')} && "
+        f"{systemd_enable('fail2ban')} || true"))
+
+    # ── Backup tools ──
+    steps.append(("Installing backup tools",
+        f"{apt_install('borgbackup', 'rsync', 'pigz')} && true"))
+
+    # ── Python requests (used by backup cron) ──
+    steps.append(("Installing additional Python packages",
+        f"{pip} install requests -q 2>/dev/null || true"))
+
     # ═══════════════════════════════════════════════════════════
     # Project setup
     # ═══════════════════════════════════════════════════════════

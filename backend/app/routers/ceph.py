@@ -114,3 +114,19 @@ async def list_cephfs(request: Request):
     if error: return error
     fs = ceph_svc.list_cephfs()
     return JSONResponse({"filesystems": fs})
+
+@router.post("/osd/{action}")
+async def osd_action(request: Request, action: str, osd_id: str = Form(...)):
+    """Perform an action on a Ceph OSD (in, out, up, down, reweight)."""
+    user, error = api_auth(request)
+    if error: return error
+    import subprocess
+    if action in ("in", "out", "up", "down"):
+        r = subprocess.run(["ceph", "osd", action, osd_id], capture_output=True, text=True, timeout=30)
+        return JSONResponse({"success": r.returncode == 0, "output": r.stdout.strip(), "error": r.stderr.strip() if r.returncode != 0 else None})
+    elif action == "reweight":
+        form = await request.form()
+        weight = form.get("weight", "1.0")
+        r = subprocess.run(["ceph", "osd", "reweight", osd_id, str(weight)], capture_output=True, text=True, timeout=30)
+        return JSONResponse({"success": r.returncode == 0, "output": r.stdout.strip(), "error": r.stderr.strip() if r.returncode != 0 else None})
+    return JSONResponse({"success": False, "error": f"Unknown action: {action}"})

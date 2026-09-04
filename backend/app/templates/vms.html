@@ -845,6 +845,76 @@ async function installLibvirt() {
     } catch(e) { showToast('Error installing libvirt', 'error'); }
 }
 
+
+// ── Cloud-Init ──
+async function applyCloudInit(id) {
+    const fd = new FormData();
+    fd.append('vm_id', id);
+    try {
+        const r = await fetch(`/api/vms/${id}/cloud-init/apply`, {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success !== false) showToast('Cloud-init applied', 'success');
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Guest Agent ──
+async function guestAgent(id, cmd) {
+    if (cmd === 'info') {
+        try {
+            const r = await fetch(`/api/vms/${id}/guest-agent/info`);
+            const d = await r.json();
+            if (d.success !== false) { showToast('Guest agent info: ' + JSON.stringify(d.info || {}), 'success'); }
+            else showToast(d.error || 'Failed', 'error');
+        } catch(e) { showToast('Error: ' + e.message, 'error'); }
+        return;
+    }
+    const fd = new FormData();
+    fd.append('command', cmd);
+    try {
+        const r = await fetch(`/api/vms/${id}/guest-agent/${cmd}`, {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success !== false) showToast('Guest agent command sent: ' + cmd, 'success');
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Hot-plug Disk ──
+function hotplugDisk(id) {
+    const size = prompt('Disk size in GB:', '10');
+    if (!size) return;
+    const fd = new FormData();
+    fd.append('size_gb', size);
+    fd.append('interface', 'virtio');
+    fetch(`/api/vms/${id}/hotplug/disk`, {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(d => { if (d.success !== false) { showToast('Disk attached', 'success'); showDetail(id); } else showToast(d.error || 'Failed', 'error'); })
+        .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+// ── Hot-plug NIC ──
+function hotplugNIC(id) {
+    const fd = new FormData();
+    fd.append('bridge', 'vmbr0');
+    fd.append('model', 'virtio');
+    fetch(`/api/vms/${id}/hotplug/nic`, {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(d => { if (d.success !== false) { showToast('NIC attached', 'success'); showDetail(id); } else showToast(d.error || 'Failed', 'error'); })
+        .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+// ── Toggle TPM ──
+function toggleTPM(id) {
+    const vm = allVMs.find(v => v.id === id);
+    if (!vm) return;
+    const fd = new FormData();
+    fd.append('tpm_enabled', vm.tpm_enabled ? 'false' : 'true');
+    fetch(`/api/vms/${id}/update`, {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(d => { if (d.success !== false) { showToast('TPM toggled', 'success'); showDetail(id); loadVMs(); } else showToast(d.error || 'Failed', 'error'); })
+        .catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
 function refreshVMs() { loadVMs(); }
 
 // ── Init ──

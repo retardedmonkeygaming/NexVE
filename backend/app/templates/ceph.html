@@ -340,6 +340,21 @@ async function loadCephFS() {
     } catch(e) { console.error(e); }
 }
 
+
+// ── OSD Actions ──
+async function osdAction(osdId, action) {
+    if (!confirm(`OSD ${osdId}: ${action}?`)) return;
+    const fd = new FormData();
+    fd.append('osd_id', osdId);
+    fd.append('action', action);
+    try {
+        const r = await fetch(`/api/ceph/osd/${action}`, {method:'POST', body:fd});
+        const d = await r.json();
+        if (d.success !== false) { showToast('OSD action succeeded', 'success'); refreshCeph(); }
+        else showToast(d.error || 'Failed', 'error');
+    } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
 function formatBytes(bytes) {
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
